@@ -1,0 +1,30 @@
+# Environment variables
+.env
+
+# Token files
+tokens.json
+
+# Data files
+*.json
+!*PROGRESS.md # Keep PROGRESS.md, even though it ends with .md, it's not a data file
+!*TODO.md
+!*DECISIONS.md
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+.venv/
+ENV/
+env/
+
+# IDE and editor specific files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
