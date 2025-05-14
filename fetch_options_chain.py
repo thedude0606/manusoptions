@@ -31,25 +31,12 @@ def main():
             return
         print("Client initialized and token appears to be loaded.")
 
-        # Example: Fetch options for the nearest expiration date
-        # You might want to specify contractType, strikeCount, expirationDate, etc.
-        # For simplicity, let's try to get all available for the nearest standard expiration
-        # The API might require more specific parameters for a successful call.
-        # Refer to Schwab API documentation for get_options_chain parameters.
-        # For now, let's try a broad request and see the response structure or errors.
-        # Common parameters: symbol, contractType (CALL, PUT, ALL), strikeCount, includeUnderlyingQuote, strategy, interval, strike, range, fromDate, toDate, volatility, underlyingPrice, interestRate, daysToExpiration, expMonth, optionType
-
-        print(f"Fetching options chain for {SYMBOL}...")
-        response = client.get_options_chain(
-            symbol=SYMBOL,
-            contractType="ALL", # Fetch both calls and puts
-            # strikeCount=10, # Number of strikes to return above and below the at-the-money price
-            # includeUnderlyingQuote=True,
-            # strategy="SINGLE", # SINGLE, ANALYTICAL, COVERED, VERTICAL, CALENDAR, STRANGLE, STRADDLE, BUTTERFLY, CONDOR, DIAGONAL, COLLAR, ROLL
-            # expMonth="ALL" # ALL, JAN, FEB, etc.
-            # fromDate=(datetime.date.today()).strftime("%Y-%m-%d"),
-            # toDate=(datetime.date.today() + datetime.timedelta(days=45)).strftime("%Y-%m-%d") # Example: next 45 days
-        )
+        print(f"Fetching options chain for {SYMBOL} using instruments endpoint...")
+        # The `instruments` endpoint with projection="optionchain" should provide options data.
+        # The Schwab API itself for options chains might take other parameters like contractType, strikeCount, etc.
+        # The schwabdev library might pass these through or have specific ways to handle them.
+        # For now, this is the most direct way to get the option chain via the instruments endpoint based on typical API structures.
+        response = client.instruments(symbol=SYMBOL, projection="optionchain")
 
         if response.ok:
             options_data = response.json()
@@ -59,25 +46,38 @@ def main():
                 json.dump(options_data, f, indent=2)
             print(f"Options chain data saved to {OUTPUT_FILE}")
 
-            # Optionally, print some summary
-            if "callExpDateMap" in options_data and options_data["callExpDateMap"]:
-                print(f"Call options found for {len(options_data[	'callExpDateMap	'])} expiration dates.")
-            if "putExpDateMap" in options_data and options_data["putExpDateMap"]:
-                print(f"Put options found for {len(options_data[	'putExpDateMap	'])} expiration dates.")
-            if not options_data.get("callExpDateMap") and not options_data.get("putExpDateMap") and options_data.get("status") == "SUCCESS" and options_data.get("underlying") is not None:
-                 print("Options data retrieved, but no call/put maps found. This might mean no options for the selected criteria or a different response structure.")
-                 print(json.dumps(options_data, indent=2))
+            # The structure of the options_data from client.instruments might be different
+            # from a dedicated options chain endpoint. We need to inspect it.
+            # Common structures involve a map of expiration dates to strikes.
+            # Example check (actual keys might vary based on schwabdev library's parsing of the response):
+            if options_data.get(SYMBOL) and isinstance(options_data[SYMBOL], list) and options_data[SYMBOL][0].get("optionChain"):
+                print("Option chain data seems to be present in the expected structure.")
+                # Further parsing would go here based on actual response structure
+            elif options_data.get("callExpDateMap") or options_data.get("putExpDateMap"):
+                 print("Options data retrieved with call/put expiration date maps.")
+            else:
+                print("Options data retrieved, but the structure needs inspection. Full response:")
+                # print(json.dumps(options_data, indent=2)) # Potentially very large output
+                if len(json.dumps(options_data)) < 2000: # Print only if reasonably small
+                    print(json.dumps(options_data, indent=2))
+                else:
+                    print("Response is large, not printing to console. Check the output file.")
 
         else:
             print(f"Error fetching options chain data: {response.status_code}")
             print(f"Response: {response.text}")
-            # Save error response for debugging
-            with open(f"{SYMBOL}_options_chain_error.json", "w") as f:
+            error_output_file = f"{SYMBOL}_options_chain_error.json"
+            with open(error_output_file, "w") as f:
                 f.write(response.text)
-            print(f"Error response saved to {SYMBOL}_options_chain_error.json")
+            print(f"Error response saved to {error_output_file}")
 
+    except AttributeError as ae:
+        print(f"An AttributeError occurred: {ae}")
+        print("This might indicate that the method or attribute is not available in the schwabdev library version you are using, or the client object was not initialized correctly.")
+        import traceback
+        traceback.print_exc()
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"An unexpected error occurred: {e}")
         import traceback
         traceback.print_exc()
 
