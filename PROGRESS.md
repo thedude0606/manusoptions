@@ -30,20 +30,25 @@
 *   **Syntax Error Resolution:**
     *   Systematically scanned and corrected all f-string syntax errors related to quote usage and dictionary key access throughout `fetch_options_chain.py`.
     *   Ensured all print formatting uses appropriate methods (f-strings with correct quoting or `.format()`).
+*   **Debugging Contract Filtering:**
+    *   Added diagnostic printing in `get_filtered_option_contract_keys` to display raw contract data (symbol, OI, DTE) before filters are applied. This is to help diagnose why no contracts were matching the specified filters for AAPL 0DTE.
 
 ### Current Work In Progress
 
-*   Final verification of streaming functionality with user-provided credentials (pending user action).
-*   Preparing for further enhancements based on user feedback.
+*   Awaiting user to run the script with diagnostic printing and provide output for analysis.
+*   Refining contract filtering logic based on diagnostic output.
 
 ### Known Issues or Challenges
 
-*   Full end-to-end streaming and data validation requires valid Schwab API credentials and user authentication via `auth_script.py`. Current sandbox testing uses dummy credentials, so API calls for data will fail after client initialization.
+*   Full end-to-end streaming and data validation requires valid Schwab API credentials and user authentication via `auth_script.py`. Current sandbox testing uses dummy credentials, so API calls for data will fail after client initialization if not using live credentials.
 *   The Schwab API might have limits on the number of concurrent stream subscriptions. The script uses a `MAX_CONTRACTS_PER_STREAM_SUBSCRIPTION` setting, but this might need adjustment based on real-world usage.
 *   The `Schwab_Trader_API_Streamer_Guide.pdf` was not accessible (404 error), so implementation relies on other provided examples and general API knowledge.
 
 ### Next Steps
 
-*   Await user to test with their live credentials.
-*   Address any issues identified during user testing.
+*   User to run the modified `fetch_options_chain.py` and share the diagnostic output.
+*   Analyze the diagnostic output to understand API data for OI and DTE.
+*   Adjust filtering logic in `get_filtered_option_contract_keys` if necessary.
+*   Test the refined filtering.
+*   Address any further issues identified during user testing.
 *   Discuss further enhancements or new features for the options trading platform.

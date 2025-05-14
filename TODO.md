@@ -32,11 +32,19 @@
 - [x] Systematically scan and correct all f-string and other syntax/formatting errors in `fetch_options_chain.py`.
 - [x] Verify script runs without syntax errors (up to credential validation).
 
-### Next Steps & Testing
+### Debugging Contract Filtering (Current Focus)
 
-- [ ] User to test `fetch_options_chain.py` in "STREAM" mode with valid Schwab API credentials and `tokens.json`.
-- [ ] Address any issues identified during user's live testing.
-- [ ] Discuss and implement further enhancements (e.g., more sophisticated "data chart", refined filtering, error handling for stream disconnects).
+- [x] Add diagnostic printing to `get_filtered_option_contract_keys` in `fetch_options_chain.py` to show raw contract data (symbol, OI, DTE) before filters are applied.
+- [ ] User to run the modified `fetch_options_chain.py` and provide the diagnostic output showing raw contract data.
+- [ ] Analyze the diagnostic output to understand how the API reports OI and DTE for the specified symbols (e.g., AAPL 0DTE).
+- [ ] Refine the contract filtering logic in `get_filtered_option_contract_keys` based on the analysis of the diagnostic output, if necessary.
+- [ ] Test the refined filtering to ensure it correctly identifies contracts based on user criteria (0DTE, OI > 0).
+
+### Next Steps & Broader Testing
+
+- [ ] User to test `fetch_options_chain.py` in "STREAM" mode with refined filters and valid Schwab API credentials and `tokens.json`.
+- [ ] Address any issues identified during user's live streaming tests.
+- [ ] Discuss and implement further enhancements (e.g., more sophisticated "data chart", additional filtering options, error handling for stream disconnects).
 
 ### Future Enhancements (Placeholder)
 

@@ -118,6 +118,7 @@ def get_filtered_option_contract_keys(client, underlying_symbol):
     print(f"Fetching and filtering option contract keys for {underlying_symbol}...")
     print(f"Filters: Min Open Interest > {STREAMING_FILTER_MIN_OPEN_INTEREST-1}, DTE == {STREAMING_FILTER_DTE if STREAMING_FILTER_DTE is not None else 'Any'}")
     keys = []
+    raw_contracts_for_diag = [] # For diagnostic printing
     try:
         response = client.option_chains(
             symbol=underlying_symbol, contractType="ALL", strikeCount=None,
@@ -127,11 +128,20 @@ def get_filtered_option_contract_keys(client, underlying_symbol):
         if response.ok:
             options_data = response.json()
             if options_data.get("status") == "SUCCESS":
+                print("--- Raw Contract Data Before Filtering ---") # Diagnostic header
                 for map_type in ["callExpDateMap", "putExpDateMap"]:
                     if map_type in options_data:
                         for exp_date_key, strikes_map in options_data[map_type].items():
                             for _, contract_list in strikes_map.items():
                                 for contract in contract_list:
+                                    # Diagnostic print for each contract
+                                    diag_symbol = contract.get("symbol", "N/A")
+                                    diag_oi = contract.get("openInterest", "N/A")
+                                    diag_dte = contract.get("daysToExpiration", "N/A")
+                                    print(f"  Raw Contract: {diag_symbol}, OI: {diag_oi}, DTE: {diag_dte}")
+                                    raw_contracts_for_diag.append(contract) # Store for potential further inspection if needed
+                                    
+                                    # Apply filters
                                     open_interest = contract.get("openInterest", 0)
                                     days_to_expiration = contract.get("daysToExpiration")
                                     passes_oi_filter = open_interest >= STREAMING_FILTER_MIN_OPEN_INTEREST
@@ -143,6 +153,7 @@ def get_filtered_option_contract_keys(client, underlying_symbol):
                                             passes_dte_filter = False
                                     if passes_oi_filter and passes_dte_filter and "symbol" in contract:
                                         keys.append(contract["symbol"])
+                print("--- End of Raw Contract Data ---") # Diagnostic footer
                 filtered_keys = list(set(keys))
                 print(f"Found {len(filtered_keys)} unique contract keys for {underlying_symbol} after filtering.")
                 if not filtered_keys:
