@@ -38,9 +38,11 @@ STREAMING_MANAGER = StreamingManager(schwab_client_provider, account_id_provider
 
 initial_errors = []
 if client_init_error:
-    initial_errors.append(f"{datetime.datetime.now().strftime(\'%Y-%m-%d %H:%M:%S\')}: REST Client: {client_init_error}")
+    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    initial_errors.append(f"{timestamp}: REST Client: {client_init_error}")
 if not account_id_provider():
-    initial_errors.append(f"{datetime.datetime.now().strftime(\'%Y-%m-%d %H:%M:%S\')}: Streaming: SCHWAB_ACCOUNT_HASH not set in .env")
+    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    initial_errors.append(f"{timestamp}: Streaming: SCHWAB_ACCOUNT_HASH not set in .env")
 
 # --- App Layout --- 
 app.layout = html.Div([
@@ -172,10 +174,11 @@ def update_minute_data_tab(selected_symbol, current_errors):
     new_errors = list(current_errors) 
     client_to_use = SCHWAB_CLIENT
 
+    timestamp_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     if not client_to_use:
         client_to_use, client_err = get_schwab_client()
         if client_err:
-            error_msg = f"{datetime.datetime.now().strftime(\'%Y-%m-%d %H:%M:%S\')}: MinData: {client_err}"
+            error_msg = f"{timestamp_str}: MinData: {client_err}"
             new_errors.insert(0, error_msg)
             return [], [], new_errors[:10] # Limit error log size
         SCHWAB_CLIENT = client_to_use
@@ -183,7 +186,7 @@ def update_minute_data_tab(selected_symbol, current_errors):
     df, error = get_minute_data(client_to_use, selected_symbol)
 
     if error:
-        error_msg = f"{datetime.datetime.now().strftime(\'%Y-%m-%d %H:%M:%S\')}: MinData for {selected_symbol}: {error}"
+        error_msg = f"{timestamp_str}: MinData for {selected_symbol}: {error}"
         new_errors.insert(0, error_msg)
         return [], [], new_errors[:10]
     
@@ -227,6 +230,7 @@ def manage_options_stream(selected_symbol, active_tab, current_errors):
     """Starts or stops the options stream based on selected symbol and active tab."""
     new_errors = list(current_errors)
     option_keys_for_stream = []
+    timestamp_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     if active_tab == "tab-options-chain" and selected_symbol:
         logging.info(f"Options tab active for {selected_symbol}. Managing stream.")
@@ -235,7 +239,7 @@ def manage_options_stream(selected_symbol, active_tab, current_errors):
         if not client_to_use:
             client_to_use, client_err = get_schwab_client()
             if client_err:
-                error_msg = f"{datetime.datetime.now().strftime(\'%Y-%m-%d %H:%M:%S\')}: StreamCtrl: {client_err}"
+                error_msg = f"{timestamp_str}: StreamCtrl: {client_err}"
                 new_errors.insert(0, error_msg)
                 STREAMING_MANAGER.stop_stream() # Ensure it is stopped if client fails
                 return [], new_errors[:10]
@@ -243,7 +247,7 @@ def manage_options_stream(selected_symbol, active_tab, current_errors):
         
         keys, err = get_option_contract_keys(client_to_use, selected_symbol)
         if err:
-            error_msg = f"{datetime.datetime.now().strftime(\'%Y-%m-%d %H:%M:%S\')}: StreamCtrl Keys for {selected_symbol}: {err}"
+            error_msg = f"{timestamp_str}: StreamCtrl Keys for {selected_symbol}: {err}"
             new_errors.insert(0, error_msg)
             STREAMING_MANAGER.stop_stream()
             return [], new_errors[:10]
@@ -281,41 +285,36 @@ def update_options_chain_stream_data(n_intervals, selected_symbol, current_error
     status_display = f"Stream Status: {stream_status_msg}"
     if stream_error_msg:
         status_display += f" | Last Stream Error: {stream_error_msg}"
-        # Optionally add to main error log if it changes
-        # new_errors.insert(0, f"{datetime.datetime.now().strftime(\'%Y-%m-%d %H:%M:%S\')}: Stream: {stream_error_msg}")
 
     if not selected_symbol or not STREAMING_MANAGER.is_running:
-        # Default columns for empty table
         option_cols_def = ["Expiration Date", "Strike", "Last", "Bid", "Ask", "Volume", "Open Interest", "Implied Volatility", "Delta", "Gamma", "Theta", "Vega", "Contract Key"]
         option_cols = [{"name": i, "id": i} for i in option_cols_def]
         return option_cols, [], option_cols, [], status_display, new_errors[:10]
 
-    latest_stream_data = STREAMING_MANAGER.get_latest_data() # This is {contract_key: {data}}
+    latest_stream_data = STREAMING_MANAGER.get_latest_data()
     
     calls_list = []
     puts_list = []
 
     for _contract_key, data_dict in latest_stream_data.items():
-        # Reconstruct the record for the table
-        # Ensure all fields from streaming_manager._handle_stream_message are mapped here
         record = {
-            "Expiration Date": f"{data_dict.get(\'expirationYear\')}-{str(data_dict.get(\'expirationMonth\', \'\')).zfill(2)}-{str(data_dict.get(\'expirationDay\', \'\')).zfill(2)}",
-            "Strike": data_dict.get(\'strikePrice\'),
-            "Last": data_dict.get(\'lastPrice\'),
-            "Bid": data_dict.get(\'bidPrice\'),
-            "Ask": data_dict.get(\'askPrice\'),
-            "Volume": data_dict.get(\'totalVolume\'),
-            "Open Interest": data_dict.get(\'openInterest\'),
-            "Implied Volatility": data_dict.get(\'volatility\'),
-            "Delta": data_dict.get(\'delta\'),
-            "Gamma": data_dict.get(\'gamma\'),
-            "Theta": data_dict.get(\'theta\'),
-            "Vega": data_dict.get(\'vega\'),
-            "Contract Key": data_dict.get(\'key\')
+            "Expiration Date": f"{data_dict.get('expirationYear')}-{str(data_dict.get('expirationMonth', '')).zfill(2)}-{str(data_dict.get('expirationDay', '')).zfill(2)}",
+            "Strike": data_dict.get('strikePrice'),
+            "Last": data_dict.get('lastPrice'),
+            "Bid": data_dict.get('bidPrice'),
+            "Ask": data_dict.get('askPrice'),
+            "Volume": data_dict.get('totalVolume'),
+            "Open Interest": data_dict.get('openInterest'),
+            "Implied Volatility": data_dict.get('volatility'),
+            "Delta": data_dict.get('delta'),
+            "Gamma": data_dict.get('gamma'),
+            "Theta": data_dict.get('theta'),
+            "Vega": data_dict.get('vega'),
+            "Contract Key": data_dict.get('key')
         }
-        if data_dict.get(\'contractType\') == "CALL":
+        if data_dict.get('contractType') == "CALL":
             calls_list.append(record)
-        elif data_dict.get(\'contractType\') == "PUT":
+        elif data_dict.get('contractType') == "PUT":
             puts_list.append(record)
 
     option_cols_def = ["Expiration Date", "Strike", "Last", "Bid", "Ask", "Volume", "Open Interest", "Implied Volatility", "Delta", "Gamma", "Theta", "Vega", "Contract Key"]
@@ -324,7 +323,6 @@ def update_options_chain_stream_data(n_intervals, selected_symbol, current_error
     calls_df = pd.DataFrame(calls_list)
     puts_df = pd.DataFrame(puts_list)
 
-    # Ensure columns and sort (optional, can be done in DataTable)
     if not calls_df.empty:
         for col in option_cols_def: 
             if col not in calls_df.columns: calls_df[col] = None
@@ -338,7 +336,6 @@ def update_options_chain_stream_data(n_intervals, selected_symbol, current_error
 
 
 if __name__ == "__main__":
-    # Add a handler to stop the stream on app exit
     import atexit
     def stop_stream_on_exit():
         print("Stopping stream on application exit...")
@@ -347,3 +344,4 @@ if __name__ == "__main__":
     atexit.register(stop_stream_on_exit)
 
     app.run(debug=True, host="0.0.0.0", port=8050)
+
