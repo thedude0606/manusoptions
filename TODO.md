@@ -6,12 +6,42 @@
 - [x] Analyze `fetch_options_chain.py` for `AttributeError`
 - [x] Review `auth_script.py` and `schwabdev` library usage for token management
 - [x] Create `PROGRESS.md` and populate initial content
-- [ ] Create `TODO.md` and populate initial tasks (this task)
-- [ ] Create `DECISIONS.md` and populate initial decisions/observations
+- [x] Create `TODO.md` and populate initial tasks
+- [x] Create `DECISIONS.md` and populate initial decisions/observations
 - [x] Modify `fetch_options_chain.py` to fix `AttributeError` by using `client.tokens` (or equivalent `schwabdev` methods) for token validation and refresh.
 - [x] Test the corrected `fetch_options_chain.py` (AttributeError resolved; script now proceeds to credential/token validation).
-- [x] Push all code changes and tracking files (PROGRESS.md, TODO.md, DECISIONS.md) to the GitHub repository.- [x] Investigate and fix `AttributeError: 'Tokens' object has no attribute 'is_access_token_expired'` by using `client.tokens.update_tokens()`.
+- [x] Push all code changes and tracking files (PROGRESS.md, TODO.md, DECISIONS.md) to the GitHub repository.
+- [x] Investigate and fix `AttributeError: 'Tokens' object has no attribute 'is_access_token_expired'` by using `client.tokens.update_tokens()`.
+
+### Streaming Functionality Implementation
+
+- [x] Clarify streaming requirements with user (data scope, symbols, data handling, script structure, duration).
+- [x] Review provided `schwabdev` streaming examples and documentation.
+- [x] Design and implement initial streaming logic in `fetch_options_chain.py`:
+    - [x] Add `APP_MODE` to switch between "FETCH" and "STREAM".
+    - [x] Implement `stream_message_handler` for `LEVELONE_OPTIONS`.
+    - [x] Implement change detection for streamed contract metrics.
+    - [x] Add 5-second interval display for detected changes.
+    - [x] Support multiple underlying symbols for streaming.
+    - [x] Fetch all option contract keys for specified symbols.
+    - [x] Implement subscription to option contracts in chunks.
+- [x] Clarify and implement efficient contract filtering for streaming:
+    - [x] Filter out contracts with zero open interest.
+    - [x] Add filter for expiration date (DTE), including 0DTE.
+    - [x] Update `get_filtered_option_contract_keys` to apply these filters.
+- [x] Systematically scan and correct all f-string and other syntax/formatting errors in `fetch_options_chain.py`.
+- [x] Verify script runs without syntax errors (up to credential validation).
+
+### Next Steps & Testing
+
+- [ ] User to test `fetch_options_chain.py` in "STREAM" mode with valid Schwab API credentials and `tokens.json`.
+- [ ] Address any issues identified during user's live testing.
+- [ ] Discuss and implement further enhancements (e.g., more sophisticated "data chart", refined filtering, error handling for stream disconnects).
 
 ### Future Enhancements (Placeholder)
 
-- [ ] Implement further enhancements based on user requests.
+- [ ] Develop options buying recommendation logic.
+- [ ] Integrate advanced technical indicators.
+- [ ] Build an interactive UI.
+- [ ] Implement comprehensive backtesting features.
+- [ ] Package application for easy local deployment.

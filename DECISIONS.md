@@ -2,28 +2,37 @@
 
 ### Key Architectural Choices
 
-*   **Token Management in `fetch_options_chain.py` (2025-05-14):**
-    *   **Observation (Initial):** The script `fetch_options_chain.py` was attempting to use `client.token_manager.tokens_valid()` and `client.token_manager.refresh_tokens()`.
-    *   **Issue (Initial):** The `schwabdev.Client` object, as imported and used, does not possess a `token_manager` attribute. This was identified as the cause of the first `AttributeError`.
-    *   **Decision (Initial Fix):** Modify `fetch_options_chain.py` to handle token validation and refresh by interacting with the `client.tokens` object (e.g., checking `client.tokens.access_token`, and using methods like `client.tokens.update_refresh_token()`).
-    *   **Rationale (Initial Fix):** This change was necessary to resolve the first `AttributeError` and to correctly interact with the `schwabdev` library for authentication and token management as per its likely design.
-
-*   **Token Expiration Check in `fetch_options_chain.py` (2025-05-14 - Update):**
-    *   **Observation (Second):** After the initial fix, the script encountered `AttributeError: 'Tokens' object has no attribute 'is_access_token_expired'`. The method `client.tokens.is_access_token_expired()` was an incorrect assumption.
-    *   **Investigation:** Examination of the `schwabdev/tokens.py` source code revealed that the `Tokens` class has an `update_tokens()` method. This method internally checks if the access token or refresh token needs updating (e.g., due to expiry) and attempts to refresh them. It does not expose a direct boolean property like `is_access_token_expired` for external checking prior to calling an update method.
-    *   **Decision (Second Fix):** Modify `fetch_options_chain.py` to call `client.tokens.update_tokens()` before making API calls. This method handles the logic of checking expiry and refreshing tokens internally. After calling `update_tokens()`, the script should verify that `client.tokens.access_token` is still valid.
-    *   **Rationale (Second Fix):** This aligns with the `schwabdev` library's apparent design where token state management (including expiry checks and refreshes) is encapsulated within the `update_tokens()` method of the `Tokens` class. Relying on this method ensures that the library's own logic for token maintenance is used.
+*   **Application Modes:** Implemented `APP_MODE` in `fetch_options_chain.py` to allow switching between a one-time "FETCH" mode and a continuous "STREAM" mode for options data. This provides flexibility for different use cases.
+*   **Streaming Logic:**
+    *   Utilized `schwabdev.Client.stream` for handling the WebSocket connection.
+    *   Implemented a custom `stream_message_handler` to process incoming `LEVELONE_OPTIONS` data.
+    *   Employed a threaded approach for the streamer to run in the background (`daemon=True`).
+    *   Implemented change detection by comparing incoming stream data with a stored `current_contracts_data` state.
+    *   Aggregated and displayed changes every 5 seconds, clearing the console for a refreshed view.
+*   **Contract Filtering:**
+    *   Implemented pre-streaming filtering of option contracts by fetching the full chain via `client.option_chains()` and then applying filters locally before subscribing to the stream. This was chosen because the `option_chains` endpoint provides necessary fields like `openInterest` and `daysToExpiration` which might not be available for filtering directly in a stream subscription request for *all* contracts of an underlying.
+    *   Filters implemented: Minimum Open Interest and specific Days To Expiration (DTE).
+*   **Configuration:** Key parameters for both FETCH and STREAM modes, including symbols, filters, and API field requests, are defined as global variables at the top of the script for easy modification.
+*   **Error Handling (Basic):** Included `try-except` blocks for API calls, token updates, and JSON parsing in the stream handler. The script will print error messages but may not have advanced retry logic for all scenarios yet.
+*   **Credential Management:** Relies on `.env` file for API keys and `tokens.json` for OAuth tokens, managed by `auth_script.py` (as per existing structure).
 
 ### Technology Selections
 
-*   **Primary Language:** Python (as per existing codebase).
-*   **API Interaction Library:** `schwabdev` (as per existing codebase and user direction).
-*   **Environment Management:** `.env` files for credentials (as per existing codebase).
+*   **Primary Library:** `schwabdev` Python library for all Charles Schwab API interactions (REST and Streaming).
+*   **Environment Management:** `python-dotenv` for loading API credentials from a `.env` file.
+*   **Standard Libraries:** `json` for data serialization, `os` for file/system operations, `datetime` and `time` for time-related functions, `threading` for concurrent stream handling, `sys` for output flushing.
 
 ### Design Patterns Used
 
-*   (To be updated as development progresses and patterns are identified or implemented.)
+*   **Observer Pattern (Implicit):** The `stream_message_handler` acts as an observer of messages from the streamer.
+*   **Stateful Change Detection:** The streaming logic maintains the state of `current_contracts_data` to compare with new data and identify changes.
+*   **Configuration-Driven:** Script behavior (mode, symbols, filters) is driven by global configuration variables.
 
 ### Rationale for Important Decisions
 
-*   (To be updated as more significant decisions are made.)
+*   **Iterative F-string Correction:** Switched problematic f-strings (those with nested quotes or complex formatting needs) to use the `.format()` method or ensured correct single/double quote usage within f-strings to resolve persistent `SyntaxError` issues. This was a pragmatic choice for clarity and correctness over strict adherence to f-strings in all cases.
+*   **Chunked Stream Subscriptions:** Implemented `MAX_CONTRACTS_PER_STREAM_SUBSCRIPTION` to break down large lists of contract keys into smaller chunks for subscription. This is a pre-emptive measure against potential API limits on the number of keys per subscription request, although the exact limit for `LEVELONE_OPTIONS` might be higher.
+*   **Console as "Data Chart":** For the requirement of an overwriting "data chart," the current implementation uses `os.system("clear")` (or `cls`) to refresh the console output every 5 seconds. This is a simple, cross-platform approach for now. More sophisticated GUI/web-based charting is a future enhancement.
+*   **Filtering Post-Chain Fetch:** The decision to fetch the entire option chain first and then filter was made because the `option_chains` REST API call is the most reliable way to get all necessary contract details (like open interest, DTE) needed for the specified filters. Attempting to filter *before* this initial fetch would be more complex or might not be fully supported by the API for all desired filter types simultaneously.
+
+
