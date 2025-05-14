@@ -275,7 +275,8 @@ def manage_options_stream(selected_symbol, active_tab, current_errors):
     Output("error-message-store", "data", allow_duplicate=True),
     Input("options-chain-interval", "n_intervals"), # Triggers UI update
     State("selected-symbol-store", "data"),
-    State("error-message-store", "data")
+    State("error-message-store", "data"),
+    prevent_initial_call=True # Added this line
 )
 def update_options_chain_stream_data(n_intervals, selected_symbol, current_errors):
     """Periodically fetches data from StreamingManager and updates the UI."""

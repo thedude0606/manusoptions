@@ -71,10 +71,12 @@
         *   Improper backslash escaping within f-strings (e.g., in `strftime` calls or API error messages).
     *   Corrected `ImportError` in `dashboard_utils/streaming_manager.py` by changing `from schwabdev.stream import Streamer` to `from schwabdev import SchwabStreamer` and updating usage to `SchwabStreamer.StreamService.LEVELONE_OPTIONS`.
     *   Further corrected `ImportError` in `dashboard_utils/streaming_manager.py` by removing the direct import of `SchwabStreamer` and accessing `StreamService` via the streamer instance (`self.streamer_instance.StreamService.LEVELONE_OPTIONS`).
+*   **Dashboard Callback Fix:**
+    *   Resolved `dash.exceptions.DuplicateCallback` error in `dashboard_app.py` by adding `prevent_initial_call=True` to the `update_options_chain_stream_data` callback, which uses `allow_duplicate=True`.
 
 ### Current Work in Progress
 
-*   Awaiting user validation after comprehensive syntax and import fixes across `dashboard_app.py`, `dashboard_utils/data_fetchers.py`, and `dashboard_utils/streaming_manager.py`.
+*   Awaiting user validation after fixing `DuplicateCallback` error.
 
 ### Known Issues or Challenges
 
