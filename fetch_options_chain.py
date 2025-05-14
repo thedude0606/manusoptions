@@ -28,8 +28,8 @@ STRIKE_COUNT_FETCH = None
 INCLUDE_UNDERLYING_QUOTE_FETCH = True
 STRATEGY_FETCH = "SINGLE"
 RANGE_FETCH = "ALL"
-FROM_DATE_FETCH = None
-TO_DATE_FETCH = None
+FROM_DATE_FETCH = None # Example: "2025-05-15"
+TO_DATE_FETCH = None   # Example: "2025-05-15"
 EXP_MONTH_FETCH = "ALL"
 OPTION_TYPE_FETCH = "ALL"
 
@@ -120,17 +120,34 @@ def get_filtered_option_contract_keys(client, underlying_symbol):
     print(f"Filters: Min Open Interest > {STREAMING_FILTER_MIN_OPEN_INTEREST-1}, DTE == {STREAMING_FILTER_DTE if STREAMING_FILTER_DTE is not None else 'Any'}")
     print(f"Raw contract data will be logged to: {DIAG_LOG_FILE}")
     keys = []
-    
+    api_params = {
+        "symbol": underlying_symbol,
+        "contractType": "ALL",
+        "strikeCount": None,
+        "includeUnderlyingQuote": False,
+        "strategy": "SINGLE",
+        "range": "ALL",
+        "optionType": "ALL"
+    }
+
+    if STREAMING_FILTER_DTE == 0:
+        today_date_str = datetime.date.today().strftime("%Y-%m-%d")
+        api_params["fromDate"] = today_date_str
+        api_params["toDate"] = today_date_str
+        print(f"Querying for 0DTE: fromDate={today_date_str}, toDate={today_date_str}")
+    else:
+        api_params["expMonth"] = "ALL" # Default for non-0DTE or if DTE filter is off
+        # If STREAMING_FILTER_DTE is a specific number (e.g., 30), the filtering happens *after* fetching all months.
+        # For more targeted non-0DTE fetches, one might need to map DTE to specific expMonth values if desired.
+
     try:
-        with open(DIAG_LOG_FILE, "w") as diag_file: # Open log file in write mode (overwrite)
-            diag_file.write(f"Diagnostic Log for {underlying_symbol} - {datetime.datetime.now()}\n")
+        with open(DIAG_LOG_FILE, "a") as diag_file: # Open log file in append mode
+            diag_file.write(f"\nDiagnostic Log for {underlying_symbol} - {datetime.datetime.now()}\n")
+            diag_file.write(f"API Params: {json.dumps(api_params)}\n")
             diag_file.write("--- Raw Contract Data Before Filtering ---\n")
             
-            response = client.option_chains(
-                symbol=underlying_symbol, contractType="ALL", strikeCount=None,
-                includeUnderlyingQuote=False, strategy="SINGLE", range="ALL",
-                expMonth="ALL", optionType="ALL"
-            )
+            response = client.option_chains(**api_params)
+
             if response.ok:
                 options_data = response.json()
                 if options_data.get("status") == "SUCCESS":
@@ -143,18 +160,28 @@ def get_filtered_option_contract_keys(client, underlying_symbol):
                                         diag_oi = contract.get("openInterest", "N/A")
                                         diag_dte = contract.get("daysToExpiration", "N/A")
                                         log_line = f"  Raw Contract: {diag_symbol}, OI: {diag_oi}, DTE: {diag_dte}\n"
-                                        diag_file.write(log_line) # Write to log file
-                                        # print(log_line.strip()) # Optional: also print to console
+                                        diag_file.write(log_line)
                                         
                                         open_interest = contract.get("openInterest", 0)
                                         days_to_expiration = contract.get("daysToExpiration")
                                         passes_oi_filter = open_interest >= STREAMING_FILTER_MIN_OPEN_INTEREST
-                                        passes_dte_filter = True
-                                        if STREAMING_FILTER_DTE is not None:
-                                            if days_to_expiration is not None:
-                                                passes_dte_filter = (days_to_expiration == STREAMING_FILTER_DTE)
-                                            else:
-                                                passes_dte_filter = False
+                                        
+                                        passes_dte_filter = False
+                                        if STREAMING_FILTER_DTE is None: # If DTE filter is off, it passes
+                                            passes_dte_filter = True
+                                        elif days_to_expiration is not None:
+                                            if STREAMING_FILTER_DTE == 0: # For 0DTE, check if DTE is 0 or if it's today's expiration
+                                                contract_exp_date_str = diag_symbol[len(underlying_symbol):len(underlying_symbol)+6]
+                                                try:
+                                                    contract_exp_date = datetime.datetime.strptime(contract_exp_date_str, "%y%m%d").date()
+                                                    if contract_exp_date == datetime.date.today() or days_to_expiration == 0:
+                                                        passes_dte_filter = True
+                                                except ValueError:
+                                                    if days_to_expiration == 0: # Fallback if date parsing fails
+                                                        passes_dte_filter = True
+                                            elif days_to_expiration == STREAMING_FILTER_DTE:
+                                                passes_dte_filter = True
+                                        
                                         if passes_oi_filter and passes_dte_filter and "symbol" in contract:
                                             keys.append(contract["symbol"])
                     diag_file.write("--- End of Raw Contract Data ---\n")
@@ -173,7 +200,7 @@ def get_filtered_option_contract_keys(client, underlying_symbol):
     except Exception as e:
         error_msg = f"Exception while fetching/filtering option keys for {underlying_symbol}: {e}\n"
         print(error_msg.strip())
-        if 'diag_file' in locals() and not diag_file.closed:
+        if 'diag_file' in locals() and diag_file and not diag_file.closed:
              diag_file.write(error_msg)
         import traceback
         traceback.print_exc()
@@ -236,14 +263,24 @@ def run_options_streaming_mode(client, symbols_to_stream):
 
 def run_fetch_mode(client, symbol_to_fetch):
     print(f"Attempting to fetch options chain data for {symbol_to_fetch}")
+    api_params_fetch = {
+        "symbol": symbol_to_fetch,
+        "contractType": CONTRACT_TYPE_FETCH,
+        "strikeCount": STRIKE_COUNT_FETCH,
+        "includeUnderlyingQuote": INCLUDE_UNDERLYING_QUOTE_FETCH,
+        "strategy": STRATEGY_FETCH,
+        "range": RANGE_FETCH,
+        "optionType": OPTION_TYPE_FETCH
+    }
+    if FROM_DATE_FETCH:
+        api_params_fetch["fromDate"] = FROM_DATE_FETCH
+    if TO_DATE_FETCH:
+        api_params_fetch["toDate"] = TO_DATE_FETCH
+    if not FROM_DATE_FETCH and not TO_DATE_FETCH: # Only use expMonth if specific dates aren't given
+        api_params_fetch["expMonth"] = EXP_MONTH_FETCH
+
     try:
-        response = client.option_chains(
-            symbol=symbol_to_fetch,
-            contractType=CONTRACT_TYPE_FETCH, strikeCount=STRIKE_COUNT_FETCH,
-            includeUnderlyingQuote=INCLUDE_UNDERLYING_QUOTE_FETCH, strategy=STRATEGY_FETCH,
-            range=RANGE_FETCH, fromDate=FROM_DATE_FETCH, toDate=TO_DATE_FETCH,
-            expMonth=EXP_MONTH_FETCH, optionType=OPTION_TYPE_FETCH
-        )
+        response = client.option_chains(**api_params_fetch)
         if response.ok:
             options_data = response.json()
             output_filename = f"{symbol_to_fetch}_options_chain.json"

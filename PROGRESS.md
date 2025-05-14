@@ -27,17 +27,17 @@
         *   Minimum Open Interest (excluding contracts with zero OI by default).
         *   Specific Days To Expiration (DTE), including 0DTE.
     *   Updated `get_filtered_option_contract_keys` function to apply these filters before subscribing to the stream.
+    *   **Refined 0DTE contract fetching:** When `STREAMING_FILTER_DTE` is 0, the script now modifies the `client.option_chains()` API call to use `fromDate` and `toDate` set to the current day. This is intended to specifically request today's expiring contracts from the API.
 *   **Syntax Error Resolution:**
     *   Systematically scanned and corrected all f-string syntax errors related to quote usage and dictionary key access throughout `fetch_options_chain.py`.
     *   Ensured all print formatting uses appropriate methods (f-strings with correct quoting or `.format()`).
 *   **Debugging Contract Filtering:**
-    *   ~~Added diagnostic printing in `get_filtered_option_contract_keys` to display raw contract data (symbol, OI, DTE) before filters are applied.~~ (Superseded)
     *   Modified `get_filtered_option_contract_keys` to write raw contract data (symbol, OI, DTE) to a log file (`raw_contracts_diag.log`) for comprehensive analysis.
+    *   Analyzed user-provided diagnostic log, confirming that the initial broad API call did not return 0DTE contracts.
 
 ### Current Work In Progress
 
-*   Awaiting user to run the script with diagnostic logging and provide the `raw_contracts_diag.log` file for analysis.
-*   Refining contract filtering logic based on diagnostic log output.
+*   Awaiting user to test the latest script version with the refined 0DTE fetching logic using their live Schwab API credentials.
 
 ### Known Issues or Challenges
 
@@ -47,9 +47,7 @@
 
 ### Next Steps
 
-*   User to run the modified `fetch_options_chain.py` and share the `raw_contracts_diag.log` file.
-*   Analyze the diagnostic log to understand API data for OI and DTE.
-*   Adjust filtering logic in `get_filtered_option_contract_keys` if necessary.
-*   Test the refined filtering.
+*   User to run the modified `fetch_options_chain.py` (with updated 0DTE logic) and share the `raw_contracts_diag.log` file and console output.
+*   Analyze the new diagnostic log to confirm if 0DTE contracts are now being fetched and correctly filtered.
 *   Address any further issues identified during user testing.
 *   Discuss further enhancements or new features for the options trading platform.

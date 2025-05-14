@@ -32,18 +32,18 @@
 - [x] Systematically scan and correct all f-string and other syntax/formatting errors in `fetch_options_chain.py`.
 - [x] Verify script runs without syntax errors (up to credential validation).
 
-### Debugging Contract Filtering (Current Focus)
+### Debugging Contract Filtering
 
 - [x] ~~Add diagnostic printing to `get_filtered_option_contract_keys` in `fetch_options_chain.py` to show raw contract data (symbol, OI, DTE) before filters are applied.~~ (Superseded by log file)
 - [x] Modify `get_filtered_option_contract_keys` to write raw contract data (symbol, OI, DTE) to a log file (`raw_contracts_diag.log`) for comprehensive analysis.
-- [ ] User to run the modified `fetch_options_chain.py` and provide the `raw_contracts_diag.log` file.
-- [ ] Analyze the diagnostic log to understand how the API reports OI and DTE for the specified symbols (e.g., AAPL 0DTE).
-- [ ] Refine the contract filtering logic in `get_filtered_option_contract_keys` based on the analysis of the diagnostic output, if necessary.
-- [ ] Test the refined filtering to ensure it correctly identifies contracts based on user criteria (0DTE, OI > 0).
+- [x] User to run the modified `fetch_options_chain.py` and provide the `raw_contracts_diag.log` file.
+- [x] Analyze the diagnostic log to understand how the API reports OI and DTE for the specified symbols (e.g., AAPL 0DTE).
+- [x] Refine the contract filtering logic in `get_filtered_option_contract_keys` based on the analysis of the diagnostic output. Specifically, when `STREAMING_FILTER_DTE = 0`, the script now uses `fromDate` and `toDate` set to the current day in the `client.option_chains()` API call to target 0DTE contracts.
 
 ### Next Steps & Broader Testing
 
-- [ ] User to test `fetch_options_chain.py` in "STREAM" mode with refined filters and valid Schwab API credentials and `tokens.json`.
+- [ ] User to test `fetch_options_chain.py` in "STREAM" mode with the latest 0DTE filtering logic and valid Schwab API credentials and `tokens.json`. Please provide the new `raw_contracts_diag.log` and console output.
+- [ ] Analyze the new diagnostic log to confirm if 0DTE contracts are now being fetched and correctly filtered.
 - [ ] Address any issues identified during user's live streaming tests.
 - [ ] Discuss and implement further enhancements (e.g., more sophisticated "data chart", additional filtering options, error handling for stream disconnects).
 
