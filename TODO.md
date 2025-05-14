@@ -52,6 +52,17 @@
 - [x] Integrate `get_minute_data()` into the "Minute Streaming Data" tab callback in `dashboard_app.py`.
 - [x] Implement error handling for API calls and client initialization within the dashboard.
 - [x] Add an error log display area in the dashboard UI, updated via a `dcc.Store`.
+- [x] **Options Chain Tab:**
+    - [x] Create a utility function `get_options_chain_data()` in `dashboard_utils/data_fetchers.py` to fetch options chain data.
+        - [x] Function takes a symbol as input.
+        - [x] Fetches options chain (puts and calls) using `client.option_chains()` for `expMonth="ALL"`.
+        - [x] Filters contracts for `openInterest > 0`.
+        - [x] Selects relevant fields (Expiration Date, Strike, Last, Bid, Ask, Volume, Open Interest, Implied Volatility, Delta, Gamma, Theta, Vega).
+        - [x] Returns two DataFrames (one for calls, one for puts).
+    - [x] Integrate `get_options_chain_data()` into the "Options Chain" tab callback in `dashboard_app.py`.
+    - [x] Implement the 5-second refresh interval for this tab using `dcc.Interval`.
+    - [x] Add a "Last Updated: [timestamp]" display to the Options Chain tab.
+    - [x] Ensure error handling and logging are implemented for options chain data fetching.
 - [ ] **Technical Indicators Tab:**
     - [ ] Create a utility function in `dashboard_utils/data_fetchers.py` (or a new `technical_analysis_utils.py`) to adapt logic from `technical_analysis.py`.
         - [ ] Function should take a symbol and raw price data (e.g., minute data DataFrame) as input.
@@ -59,19 +70,10 @@
         - [ ] Return a structured DataFrame or dictionary suitable for a Dash DataTable (Indicator, 1min, 15min, 1hour, Daily).
     - [ ] Integrate this utility into the "Technical Indicators" tab callback in `dashboard_app.py`.
     - [ ] Ensure error handling and logging are implemented.
-- [ ] **Options Chain Tab:**
-    - [ ] Create a utility function in `dashboard_utils/data_fetchers.py` to fetch options chain data.
-        - [ ] Function should take a symbol as input.
-        - [ ] Fetch options chain (puts and calls) using `client.option_chains()`.
-        - [ ] Select relevant fields (strike, volatility, greeks, etc.) as requested.
-        - [ ] Return two DataFrames (one for calls, one for puts) or a structure suitable for two Dash DataTables.
-    - [ ] Integrate this utility into the "Options Chain" tab callback in `dashboard_app.py`.
-    - [ ] Implement the 5-second refresh interval for this tab.
-    - [ ] Ensure error handling and logging are implemented.
 - [ ] **General Dashboard Refinements:**
     - [ ] Ensure all requested fields are displayed in the respective tables for all tabs.
     - [ ] Verify that the dashboard refreshes only the necessary components (e.g., options chain tab every 5s, other tabs on symbol change or less frequently).
-    - [ ] Test dashboard with multiple symbols and edge cases (e.g., invalid symbol, API errors).
+    - [ ] Test dashboard with multiple symbols and edge cases (e.g., invalid symbol, API errors, no options data for a symbol).
 
 ### Broader Testing & Next Steps (Post-Dashboard V1)
 

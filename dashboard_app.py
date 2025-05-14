@@ -7,15 +7,18 @@ import pandas as pd
 import datetime
 
 # Import utility functions
-from dashboard_utils.data_fetchers import get_schwab_client, get_minute_data
+from dashboard_utils.data_fetchers import get_schwab_client, get_minute_data, get_options_chain_data # Added get_options_chain_data
 
 # Initialize the Dash app
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
 app.title = "Trading Dashboard"
 
 # Attempt to initialize a global client instance for reuse
-# This is a simple approach; for more robust applications, consider managing client state carefully.
-SCHWAB_CLIENT = get_schwab_client()
+SCHWAB_CLIENT, client_init_error = get_schwab_client() # Store client and initial error
+initial_errors = []
+if client_init_error:
+    initial_errors.append(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: {client_init_error}")
+
 
 # Main layout
 app.layout = html.Div([
@@ -35,7 +38,7 @@ app.layout = html.Div([
                     id="minute-data-table", 
                     columns=[], 
                     data=[],
-                    page_size=15, # Add pagination
+                    page_size=15, 
                     style_table={"overflowX": "auto"}
                 )
             ])
@@ -55,20 +58,21 @@ app.layout = html.Div([
         dcc.Tab(label="Options Chain", value="tab-options-chain", children=[
             html.Div(id="options-chain-content", children=[
                 html.H4(id="options-chain-header"),
+                html.Div(id="options-chain-last-updated", style={"marginBottom": "10px"}), # For last updated timestamp
                 html.Div([
-                    html.Div([html.H5("Calls"), dash_table.DataTable(id="options-calls-table", columns=[], data=[], page_size=10, style_table={"overflowX": "auto"})], style={"width": "49%", "display": "inline-block", "verticalAlign": "top"}),
-                    html.Div([html.H5("Puts"), dash_table.DataTable(id="options-puts-table", columns=[], data=[], page_size=10, style_table={"overflowX": "auto"})], style={"width": "49%", "display": "inline-block", "float": "right", "verticalAlign": "top"})
+                    html.Div([html.H5("Calls"), dash_table.DataTable(id="options-calls-table", columns=[], data=[], page_size=10, style_table={"overflowX": "auto"}, sort_action="native") ], style={"width": "49%", "display": "inline-block", "verticalAlign": "top", "marginRight": "1%"}),
+                    html.Div([html.H5("Puts"), dash_table.DataTable(id="options-puts-table", columns=[], data=[], page_size=10, style_table={"overflowX": "auto"}, sort_action="native") ], style={"width": "49%", "display": "inline-block", "float": "right", "verticalAlign": "top"})
                 ])
             ]),
-            dcc.Interval(id="options-chain-interval", interval=5*1000, n_intervals=0)
+            dcc.Interval(id="options-chain-interval", interval=5*1000, n_intervals=0) # 5-second interval
         ]),
     ]),
     
     dcc.Store(id="processed-symbols-store"),
     dcc.Store(id="selected-symbol-store"),
-    dcc.Store(id="error-message-store", data=[]), # Store for error messages
+    dcc.Store(id="error-message-store", data=initial_errors), # Store for error messages, initialized with client error if any
 
-    html.Div(id="error-log-display", children="No errors yet.", style={"marginTop": "20px", "border": "1px solid #ccc", "padding": "10px", "height": "100px", "overflowY": "scroll", "whiteSpace": "pre-wrap"})
+    html.Div(id="error-log-display", children="No errors yet." if not initial_errors else [html.P(err) for err in initial_errors], style={"marginTop": "20px", "border": "1px solid #ccc", "padding": "10px", "height": "100px", "overflowY": "scroll", "whiteSpace": "pre-wrap"})
 ])
 
 @app.callback(
@@ -123,7 +127,6 @@ def update_tab_headers(selected_symbol):
 )
 def update_error_log(error_messages):
     if error_messages:
-        # Display errors with timestamps, newest first
         log_content = [html.P(f"{msg}") for msg in reversed(error_messages)]
         return log_content
     return "No new errors."
@@ -132,24 +135,28 @@ def update_error_log(error_messages):
 @app.callback(
     Output("minute-data-table", "columns"),
     Output("minute-data-table", "data"),
-    Output("error-message-store", "data"), # Update error store
+    Output("error-message-store", "data", allow_duplicate=True), # Update error store
     Input("selected-symbol-store", "data"),
-    State("error-message-store", "data") # Get current errors to append
+    State("error-message-store", "data"), # Get current errors to append
+    prevent_initial_call=True
 )
 def update_minute_data_tab(selected_symbol, current_errors):
     if not selected_symbol:
-        return [], [], current_errors # No symbol, no update, no new error
+        return [], [], current_errors 
 
     global SCHWAB_CLIENT
-    if not SCHWAB_CLIENT:
-        SCHWAB_CLIENT = get_schwab_client() # Try to re-initialize if None
-        if not SCHWAB_CLIENT:
-            error_msg = f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: Failed to initialize Schwab client for minute data."
-            updated_errors = [error_msg] + current_errors[:4] # Keep last 5 errors
-            return [], [], updated_errors
+    new_errors = list(current_errors) 
+    client_to_use = SCHWAB_CLIENT
 
-    df, error = get_minute_data(SCHWAB_CLIENT, selected_symbol)
-    new_errors = list(current_errors) # Make a mutable copy
+    if not client_to_use:
+        client_to_use, client_err = get_schwab_client()
+        if client_err:
+            error_msg = f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: Failed to initialize Schwab client for minute data: {client_err}"
+            new_errors.insert(0, error_msg)
+            return [], [], new_errors[:5]
+        SCHWAB_CLIENT = client_to_use # Update global if re-initialized
+
+    df, error = get_minute_data(client_to_use, selected_symbol)
 
     if error:
         error_msg = f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: Error fetching minute data for {selected_symbol}: {error}"
@@ -157,8 +164,6 @@ def update_minute_data_tab(selected_symbol, current_errors):
         return [], [], new_errors[:5]
     
     if df.empty:
-        # This case is handled by the error string from get_minute_data if it's an API issue
-        # If it's just no data, we can show an empty table.
         cols = [{"name": i, "id": i} for i in ["Timestamp", "Open", "High", "Low", "Close", "Volume"]]
         return cols, [], new_errors
 
@@ -171,13 +176,11 @@ def update_minute_data_tab(selected_symbol, current_errors):
 @app.callback(
     Output("tech-indicators-table", "columns"),
     Output("tech-indicators-table", "data"),
-    # Output for error store if this callback also fetches data
     Input("selected-symbol-store", "data")
 )
 def update_tech_indicators_tab(selected_symbol):
     if not selected_symbol:
         return [], []
-    # TODO: Replace with actual data fetching and TA calculation logic
     dummy_cols = [{"name": i, "id": i} for i in ["Indicator", "1min", "15min", "1hour", "Daily"]]
     dummy_data = pd.DataFrame({
         "Indicator": ["SMA(20)", "RSI(14)"], 
@@ -186,35 +189,52 @@ def update_tech_indicators_tab(selected_symbol):
     }).to_dict("records")
     return dummy_cols, dummy_data
 
-# Placeholder callback for Options Chain Tab
+# Callback for Options Chain Tab
 @app.callback(
     Output("options-calls-table", "columns"),
     Output("options-calls-table", "data"),
     Output("options-puts-table", "columns"),
     Output("options-puts-table", "data"),
-    # Output for error store if this callback also fetches data
+    Output("options-chain-last-updated", "children"),
+    Output("error-message-store", "data", allow_duplicate=True),
     Input("selected-symbol-store", "data"),
-    Input("options-chain-interval", "n_intervals")
+    Input("options-chain-interval", "n_intervals"),
+    State("error-message-store", "data"),
+    prevent_initial_call=True
 )
-def update_options_chain_tab(selected_symbol, n_intervals):
+def update_options_chain_tab(selected_symbol, n_intervals, current_errors):
     if not selected_symbol:
-        return [], [], [], []
-    # TODO: Replace with actual data fetching logic for options
-    option_cols = [{"name": i, "id": i} for i in ["Strike", "Last", "Bid", "Ask", "Volume", "Open Interest", "Volatility", "Delta", "Gamma", "Theta", "Vega"]]
+        return [], [], [], [], "Options chain data will load when a symbol is selected.", current_errors
+
+    global SCHWAB_CLIENT
+    new_errors = list(current_errors)
+    client_to_use = SCHWAB_CLIENT
+
+    if not client_to_use:
+        client_to_use, client_err = get_schwab_client()
+        if client_err:
+            error_msg = f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: Failed to initialize Schwab client for options chain: {client_err}"
+            new_errors.insert(0, error_msg)
+            return [], [], [], [], "Error initializing client.", new_errors[:5]
+        SCHWAB_CLIENT = client_to_use # Update global if re-initialized
+
+    calls_df, puts_df, error = get_options_chain_data(client_to_use, selected_symbol)
     
-    dummy_calls_data = pd.DataFrame({
-        "Strike": [150, 155], "Last": [n_intervals, 1.20], "Bid": [2.45, 1.15], "Ask": [2.55, 1.25], 
-        "Volume": [100, 50], "Open Interest": [1000, 500], "Volatility": [0.3, 0.32], 
-        "Delta": [0.6, 0.4], "Gamma": [0.05, 0.04], "Theta": [-0.02, -0.015], "Vega": [0.1, 0.08]
-    }).to_dict("records")
+    last_updated_time = f"Last Updated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S %Z')}"
+
+    if error:
+        error_msg = f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}: Error fetching options chain for {selected_symbol}: {error}"
+        new_errors.insert(0, error_msg)
+        # Return empty tables but update timestamp and errors
+        return [], [], [], [], last_updated_time, new_errors[:5]
+
+    option_cols_def = ["Expiration Date", "Strike", "Last", "Bid", "Ask", "Volume", "Open Interest", "Implied Volatility", "Delta", "Gamma", "Theta", "Vega"]
+    option_cols = [{"name": i, "id": i} for i in option_cols_def]
+
+    calls_data = calls_df.to_dict("records") if not calls_df.empty else []
+    puts_data = puts_df.to_dict("records") if not puts_df.empty else []
     
-    dummy_puts_data = pd.DataFrame({
-        "Strike": [145, 150], "Last": [1.80, n_intervals], "Bid": [1.75, 3.05], "Ask": [1.85, 3.15], 
-        "Volume": [80, 120], "Open Interest": [800, 1200], "Volatility": [0.31, 0.29], 
-        "Delta": [-0.4, -0.6], "Gamma": [0.045, 0.055], "Theta": [-0.018, -0.022], "Vega": [0.09, 0.11]
-    }).to_dict("records")
-    
-    return option_cols, dummy_calls_data, option_cols, dummy_puts_data
+    return option_cols, calls_data, option_cols, puts_data, last_updated_time, new_errors
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=8050)

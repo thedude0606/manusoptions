@@ -7,12 +7,6 @@ import json
 import pandas as pd
 from dotenv import load_dotenv
 
-# It's better to initialize client and pass it, rather than re-initializing per call.
-# However, for simplicity in these helper functions, we might need to handle client setup
-# or expect an initialized client to be passed.
-
-# Load environment variables if .env file is present in the root
-# This might be redundant if the main app loads it, but good for standalone testing.
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 TOKENS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "tokens.json")
 
@@ -23,46 +17,40 @@ def get_schwab_client():
     callback_url = os.getenv("CALLBACK_URL")
 
     if not all([app_key, app_secret, callback_url]):
-        print("Error: APP_KEY, APP_SECRET, or CALLBACK_URL not found in environment variables.")
-        return None
+        return None, "Error: APP_KEY, APP_SECRET, or CALLBACK_URL not found in environment variables."
 
     if not os.path.exists(TOKENS_FILE):
-        print(f"Error: Tokens file not found at {TOKENS_FILE}. Please run authentication.")
-        return None
+        return None, f"Error: Tokens file not found at {TOKENS_FILE}. Please run authentication."
     
     try:
         client = schwabdev.Client(app_key, app_secret, callback_url, tokens_file=TOKENS_FILE, capture_callback=False)
         if not (client.tokens and client.tokens.access_token):
-            print("Error: No valid access token in loaded tokens.json. Please re-authenticate.")
-            # Attempt to refresh token if refresh token is available
+            error_msg = "Error: No valid access token in loaded tokens.json."
             if client.tokens and client.tokens.refresh_token:
-                print("Attempting to refresh token...")
-                client.tokens.update_tokens_from_refresh_token()
-                if not (client.tokens and client.tokens.access_token):
-                    print("Token refresh failed.")
-                    return None
-                print("Token refreshed successfully.")
+                print("Attempting to refresh token...") # Log to console
+                try:
+                    client.tokens.update_tokens_from_refresh_token()
+                    if client.tokens and client.tokens.access_token:
+                        print("Token refreshed successfully.") # Log to console
+                        return client, None
+                    else:
+                        return None, error_msg + " Token refresh failed."
+                except Exception as refresh_e:
+                    return None, error_msg + f" Token refresh attempt failed: {str(refresh_e)}"
             else:
-                return None
-        return client
+                return None, error_msg + " No refresh token available."
+        return client, None
     except Exception as e:
-        print(f"Error initializing Schwab client: {e}")
-        return None
+        return None, f"Error initializing Schwab client: {str(e)}"
 
 def get_minute_data(client: schwabdev.Client, symbol: str):
     """Fetches 1-minute historical price data for the given symbol for the last trading day."""
     if not client:
-        return pd.DataFrame(), "Schwab client not initialized."
+        return pd.DataFrame(), "Schwab client not initialized for get_minute_data."
     
     try:
-        # Fetch data for the last trading day. Schwab API might have limitations on intraday history.
-        # For simplicity, let's try to get data for today.
-        # The API usually provides data for the current or previous trading day for minute frequency.
-        # Let's aim for the last 1 day of minute data.
         end_date = datetime.datetime.now()
-        # Schwab API's price_history for minute data typically returns data for a single day or a few days.
-        # Let's request for the current day. It might return previous day if market is closed.
-        start_date = end_date - datetime.timedelta(days=1) # Requesting for the last 24 hours to ensure we get the last trading day's data
+        start_date = end_date - datetime.timedelta(days=1) 
 
         response = client.price_history(
             symbol=symbol.upper(),
@@ -70,7 +58,7 @@ def get_minute_data(client: schwabdev.Client, symbol: str):
             frequency=1,
             startDate=start_date, 
             endDate=end_date,
-            needExtendedHoursData=True # User asked for all available fields, so include extended hours
+            needExtendedHoursData=True
         )
 
         if response.ok:
@@ -79,15 +67,11 @@ def get_minute_data(client: schwabdev.Client, symbol: str):
                 df = pd.DataFrame(price_data["candles"])
                 df["datetime"] = pd.to_datetime(df["datetime"], unit="ms", utc=True).dt.tz_convert("America/New_York")
                 df = df.rename(columns={
-                    "datetime": "Timestamp",
-                    "open": "Open",
-                    "high": "High",
-                    "low": "Low",
-                    "close": "Close",
-                    "volume": "Volume"
+                    "datetime": "Timestamp", "open": "Open", "high": "High",
+                    "low": "Low", "close": "Close", "volume": "Volume"
                 })
                 df = df[["Timestamp", "Open", "High", "Low", "Close", "Volume"]]
-                df["Timestamp"] = df["Timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S %Z") # Format for display
+                df["Timestamp"] = df["Timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S %Z")
                 return df.sort_values(by="Timestamp", ascending=False), None
             elif price_data.get("empty") == True:
                 return pd.DataFrame(), f"No minute data returned for {symbol} (API response empty)."
@@ -99,19 +83,87 @@ def get_minute_data(client: schwabdev.Client, symbol: str):
     except Exception as e:
         return pd.DataFrame(), f"An error occurred while fetching minute data for {symbol}: {str(e)}"
 
+def get_options_chain_data(client: schwabdev.Client, symbol: str):
+    """Fetches options chain data for the given symbol."""
+    if not client:
+        return pd.DataFrame(), pd.DataFrame(), "Schwab client not initialized for get_options_chain_data."
+
+    try:
+        response = client.option_chains(
+            symbol=symbol.upper(),
+            contractType="ALL",
+            includeUnderlyingQuote=False,
+            expMonth="ALL", # Fetch for all available expiration months
+            optionType="ALL"
+        )
+
+        if not response.ok:
+            return pd.DataFrame(), pd.DataFrame(), f"Error fetching options chain for {symbol}: {response.status_code} - {response.text}"
+
+        options_data = response.json()
+        if options_data.get("status") == "FAILED":
+             return pd.DataFrame(), pd.DataFrame(), f"Failed to fetch options chain for {symbol}: {options_data.get('error', 'Unknown API error')}"
+
+
+        calls_list = []
+        puts_list = []
+        
+        # Define desired columns, matching the placeholder and user request
+        # 'volatility' in API is 'volatility', 'openInterest' is 'openInterest'
+        # Greeks: delta, gamma, theta, vega
+        # Other: strikePrice, lastPrice, bidPrice, askPrice, totalVolume
+        columns = ["Expiration Date", "Strike", "Last", "Bid", "Ask", "Volume", "Open Interest", "Implied Volatility", "Delta", "Gamma", "Theta", "Vega"]
+
+        for exp_date_map_type, contract_list_to_append in [("callExpDateMap", calls_list), ("putExpDateMap", puts_list)]:
+            if exp_date_map_type in options_data and options_data[exp_date_map_type]:
+                for date, strikes in options_data[exp_date_map_type].items():
+                    for strike_price, contracts in strikes.items():
+                        for contract in contracts:
+                            if contract.get("openInterest", 0) > 0:
+                                record = {
+                                    "Expiration Date": date,
+                                    "Strike": contract.get("strikePrice"),
+                                    "Last": contract.get("lastPrice"),
+                                    "Bid": contract.get("bidPrice"),
+                                    "Ask": contract.get("askPrice"),
+                                    "Volume": contract.get("totalVolume"),
+                                    "Open Interest": contract.get("openInterest"),
+                                    "Implied Volatility": contract.get("volatility"),
+                                    "Delta": contract.get("delta"),
+                                    "Gamma": contract.get("gamma"),
+                                    "Theta": contract.get("theta"),
+                                    "Vega": contract.get("vega")
+                                }
+                                contract_list_to_append.append(record)
+        
+        calls_df = pd.DataFrame(calls_list)
+        puts_df = pd.DataFrame(puts_list)
+
+        # Ensure all desired columns are present, even if some contracts don't have all greeks (e.g. far OTM)
+        for df in [calls_df, puts_df]:
+            if not df.empty:
+                for col in columns:
+                    if col not in df.columns:
+                        df[col] = None # or pd.NA or 0 depending on desired fill value
+                # Reorder columns to the defined order
+                df = df[columns]
+            else: # If df is empty, create it with the correct columns
+                df = pd.DataFrame(columns=columns)
+
+        return calls_df, puts_df, None
+
+    except Exception as e:
+        return pd.DataFrame(), pd.DataFrame(), f"An error occurred while fetching options chain for {symbol}: {str(e)}"
+
 if __name__ == "__main__":
-    # Example usage (requires .env and tokens.json to be set up in parent directory)
     print("Testing data_fetchers.py...")
-    # This assumes your .env and tokens.json are in the 'manusoptions' directory
-    # Adjust path if running this file directly from a different location or for testing.
-    
-    # Test client initialization
-    test_client = get_schwab_client()
+    test_client, client_error = get_schwab_client()
+    if client_error:
+        print(client_error)
     if test_client:
         print("Schwab client initialized successfully.")
         
-        # Test minute data fetching
-        symbol_to_test = "AAPL" # Change to a symbol you want to test
+        symbol_to_test = "AAPL"
         print(f"\nFetching minute data for {symbol_to_test}...")
         minute_df, error = get_minute_data(test_client, symbol_to_test)
         if error:
@@ -121,6 +173,19 @@ if __name__ == "__main__":
             print(minute_df.head())
         else:
             print(f"No minute data returned for {symbol_to_test}.")
+
+        print(f"\nFetching options chain data for {symbol_to_test}...")
+        calls_df, puts_df, error = get_options_chain_data(test_client, symbol_to_test)
+        if error:
+            print(f"Error: {error}")
+        else:
+            print(f"Successfully fetched options chain for {symbol_to_test}:")
+            print("Calls:")
+            print(calls_df.head())
+            print("\nPuts:")
+            print(puts_df.head())
+            if calls_df.empty and puts_df.empty:
+                print("No options data returned (both calls and puts are empty).")
     else:
-        print("Failed to initialize Schwab client. Ensure .env and tokens.json are correct.")
+        print("Failed to initialize Schwab client. Ensure .env and tokens.json are correct and valid.")
 

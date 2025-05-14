@@ -49,25 +49,9 @@
     *   Added pagination and basic styling to DataTables.
 *   **Dashboard Compatibility Fix:**
     *   Updated `dashboard_app.py` to use `app.run()` instead of `app.run_server()` for compatibility with Dash v3.x, resolving user-reported `ObsoleteAttributeException`.
-
-### Current Work In Progress
-
-*   Integrating data fetching for the "Technical Indicators" tab.
-*   Integrating data fetching and 5-second refresh for the "Options Chain" tab.
-*   Refining error handling and logging across all dashboard components.
-
-### Known Issues or Challenges
-
-*   Full end-to-end streaming and data validation for options chain requires valid Schwab API credentials and user authentication via `auth_script.py`. Current sandbox testing uses dummy credentials for API calls if `tokens.json` is not valid, so live data fetching relies on a valid `tokens.json`.
-*   The Schwab API might have limits on the number of concurrent stream subscriptions for the options chain. This will need to be handled if the `fetch_options_chain.py` logic is directly integrated or adapted.
-*   The `Schwab_Trader_API_Streamer_Guide.pdf` was not accessible (404 error previously), so implementation relies on other provided examples and general API knowledge.
-*   Technical indicator calculation needs to be integrated with the `technical_analysis.py` script, potentially refactoring parts of it into `dashboard_utils`.
-
-### Next Steps
-
-*   Implement data fetching and display for the "Technical Indicators" tab, using `technical_analysis.py` logic.
-*   Implement data fetching and 5-second interval updates for the "Options Chain" tab, adapting logic from `fetch_options_chain.py` or using direct API calls for REST-based updates if streaming is too complex for initial Dash integration.
-*   Ensure all fields requested by the user are displayed in the respective tables.
-*   Thoroughly test all dashboard functionalities with various symbols.
-*   Iteratively push all code and documentation updates to GitHub.
-*   Validate dashboard against all user requirements.
+*   **Web Dashboard Development (Phase 2 - Options Chain Integration):**
+    *   Implemented `get_options_chain_data()` in `dashboard_utils/data_fetchers.py` to fetch all call and put contracts, filtering for `openInterest > 0` and including all relevant fields (strike, volatility, greeks, etc.).
+    *   Integrated `get_options_chain_data()` into the "Options Chain" tab callback in `dashboard_app.py`.
+    *   The Options Chain tab now displays real data for calls and puts, refreshing every 5 seconds via the `dcc.Interval` component.
+    *   Added a "Last Updated: [timestamp]" indicator to the Options Chain tab to show data freshness.
+    *   Improved Schwab client initialization and error handling in both `data_fetchers.py` and `dashboard_app.py`.
