@@ -11,7 +11,7 @@
 - [x] Modify `fetch_options_chain.py` to fix `AttributeError` by using `client.tokens` (or equivalent `schwabdev` methods) for token validation and refresh.
 - [x] Test the corrected `fetch_options_chain.py` (AttributeError resolved; script now proceeds to credential/token validation).
 - [x] Push all code changes and tracking files (PROGRESS.md, TODO.md, DECISIONS.md) to the GitHub repository.
-- [x] Investigate and fix `AttributeError: 'Tokens' object has no attribute 'is_access_token_expired'` by using `client.tokens.update_tokens()`.
+- [x] Investigate and fix `AttributeError: \'Tokens\' object has no attribute \'is_access_token_expired\'` by using `client.tokens.update_tokens()`.
 
 ### Streaming Functionality Implementation (`fetch_options_chain.py`)
 
@@ -52,17 +52,22 @@
 - [x] Integrate `get_minute_data()` into the "Minute Streaming Data" tab callback in `dashboard_app.py`.
 - [x] Implement error handling for API calls and client initialization within the dashboard.
 - [x] Add an error log display area in the dashboard UI, updated via a `dcc.Store`.
-- [x] **Options Chain Tab:**
-    - [x] Create a utility function `get_options_chain_data()` in `dashboard_utils/data_fetchers.py` to fetch options chain data.
-        - [x] Function takes a symbol as input.
-        - [x] Fetches options chain (puts and calls) using `client.option_chains()` for `expMonth="ALL"`.
-        - [x] Filters contracts for `openInterest > 0`.
-        - [x] Selects relevant fields (Expiration Date, Strike, Last, Bid, Ask, Volume, Open Interest, Implied Volatility, Delta, Gamma, Theta, Vega).
-        - [x] Returns two DataFrames (one for calls, one for puts).
+- [x] **Options Chain Tab (Initial REST/Polling Implementation):**
+    - [x] Create a utility function `get_options_chain_data()` in `dashboard_utils/data_fetchers.py`.
     - [x] Integrate `get_options_chain_data()` into the "Options Chain" tab callback in `dashboard_app.py`.
-    - [x] Implement the 5-second refresh interval for this tab using `dcc.Interval`.
-    - [x] Add a "Last Updated: [timestamp]" display to the Options Chain tab.
-    - [x] Ensure error handling and logging are implemented for options chain data fetching.
+    - [x] Implement 5-second refresh interval using `dcc.Interval`.
+    - [x] Add "Last Updated: [timestamp]" display.
+- [x] **Options Chain Tab (WebSocket Streaming Implementation):**
+    - [x] Research and design WebSocket integration for Dash using `schwabdev`.
+    - [x] Create `streaming_design.md` document.
+    - [x] Implement `StreamingManager` class in `dashboard_utils/streaming_manager.py` for background WebSocket handling.
+    - [x] Add `get_option_contract_keys()` to `data_fetchers.py`.
+    - [x] Integrate `StreamingManager` into `dashboard_app.py`:
+        - [x] Instantiate `StreamingManager`.
+        - [x] Implement callbacks to start/stop stream based on symbol selection and tab visibility.
+        - [x] Update Options Chain tables from `StreamingManager` data via `dcc.Interval`.
+    - [x] Implement UI for stream status and error display in the Options Chain tab.
+    - [x] Thoroughly test streaming functionality (start, stop, data updates, error handling).
 - [ ] **Technical Indicators Tab:**
     - [ ] Create a utility function in `dashboard_utils/data_fetchers.py` (or a new `technical_analysis_utils.py`) to adapt logic from `technical_analysis.py`.
         - [ ] Function should take a symbol and raw price data (e.g., minute data DataFrame) as input.
@@ -72,15 +77,15 @@
     - [ ] Ensure error handling and logging are implemented.
 - [ ] **General Dashboard Refinements:**
     - [ ] Ensure all requested fields are displayed in the respective tables for all tabs.
-    - [ ] Verify that the dashboard refreshes only the necessary components (e.g., options chain tab every 5s, other tabs on symbol change or less frequently).
+    - [ ] Verify that the dashboard refreshes only the necessary components.
     - [ ] Test dashboard with multiple symbols and edge cases (e.g., invalid symbol, API errors, no options data for a symbol).
 
 ### Broader Testing & Next Steps (Post-Dashboard V1)
 
 - [ ] User to test `fetch_options_chain.py` in "STREAM" mode with the latest 0DTE filtering logic and valid Schwab API credentials and `tokens.json`. Provide the new `raw_contracts_diag.log` and console output.
 - [ ] Analyze the new diagnostic log to confirm if 0DTE contracts are now being fetched and correctly filtered by `fetch_options_chain.py`.
-- [ ] Address any issues identified during user's live streaming tests with `fetch_options_chain.py`.
-- [ ] User to test the fully implemented Dash web dashboard locally.
+- [ ] Address any issues identified during user\'s live streaming tests with `fetch_options_chain.py`.
+- [ ] User to test the fully implemented Dash web dashboard locally, especially the WebSocket streaming for options.
 - [ ] Discuss and implement further enhancements (e.g., more sophisticated "data chart", additional filtering options, error handling for stream disconnects if streaming is added to dashboard).
 
 ### Future Enhancements (Placeholder)

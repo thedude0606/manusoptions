@@ -5,10 +5,14 @@ import os
 import datetime
 import json
 import pandas as pd
+import logging
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 TOKENS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "tokens.json")
+
+# Configure basic logging for this module if not already configured by app
+# logging.basicConfig(level=logging.INFO, format=\'%(asctime)s - %(levelname)s - %(message)s\')
 
 def get_schwab_client():
     """Helper to initialize and return a Schwab client if tokens exist."""
@@ -27,11 +31,11 @@ def get_schwab_client():
         if not (client.tokens and client.tokens.access_token):
             error_msg = "Error: No valid access token in loaded tokens.json."
             if client.tokens and client.tokens.refresh_token:
-                print("Attempting to refresh token...") # Log to console
+                logging.info("Attempting to refresh token...")
                 try:
                     client.tokens.update_tokens_from_refresh_token()
                     if client.tokens and client.tokens.access_token:
-                        print("Token refreshed successfully.") # Log to console
+                        logging.info("Token refreshed successfully.")
                         return client, None
                     else:
                         return None, error_msg + " Token refresh failed."
@@ -50,6 +54,7 @@ def get_minute_data(client: schwabdev.Client, symbol: str):
     
     try:
         end_date = datetime.datetime.now()
+        # Ensure start_date is a trading day if possible, or just go back. For simplicity, 1 day.
         start_date = end_date - datetime.timedelta(days=1) 
 
         response = client.price_history(
@@ -84,7 +89,7 @@ def get_minute_data(client: schwabdev.Client, symbol: str):
         return pd.DataFrame(), f"An error occurred while fetching minute data for {symbol}: {str(e)}"
 
 def get_options_chain_data(client: schwabdev.Client, symbol: str):
-    """Fetches options chain data for the given symbol."""
+    """Fetches options chain data for the given symbol, for REST polling."""
     if not client:
         return pd.DataFrame(), pd.DataFrame(), "Schwab client not initialized for get_options_chain_data."
 
@@ -93,7 +98,7 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
             symbol=symbol.upper(),
             contractType="ALL",
             includeUnderlyingQuote=False,
-            expMonth="ALL", # Fetch for all available expiration months
+            expMonth="ALL",
             optionType="ALL"
         )
 
@@ -102,17 +107,11 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
 
         options_data = response.json()
         if options_data.get("status") == "FAILED":
-             return pd.DataFrame(), pd.DataFrame(), f"Failed to fetch options chain for {symbol}: {options_data.get('error', 'Unknown API error')}"
-
+             return pd.DataFrame(), pd.DataFrame(), f"Failed to fetch options chain for {symbol}: {options_data.get(\'error\', \'Unknown API error\')}"
 
         calls_list = []
         puts_list = []
-        
-        # Define desired columns, matching the placeholder and user request
-        # 'volatility' in API is 'volatility', 'openInterest' is 'openInterest'
-        # Greeks: delta, gamma, theta, vega
-        # Other: strikePrice, lastPrice, bidPrice, askPrice, totalVolume
-        columns = ["Expiration Date", "Strike", "Last", "Bid", "Ask", "Volume", "Open Interest", "Implied Volatility", "Delta", "Gamma", "Theta", "Vega"]
+        columns = ["Expiration Date", "Strike", "Last", "Bid", "Ask", "Volume", "Open Interest", "Implied Volatility", "Delta", "Gamma", "Theta", "Vega", "Contract Key"]
 
         for exp_date_map_type, contract_list_to_append in [("callExpDateMap", calls_list), ("putExpDateMap", puts_list)]:
             if exp_date_map_type in options_data and options_data[exp_date_map_type]:
@@ -121,7 +120,7 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
                         for contract in contracts:
                             if contract.get("openInterest", 0) > 0:
                                 record = {
-                                    "Expiration Date": date,
+                                    "Expiration Date": contract.get("expirationDate"), # Use actual expirationDate field
                                     "Strike": contract.get("strikePrice"),
                                     "Last": contract.get("lastPrice"),
                                     "Bid": contract.get("bidPrice"),
@@ -132,28 +131,82 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
                                     "Delta": contract.get("delta"),
                                     "Gamma": contract.get("gamma"),
                                     "Theta": contract.get("theta"),
-                                    "Vega": contract.get("vega")
+                                    "Vega": contract.get("vega"),
+                                    "Contract Key": contract.get("symbol") # This is the option symbol/key
                                 }
                                 contract_list_to_append.append(record)
         
         calls_df = pd.DataFrame(calls_list)
         puts_df = pd.DataFrame(puts_list)
 
-        # Ensure all desired columns are present, even if some contracts don't have all greeks (e.g. far OTM)
-        for df in [calls_df, puts_df]:
-            if not df.empty:
+        for df_ref in [calls_df, puts_df]:
+            if not df_ref.empty:
                 for col in columns:
-                    if col not in df.columns:
-                        df[col] = None # or pd.NA or 0 depending on desired fill value
-                # Reorder columns to the defined order
-                df = df[columns]
-            else: # If df is empty, create it with the correct columns
-                df = pd.DataFrame(columns=columns)
+                    if col not in df_ref.columns:
+                        df_ref[col] = None
+                # Ensure correct column order, even if df was initially empty and columns added
+                # This line has an issue, df_ref is a reference, reassigning it won't modify the original calls_df/puts_df
+                # Instead, modify in place or reassign to original names
+            # else: # If df is empty, create it with the correct columns
+            #    df_ref = pd.DataFrame(columns=columns) # This also won't modify original if df_ref is just a copy
+
+        # Correctly ensure columns and order for calls_df
+        if not calls_df.empty:
+            for col in columns:
+                if col not in calls_df.columns:
+                    calls_df[col] = None
+            calls_df = calls_df[columns]
+        else:
+            calls_df = pd.DataFrame(columns=columns)
+
+        # Correctly ensure columns and order for puts_df
+        if not puts_df.empty:
+            for col in columns:
+                if col not in puts_df.columns:
+                    puts_df[col] = None
+            puts_df = puts_df[columns]
+        else:
+            puts_df = pd.DataFrame(columns=columns)
 
         return calls_df, puts_df, None
 
     except Exception as e:
+        logging.error(f"Error in get_options_chain_data for {symbol}: {e}", exc_info=True)
         return pd.DataFrame(), pd.DataFrame(), f"An error occurred while fetching options chain for {symbol}: {str(e)}"
+
+def get_option_contract_keys(client: schwabdev.Client, symbol: str):
+    """Fetches option contract keys (symbols) for the given underlying symbol, filtered by OI > 0."""
+    if not client:
+        return set(), "Schwab client not initialized for get_option_contract_keys."
+    
+    contract_keys = set()
+    try:
+        response = client.option_chains(
+            symbol=symbol.upper(),
+            contractType="ALL",
+            includeUnderlyingQuote=False,
+            expMonth="ALL",
+            optionType="ALL"
+        )
+        if not response.ok:
+            return set(), f"Error fetching option chains for keys: {response.status_code} - {response.text}"
+
+        options_data = response.json()
+        if options_data.get("status") == "FAILED":
+            return set(), f"Failed to fetch option chains for keys: {options_data.get(\'error\', \'Unknown API error\')}"
+
+        for exp_date_map_type in ["callExpDateMap", "putExpDateMap"]:
+            if exp_date_map_type in options_data and options_data[exp_date_map_type]:
+                for _date, strikes in options_data[exp_date_map_type].items():
+                    for _strike_price, contracts_at_strike in strikes.items():
+                        for contract in contracts_at_strike:
+                            if contract.get("openInterest", 0) > 0 and contract.get("symbol"):
+                                contract_keys.add(contract.get("symbol"))
+        return contract_keys, None
+    except Exception as e:
+        logging.error(f"Error in get_option_contract_keys for {symbol}: {e}", exc_info=True)
+        return set(), f"An error occurred while fetching option contract keys for {symbol}: {str(e)}"
+
 
 if __name__ == "__main__":
     print("Testing data_fetchers.py...")
@@ -163,7 +216,7 @@ if __name__ == "__main__":
     if test_client:
         print("Schwab client initialized successfully.")
         
-        symbol_to_test = "AAPL"
+        symbol_to_test = "AAPL" # Ensure this symbol has liquid options for testing
         print(f"\nFetching minute data for {symbol_to_test}...")
         minute_df, error = get_minute_data(test_client, symbol_to_test)
         if error:
@@ -174,18 +227,28 @@ if __name__ == "__main__":
         else:
             print(f"No minute data returned for {symbol_to_test}.")
 
-        print(f"\nFetching options chain data for {symbol_to_test}...")
+        print(f"\nFetching options chain data (REST) for {symbol_to_test}...")
         calls_df, puts_df, error = get_options_chain_data(test_client, symbol_to_test)
         if error:
             print(f"Error: {error}")
         else:
             print(f"Successfully fetched options chain for {symbol_to_test}:")
-            print("Calls:")
+            print("Calls Head:")
             print(calls_df.head())
-            print("\nPuts:")
+            print("\nPuts Head:")
             print(puts_df.head())
             if calls_df.empty and puts_df.empty:
-                print("No options data returned (both calls and puts are empty).")
+                print("No options data returned (both calls and puts are empty via REST).")
+
+        print(f"\nFetching option contract keys for {symbol_to_test}...")
+        keys, keys_error = get_option_contract_keys(test_client, symbol_to_test)
+        if keys_error:
+            print(f"Error fetching keys: {keys_error}")
+        elif keys:
+            print(f"Successfully fetched {len(keys)} option contract keys for {symbol_to_test}. First 5: {list(keys)[:5]}")
+        else:
+            print(f"No option contract keys with OI > 0 found for {symbol_to_test}.")
+
     else:
         print("Failed to initialize Schwab client. Ensure .env and tokens.json are correct and valid.")
 

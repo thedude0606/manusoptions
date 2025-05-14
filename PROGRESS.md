@@ -49,9 +49,37 @@
     *   Added pagination and basic styling to DataTables.
 *   **Dashboard Compatibility Fix:**
     *   Updated `dashboard_app.py` to use `app.run()` instead of `app.run_server()` for compatibility with Dash v3.x, resolving user-reported `ObsoleteAttributeException`.
-*   **Web Dashboard Development (Phase 2 - Options Chain Integration):**
+*   **Web Dashboard Development (Phase 2 - Options Chain REST Integration):**
     *   Implemented `get_options_chain_data()` in `dashboard_utils/data_fetchers.py` to fetch all call and put contracts, filtering for `openInterest > 0` and including all relevant fields (strike, volatility, greeks, etc.).
     *   Integrated `get_options_chain_data()` into the "Options Chain" tab callback in `dashboard_app.py`.
-    *   The Options Chain tab now displays real data for calls and puts, refreshing every 5 seconds via the `dcc.Interval` component.
-    *   Added a "Last Updated: [timestamp]" indicator to the Options Chain tab to show data freshness.
-    *   Improved Schwab client initialization and error handling in both `data_fetchers.py` and `dashboard_app.py`.
+    *   The Options Chain tab displayed real data for calls and puts, refreshing every 5 seconds via the `dcc.Interval` component (polling).
+    *   Added a "Last Updated: [timestamp]" indicator to the Options Chain tab.
+*   **Web Dashboard Development (Phase 3 - Options Chain WebSocket Streaming):**
+    *   **Research & Design:** Investigated Schwab API WebSocket streaming with Dash, reviewed `schwabdev` library examples and user-provided documentation. Designed a multi-threaded approach with a dedicated `StreamingManager`.
+    *   **Streaming Utility (`StreamingManager`):** Implemented `dashboard_utils/streaming_manager.py` with a `StreamingManager` class to handle WebSocket connection, subscriptions, message processing, data storage, and status/error reporting in a background thread.
+    *   **Contract Key Fetching:** Added `get_option_contract_keys()` to `data_fetchers.py` to retrieve option symbols with OI > 0 for streaming subscriptions.
+    *   **Dashboard Integration:** 
+        *   Modified `dashboard_app.py` to instantiate and use `StreamingManager`.
+        *   Replaced polling logic in the "Options Chain" tab with WebSocket streaming.
+        *   Implemented callbacks to manage stream start/stop based on symbol selection and tab visibility.
+        *   Ensured UI updates for options tables are driven by data from `StreamingManager` via a `dcc.Interval`.
+    *   **Stream Status & Error UI:** Implemented a display area in the Options Chain tab to show real-time stream status (e.g., Idle, Connecting, Streaming, Error) and any errors from `StreamingManager`.
+    *   **Robustness & Testing:** Refined `StreamingManager` for better error handling, thread management (using `schwabdev.client.StreamerWrapper`), and message parsing. Tested stream start/stop, data updates, and error conditions.
+
+### Current Work in Progress
+
+*   Finalizing documentation updates for the WebSocket streaming implementation.
+*   Preparing for user validation of the streaming options chain.
+
+### Known Issues or Challenges
+
+*   The `schwabdev` library's streaming (`client.streamer()`) is blocking. Running it in a separate thread is essential and has been implemented. Careful management of this thread and its lifecycle is crucial.
+*   Ensuring the `SCHWAB_ACCOUNT_HASH` environment variable is correctly set by the user is critical for streaming to function.
+*   Real-world testing across various market conditions and for extended periods would be beneficial to identify any subtle issues with the stream or data handling.
+
+### Next Steps (Post-Streaming Validation)
+
+*   Implement the "Technical Indicators" tab, fetching and displaying data from `technical_analysis.py` or direct API calls.
+*   Discuss and potentially implement WebSocket streaming for the "Minute Streaming Data" tab if true real-time tick-by-tick or bar-by-bar updates are desired over historical minute fetches.
+*   Further UI/UX refinements based on user feedback.
+*   Explore more advanced error recovery mechanisms for the stream (e.g., automatic reconnection attempts with backoff).
