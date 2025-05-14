@@ -44,42 +44,37 @@ def main():
     client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file=TOKENS_FILE, capture_callback=False)
 
     # Check if tokens were loaded successfully by the client
-    # The schwabdev.Client constructor, when given a tokens_file, attempts to load tokens into client.tokens.
-    # If tokens_file is present but empty/invalid, client.tokens might be None or client.tokens.access_token might be None.
     if not (hasattr(client, 'tokens') and client.tokens and client.tokens.access_token):
         print(f"No valid access token found after attempting to load from {TOKENS_FILE}. "
               f"The file might be empty, corrupted, not loaded correctly by the client, or inaccessible. "
               f"Please ensure {TOKENS_FILE} is valid and run auth_script.py if necessary.")
         return
 
-    # Check if access token is expired and try to refresh if needed
-    if client.tokens.is_access_token_expired():
-        print("Access token is expired. Attempting to refresh...")
-        try:
-            if client.tokens.is_refresh_token_expired():
-                print("Refresh token is also expired. Please re-authenticate using auth_script.py.")
-                return
+    # Ensure tokens are up-to-date
+    print("Ensuring tokens are up-to-date by calling client.tokens.update_tokens()...")
+    try:
+        # The update_tokens() method internally checks for expiry of both access and refresh tokens,
+        # attempts to refresh them if necessary, and logs its actions.
+        client.tokens.update_tokens()
 
-            client.tokens.update_refresh_token() # This method should handle writing updated tokens to TOKENS_FILE.
-            
-            if client.tokens.is_access_token_expired(): # Check again after refresh attempt
-                print("Failed to refresh tokens. Access token is still expired after attempt. "
-                      "Please re-authenticate using auth_script.py.")
-                return
-            else:
-                print("Tokens refreshed successfully.")
-        except Exception as e:
-            print(f"Error refreshing tokens: {e}")
-            print("Please re-authenticate using auth_script.py.")
-            # It's good practice to log the full error for debugging
-            import traceback
-            traceback.print_exc()
+        # After calling update_tokens(), the most crucial check is whether we have an access token.
+        if not (client.tokens and client.tokens.access_token):
+            print("Critical: No valid access token found after attempting to update tokens. "
+                  "This could mean the refresh token is also expired or another authentication issue occurred. "
+                  "Please re-authenticate using auth_script.py.")
             return
-    else:
-        print("Access token is valid.")
+        
+        print("Token check complete. Proceeding with API call.")
+
+    except Exception as e:
+        print(f"An error occurred during the token update process: {e}")
+        import traceback
+        traceback.print_exc()
+        print("Please re-authenticate using auth_script.py.")
+        return
 
     # If we've reached here, tokens should be valid
-    print("Client initialized and tokens are loaded and valid.")
+    print("Client initialized and tokens are loaded and appear valid.")
     print(f"Fetching options chain for {SYMBOL} using client.option_chains()...")
 
     try:

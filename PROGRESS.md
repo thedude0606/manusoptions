@@ -6,13 +6,15 @@
 *   Analyzed `fetch_options_chain.py` and `auth_script.py` to understand current implementation on 2025-05-14.
 *   Reviewed `schwabdev` library usage based on provided example and code structure on 2025-05-14.
 *   Created initial `PROGRESS.md`, `TODO.md`, and `DECISIONS.md` files and pushed to GitHub on 2025-05-14.
-*   **Resolved `AttributeError: 'Client' object has no attribute 'token_manager'` in `fetch_options_chain.py` by correcting token handling logic to use `client.tokens` methods on 2025-05-14.**
+*   Resolved `AttributeError: 'Client' object has no attribute 'token_manager'` in `fetch_options_chain.py` by correcting token handling logic to use `client.tokens` methods on 2025-05-14.
 *   Installed necessary Python dependencies (`schwabdev`, `python-dotenv`) in the development environment on 2025-05-14.
+*   Investigated `schwabdev` library source code (`tokens.py`) to determine the correct method for token expiration checking and refreshing on 2025-05-14.
+*   **Resolved `AttributeError: 'Tokens' object has no attribute 'is_access_token_expired'` in `fetch_options_chain.py` by replacing the incorrect method call with `client.tokens.update_tokens()` on 2025-05-14.**
 
 ### Current Work in Progress
 
+*   Updating tracking files (`PROGRESS.md`, `TODO.md`, `DECISIONS.md`) to reflect the latest fix.
 *   Preparing to push the corrected `fetch_options_chain.py` script and updated tracking files to GitHub.
-*   Awaiting user to provide a valid `.env` file or confirm its setup in their environment for full end-to-end testing of `fetch_options_chain.py` (specifically, the actual data fetching part which requires valid credentials and tokens).
 
 ### Known Issues or Challenges
 
@@ -20,7 +22,6 @@
 
 ### Next Steps
 
-*   Push the corrected `fetch_options_chain.py` and updated tracking files (PROGRESS.md, TODO.md) to the user's GitHub repository.
-*   Notify the user about the fix for the `AttributeError` and the successful script execution up to the point of credential/token validation.
-*   Request the user to set up their `.env` file and `tokens.json` (by running `auth_script.py` and authenticating) in their local environment to test the full data fetching functionality.
-*   If the user wishes for me to test the data fetching, they will need to provide the callback URL after they authenticate, so I can obtain a token.
+*   Push the latest corrected `fetch_options_chain.py` and updated tracking files (PROGRESS.md, TODO.md, DECISIONS.md) to the user's GitHub repository.
+*   Notify the user about the fix for the second `AttributeError` and the successful script execution up to the point of credential/token validation.
+*   Reiterate the request for the user to set up their `.env` file and `tokens.json` (by running `auth_script.py` and authenticating) in their local environment to test the full data fetching functionality, or to provide the callback URL if they wish for me to test the data fetching.
