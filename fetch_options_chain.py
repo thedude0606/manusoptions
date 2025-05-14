@@ -22,8 +22,8 @@ STRATEGY = "SINGLE"  # e.g., SINGLE, STRADDLE, etc.
 RANGE = "ALL" # e.g., ITM, NTM, OTM, ALL
 # Dates can be datetime objects or strings like "YYYY-MM-DD"
 # By default, fetches for the nearest available expiration dates if fromDate/toDate are None
-FROM_DATE = None 
-TO_DATE = None 
+FROM_DATE = None
+TO_DATE = None
 EXP_MONTH = "ALL" # e.g., JAN, FEB, ALL
 OPTION_TYPE = "ALL" # e.g., S, NS, ALL
 
@@ -35,26 +35,51 @@ def main():
         print("Error: APP_KEY, APP_SECRET, or CALLBACK_URL not found in .env file.")
         return
 
-    client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file=TOKENS_FILE, capture_callback=False)
-
+    # Check if tokens.json exists before initializing client, as client might try to load it
     if not os.path.exists(TOKENS_FILE):
-        print(f"Error: {TOKENS_FILE} not found. Please run auth_script.py first.")
+        print(f"Error: {TOKENS_FILE} not found. Please run auth_script.py first to create it.")
         return
     
-    if not client.token_manager.tokens_valid():
-        print("Tokens are invalid or expired. Attempting to refresh...")
-        try:
-            client.token_manager.refresh_tokens()
-            if client.token_manager.tokens_valid():
-                print("Tokens refreshed successfully.")
-            else:
-                print("Failed to refresh tokens. Please re-authenticate using auth_script.py.")
-                return
-        except Exception as e:
-            print(f"Error refreshing tokens: {e}. Please re-authenticate using auth_script.py.")
-            return
+    # Initialize client - tokens are loaded from TOKENS_FILE by the Client constructor
+    client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file=TOKENS_FILE, capture_callback=False)
 
-    print("Client initialized and token appears to be loaded and valid.")
+    # Check if tokens were loaded successfully by the client
+    # The schwabdev.Client constructor, when given a tokens_file, attempts to load tokens into client.tokens.
+    # If tokens_file is present but empty/invalid, client.tokens might be None or client.tokens.access_token might be None.
+    if not (hasattr(client, 'tokens') and client.tokens and client.tokens.access_token):
+        print(f"No valid access token found after attempting to load from {TOKENS_FILE}. "
+              f"The file might be empty, corrupted, not loaded correctly by the client, or inaccessible. "
+              f"Please ensure {TOKENS_FILE} is valid and run auth_script.py if necessary.")
+        return
+
+    # Check if access token is expired and try to refresh if needed
+    if client.tokens.is_access_token_expired():
+        print("Access token is expired. Attempting to refresh...")
+        try:
+            if client.tokens.is_refresh_token_expired():
+                print("Refresh token is also expired. Please re-authenticate using auth_script.py.")
+                return
+
+            client.tokens.update_refresh_token() # This method should handle writing updated tokens to TOKENS_FILE.
+            
+            if client.tokens.is_access_token_expired(): # Check again after refresh attempt
+                print("Failed to refresh tokens. Access token is still expired after attempt. "
+                      "Please re-authenticate using auth_script.py.")
+                return
+            else:
+                print("Tokens refreshed successfully.")
+        except Exception as e:
+            print(f"Error refreshing tokens: {e}")
+            print("Please re-authenticate using auth_script.py.")
+            # It's good practice to log the full error for debugging
+            import traceback
+            traceback.print_exc()
+            return
+    else:
+        print("Access token is valid.")
+
+    # If we've reached here, tokens should be valid
+    print("Client initialized and tokens are loaded and valid.")
     print(f"Fetching options chain for {SYMBOL} using client.option_chains()...")
 
     try:
@@ -78,7 +103,6 @@ def main():
                 json.dump(options_data, f, indent=4)
             print(f"Options chain data successfully fetched and saved to {output_filename}")
             
-            # Optional: Print some basic info from the response
             if options_data.get('status') == "SUCCESS":
                 print(f"Symbol: {options_data.get('symbol')}")
                 print(f"Underlying Price: {options_data.get('underlyingPrice')}")

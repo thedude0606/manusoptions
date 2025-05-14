@@ -8,10 +8,10 @@
 - [x] Create `PROGRESS.md` and populate initial content
 - [ ] Create `TODO.md` and populate initial tasks (this task)
 - [ ] Create `DECISIONS.md` and populate initial decisions/observations
-- [ ] Modify `fetch_options_chain.py` to fix `AttributeError` by using `client.tokens` (or equivalent `schwabdev` methods) for token validation and refresh.
-- [ ] Test the corrected `fetch_options_chain.py` (initially for `AttributeError` resolution).
-- [ ] Push all code changes and tracking files (PROGRESS.md, TODO.md, DECISIONS.md) to the GitHub repository.
-- [ ] Request callback URL from the user for full testing with real data (once the script is structurally sound).
+- [x] Modify `fetch_options_chain.py` to fix `AttributeError` by using `client.tokens` (or equivalent `schwabdev` methods) for token validation and refresh.
+- [x] Test the corrected `fetch_options_chain.py` (AttributeError resolved; script now proceeds to credential/token validation).
+- [ ] Push all code changes and tracking files (PROGRESS.md, TODO.md, DECISIONS.md) to the GitHub repository. (This task)
+- [ ] Request user to set up `.env` file and `tokens.json` for full testing with real data (or provide callback URL for me to test).
 
 ### Future Enhancements (Placeholder)
 
