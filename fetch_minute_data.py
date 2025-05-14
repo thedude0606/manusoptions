@@ -9,7 +9,7 @@ load_dotenv()
 APP_KEY = os.getenv("APP_KEY")
 APP_SECRET = os.getenv("APP_SECRET")
 CALLBACK_URL = os.getenv("CALLBACK_URL")
-TOKENS_FILE = "/home/ubuntu/manusoptions/tokens.json"
+TOKENS_FILE = "tokens.json"
 
 # Placeholder for symbol, user can provide this later
 SYMBOL = "AAPL"

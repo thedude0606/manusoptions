@@ -25,7 +25,7 @@ auth_url_for_user = None
 
 try:
     # The tokens_file path should be absolute for clarity and to avoid issues with working directory
-    client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file="/home/ubuntu/manusoptions/tokens.json", capture_callback=False, call_on_notify=handle_redirect_uri)
+    client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file="tokens.json", capture_callback=False, call_on_notify=handle_redirect_uri)
     
     if auth_url_for_user:
         print(f"Please open this URL in your browser to authenticate: {auth_url_for_user}")
