@@ -217,4 +217,4 @@ def update_options_chain_tab(selected_symbol, n_intervals):
     return option_cols, dummy_calls_data, option_cols, dummy_puts_data
 
 if __name__ == "__main__":
-    app.run_server(debug=True, host="0.0.0.0", port=8050)
+    app.run(debug=True, host="0.0.0.0", port=8050)

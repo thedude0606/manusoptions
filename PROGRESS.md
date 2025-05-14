@@ -47,6 +47,8 @@
     *   Implemented error handling for API calls and client initialization within the dashboard.
     *   Added an error log display area in the dashboard UI, updated via a `dcc.Store`.
     *   Added pagination and basic styling to DataTables.
+*   **Dashboard Compatibility Fix:**
+    *   Updated `dashboard_app.py` to use `app.run()` instead of `app.run_server()` for compatibility with Dash v3.x, resolving user-reported `ObsoleteAttributeException`.
 
 ### Current Work In Progress
 
