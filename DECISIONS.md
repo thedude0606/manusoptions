@@ -3,7 +3,7 @@
 ## Key Architectural Choices
 
 - **Modular Design:** The application will be built with a modular design, separating concerns like data fetching, data processing, technical analysis, and UI presentation. This will allow for easier maintenance, testing, and scalability.
-- **API Wrapper:** Utilize the `schwabdev` Python library as a wrapper for the Schwab API to simplify authentication and API calls.
+- **API Wrapper:** Utilize the `schwab_api` Python library (version 0.4.3) as a wrapper for the Schwab API to simplify authentication and API calls.
 
 ## Technology Selections
 
@@ -19,5 +19,5 @@
 
 ## Rationale for Important Decisions
 
-- **Schwabdev Library:** Chosen to expedite development by leveraging an existing, tested library for Schwab API interaction, rather than building a custom solution from scratch. This also helps in managing the complexities of the OAuth 2.0 authentication flow.
+- **`schwab_api` Library (v0.4.3):** Chosen to expedite development by leveraging an existing library for Schwab API interaction. Authentication will be handled using a placeholder `token.json` for initial setup, with the full interactive OAuth flow (via Playwright, handled by the library) occurring when the dashboard application is first run by the user and requires live data.
 - **Python & Pandas:** Selected for their strong data science ecosystem, making it efficient to handle and analyze financial time-series data.
