@@ -2,9 +2,9 @@ import json
 import datetime
 from collections import defaultdict
 
-INPUT_FILE = "/home/ubuntu/manusoptions/AAPL_minute_data_last_90_days.json"
-HOURLY_OUTPUT_FILE = "/home/ubuntu/manusoptions/AAPL_hourly_data_last_90_days.json"
-DAILY_OUTPUT_FILE = "/home/ubuntu/manusoptions/AAPL_daily_data_last_90_days.json"
+INPUT_FILE = "AAPL_minute_data_last_90_days.json"
+HOURLY_OUTPUT_FILE = "AAPL_hourly_data_last_90_days.json"
+DAILY_OUTPUT_FILE = "AAPL_daily_data_last_90_days.json"
 
 def aggregate_data():
     try:

@@ -3,17 +3,17 @@ import pandas as pd
 import numpy as np
 
 # Define input file paths (assuming AAPL for now, can be parameterized later)
-MINUTE_DATA_FILE = "/home/ubuntu/manusoptions/AAPL_minute_data_last_90_days.json"
-HOURLY_DATA_FILE = "/home/ubuntu/manusoptions/AAPL_hourly_data_last_90_days.json"
-DAILY_DATA_FILE = "/home/ubuntu/manusoptions/AAPL_daily_data_last_90_days.json"
+MINUTE_DATA_FILE = "AAPL_minute_data_last_90_days.json"
+HOURLY_DATA_FILE = "AAPL_hourly_data_last_90_days.json"
+DAILY_DATA_FILE = "AAPL_daily_data_last_90_days.json"
 
 # Output files for data with TA
-MINUTE_DATA_WITH_TA_FILE = "/home/ubuntu/manusoptions/AAPL_minute_data_with_ta.json"
-HOURLY_DATA_WITH_TA_FILE = "/home/ubuntu/manusoptions/AAPL_hourly_data_with_ta.json"
-DAILY_DATA_WITH_TA_FILE = "/home/ubuntu/manusoptions/AAPL_daily_data_with_ta.json"
+MINUTE_DATA_WITH_TA_FILE = "AAPL_minute_data_with_ta.json"
+HOURLY_DATA_WITH_TA_FILE = "AAPL_hourly_data_with_ta.json"
+DAILY_DATA_WITH_TA_FILE = "AAPL_daily_data_with_ta.json"
 # We also need 15-minute data for TA. We will aggregate this from minute data.
-FIFTEEN_MINUTE_DATA_FILE = "/home/ubuntu/manusoptions/AAPL_15_minute_data_last_90_days.json"
-FIFTEEN_MINUTE_DATA_WITH_TA_FILE = "/home/ubuntu/manusoptions/AAPL_15_minute_data_with_ta.json"
+FIFTEEN_MINUTE_DATA_FILE = "AAPL_15_minute_data_last_90_days.json"
+FIFTEEN_MINUTE_DATA_WITH_TA_FILE = "AAPL_15_minute_data_with_ta.json"
 
 def load_candles(file_path):
     try:
