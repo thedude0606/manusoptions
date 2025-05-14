@@ -11,7 +11,7 @@
 *   **Tracking Files Setup:**
     *   Created `PROGRESS.md`, `TODO.md`, and `DECISIONS.md`.
     *   Pushed initial tracking files to GitHub.
-*   **Streaming Functionality (Initial Implementation):**
+*   **Streaming Functionality (Initial Implementation - `fetch_options_chain.py`):**
     *   Reviewed Schwab API streaming documentation and examples.
     *   Designed and implemented basic streaming logic for options chain data in `fetch_options_chain.py`.
     *   Added an `APP_MODE` to switch between "FETCH" and "STREAM" modes.
@@ -21,33 +21,51 @@
     *   Added support for streaming multiple underlying symbols.
     *   Added logic to fetch all option contract keys for specified symbols.
     *   Implemented subscription to option contracts in manageable chunks.
-*   **Efficient Contract Filtering for Streaming:**
+*   **Efficient Contract Filtering for Streaming (`fetch_options_chain.py`):**
     *   Clarified filtering requirements with the user.
     *   Modified script to filter contracts based on:
         *   Minimum Open Interest (excluding contracts with zero OI by default).
         *   Specific Days To Expiration (DTE), including 0DTE.
     *   Updated `get_filtered_option_contract_keys` function to apply these filters before subscribing to the stream.
     *   **Refined 0DTE contract fetching:** When `STREAMING_FILTER_DTE` is 0, the script now modifies the `client.option_chains()` API call to use `fromDate` and `toDate` set to the current day. This is intended to specifically request today's expiring contracts from the API.
-*   **Syntax Error Resolution:**
+*   **Syntax Error Resolution (`fetch_options_chain.py`):**
     *   Systematically scanned and corrected all f-string syntax errors related to quote usage and dictionary key access throughout `fetch_options_chain.py`.
     *   Ensured all print formatting uses appropriate methods (f-strings with correct quoting or `.format()`).
-*   **Debugging Contract Filtering:**
+*   **Debugging Contract Filtering (`fetch_options_chain.py`):**
     *   Modified `get_filtered_option_contract_keys` to write raw contract data (symbol, OI, DTE) to a log file (`raw_contracts_diag.log`) for comprehensive analysis.
     *   Analyzed user-provided diagnostic log, confirming that the initial broad API call did not return 0DTE contracts.
+*   **Web Dashboard Development (Phase 1 - Setup & Minute Data):**
+    *   Cloned and reviewed existing `manusoptions` repository.
+    *   Designed basic structure for a Dash web dashboard (`dashboard_app.py`).
+    *   Implemented symbol input (comma-separated) and a dropdown filter for selecting a processed symbol.
+    *   Built the main tab structure: Minute Streaming Data, Technical Indicators, Options Chain.
+    *   Created UI placeholders (Dash DataTables) for each tab.
+    *   Developed a utility module `dashboard_utils/data_fetchers.py` for Schwab API interactions.
+        *   Implemented `get_schwab_client()` for client initialization.
+        *   Implemented `get_minute_data()` to fetch 1-minute historical data.
+    *   Integrated `get_minute_data()` into the "Minute Streaming Data" tab callback.
+    *   Implemented error handling for API calls and client initialization within the dashboard.
+    *   Added an error log display area in the dashboard UI, updated via a `dcc.Store`.
+    *   Added pagination and basic styling to DataTables.
 
 ### Current Work In Progress
 
-*   Awaiting user to test the latest script version with the refined 0DTE fetching logic using their live Schwab API credentials.
+*   Integrating data fetching for the "Technical Indicators" tab.
+*   Integrating data fetching and 5-second refresh for the "Options Chain" tab.
+*   Refining error handling and logging across all dashboard components.
 
 ### Known Issues or Challenges
 
-*   Full end-to-end streaming and data validation requires valid Schwab API credentials and user authentication via `auth_script.py`. Current sandbox testing uses dummy credentials, so API calls for data will fail after client initialization if not using live credentials.
-*   The Schwab API might have limits on the number of concurrent stream subscriptions. The script uses a `MAX_CONTRACTS_PER_STREAM_SUBSCRIPTION` setting, but this might need adjustment based on real-world usage.
-*   The `Schwab_Trader_API_Streamer_Guide.pdf` was not accessible (404 error), so implementation relies on other provided examples and general API knowledge.
+*   Full end-to-end streaming and data validation for options chain requires valid Schwab API credentials and user authentication via `auth_script.py`. Current sandbox testing uses dummy credentials for API calls if `tokens.json` is not valid, so live data fetching relies on a valid `tokens.json`.
+*   The Schwab API might have limits on the number of concurrent stream subscriptions for the options chain. This will need to be handled if the `fetch_options_chain.py` logic is directly integrated or adapted.
+*   The `Schwab_Trader_API_Streamer_Guide.pdf` was not accessible (404 error previously), so implementation relies on other provided examples and general API knowledge.
+*   Technical indicator calculation needs to be integrated with the `technical_analysis.py` script, potentially refactoring parts of it into `dashboard_utils`.
 
 ### Next Steps
 
-*   User to run the modified `fetch_options_chain.py` (with updated 0DTE logic) and share the `raw_contracts_diag.log` file and console output.
-*   Analyze the new diagnostic log to confirm if 0DTE contracts are now being fetched and correctly filtered.
-*   Address any further issues identified during user testing.
-*   Discuss further enhancements or new features for the options trading platform.
+*   Implement data fetching and display for the "Technical Indicators" tab, using `technical_analysis.py` logic.
+*   Implement data fetching and 5-second interval updates for the "Options Chain" tab, adapting logic from `fetch_options_chain.py` or using direct API calls for REST-based updates if streaming is too complex for initial Dash integration.
+*   Ensure all fields requested by the user are displayed in the respective tables.
+*   Thoroughly test all dashboard functionalities with various symbols.
+*   Iteratively push all code and documentation updates to GitHub.
+*   Validate dashboard against all user requirements.
