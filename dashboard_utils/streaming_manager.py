@@ -8,8 +8,7 @@ import logging
 from schwabdev.stream import Streamer # For StreamService enum
 
 # Configure basic logging
-logging.basicConfig(level=logging.INFO, format=\'%(asctime)s - %(threadName)s - %(levelname)s - %(message)s\
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(threadName)s - %(levelname)s - %(message)s")
 
 class StreamingManager:
     def __init__(self, schwab_client_getter, account_id_getter):
@@ -222,7 +221,7 @@ class StreamingManager:
         self.stream_thread = None
         with self._lock:
             # Status should be updated by the worker upon exit, or here if it was already stopped.
-            if self.status_message == "Stream: Stopping...": # If worker didn't update it
+            if self.status_message == "Stream: Stopping...": # If worker didn\t update it
                  self.status_message = "Idle"
         logging.info("Stream stop process complete.")
 
