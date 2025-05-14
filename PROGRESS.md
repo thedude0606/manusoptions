@@ -31,12 +31,13 @@
     *   Systematically scanned and corrected all f-string syntax errors related to quote usage and dictionary key access throughout `fetch_options_chain.py`.
     *   Ensured all print formatting uses appropriate methods (f-strings with correct quoting or `.format()`).
 *   **Debugging Contract Filtering:**
-    *   Added diagnostic printing in `get_filtered_option_contract_keys` to display raw contract data (symbol, OI, DTE) before filters are applied. This is to help diagnose why no contracts were matching the specified filters for AAPL 0DTE.
+    *   ~~Added diagnostic printing in `get_filtered_option_contract_keys` to display raw contract data (symbol, OI, DTE) before filters are applied.~~ (Superseded)
+    *   Modified `get_filtered_option_contract_keys` to write raw contract data (symbol, OI, DTE) to a log file (`raw_contracts_diag.log`) for comprehensive analysis.
 
 ### Current Work In Progress
 
-*   Awaiting user to run the script with diagnostic printing and provide output for analysis.
-*   Refining contract filtering logic based on diagnostic output.
+*   Awaiting user to run the script with diagnostic logging and provide the `raw_contracts_diag.log` file for analysis.
+*   Refining contract filtering logic based on diagnostic log output.
 
 ### Known Issues or Challenges
 
@@ -46,8 +47,8 @@
 
 ### Next Steps
 
-*   User to run the modified `fetch_options_chain.py` and share the diagnostic output.
-*   Analyze the diagnostic output to understand API data for OI and DTE.
+*   User to run the modified `fetch_options_chain.py` and share the `raw_contracts_diag.log` file.
+*   Analyze the diagnostic log to understand API data for OI and DTE.
 *   Adjust filtering logic in `get_filtered_option_contract_keys` if necessary.
 *   Test the refined filtering.
 *   Address any further issues identified during user testing.

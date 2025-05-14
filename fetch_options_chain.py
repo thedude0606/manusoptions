@@ -14,6 +14,7 @@ APP_KEY = os.getenv("APP_KEY")
 APP_SECRET = os.getenv("APP_SECRET")
 CALLBACK_URL = os.getenv("CALLBACK_URL")
 TOKENS_FILE = "tokens.json"
+DIAG_LOG_FILE = "raw_contracts_diag.log" # Log file for raw contract data
 
 # --- Application Mode --- 
 # "FETCH" for one-time options chain fetch and save to file
@@ -117,53 +118,63 @@ def stream_message_handler(message_json_str):
 def get_filtered_option_contract_keys(client, underlying_symbol):
     print(f"Fetching and filtering option contract keys for {underlying_symbol}...")
     print(f"Filters: Min Open Interest > {STREAMING_FILTER_MIN_OPEN_INTEREST-1}, DTE == {STREAMING_FILTER_DTE if STREAMING_FILTER_DTE is not None else 'Any'}")
+    print(f"Raw contract data will be logged to: {DIAG_LOG_FILE}")
     keys = []
-    raw_contracts_for_diag = [] # For diagnostic printing
+    
     try:
-        response = client.option_chains(
-            symbol=underlying_symbol, contractType="ALL", strikeCount=None,
-            includeUnderlyingQuote=False, strategy="SINGLE", range="ALL",
-            expMonth="ALL", optionType="ALL"
-        )
-        if response.ok:
-            options_data = response.json()
-            if options_data.get("status") == "SUCCESS":
-                print("--- Raw Contract Data Before Filtering ---") # Diagnostic header
-                for map_type in ["callExpDateMap", "putExpDateMap"]:
-                    if map_type in options_data:
-                        for exp_date_key, strikes_map in options_data[map_type].items():
-                            for _, contract_list in strikes_map.items():
-                                for contract in contract_list:
-                                    # Diagnostic print for each contract
-                                    diag_symbol = contract.get("symbol", "N/A")
-                                    diag_oi = contract.get("openInterest", "N/A")
-                                    diag_dte = contract.get("daysToExpiration", "N/A")
-                                    print(f"  Raw Contract: {diag_symbol}, OI: {diag_oi}, DTE: {diag_dte}")
-                                    raw_contracts_for_diag.append(contract) # Store for potential further inspection if needed
-                                    
-                                    # Apply filters
-                                    open_interest = contract.get("openInterest", 0)
-                                    days_to_expiration = contract.get("daysToExpiration")
-                                    passes_oi_filter = open_interest >= STREAMING_FILTER_MIN_OPEN_INTEREST
-                                    passes_dte_filter = True
-                                    if STREAMING_FILTER_DTE is not None:
-                                        if days_to_expiration is not None:
-                                            passes_dte_filter = (days_to_expiration == STREAMING_FILTER_DTE)
-                                        else:
-                                            passes_dte_filter = False
-                                    if passes_oi_filter and passes_dte_filter and "symbol" in contract:
-                                        keys.append(contract["symbol"])
-                print("--- End of Raw Contract Data ---") # Diagnostic footer
-                filtered_keys = list(set(keys))
-                print(f"Found {len(filtered_keys)} unique contract keys for {underlying_symbol} after filtering.")
-                if not filtered_keys:
-                    print(f"Warning: No contracts for {underlying_symbol} matched the filters.")
+        with open(DIAG_LOG_FILE, "w") as diag_file: # Open log file in write mode (overwrite)
+            diag_file.write(f"Diagnostic Log for {underlying_symbol} - {datetime.datetime.now()}\n")
+            diag_file.write("--- Raw Contract Data Before Filtering ---\n")
+            
+            response = client.option_chains(
+                symbol=underlying_symbol, contractType="ALL", strikeCount=None,
+                includeUnderlyingQuote=False, strategy="SINGLE", range="ALL",
+                expMonth="ALL", optionType="ALL"
+            )
+            if response.ok:
+                options_data = response.json()
+                if options_data.get("status") == "SUCCESS":
+                    for map_type in ["callExpDateMap", "putExpDateMap"]:
+                        if map_type in options_data:
+                            for exp_date_key, strikes_map in options_data[map_type].items():
+                                for _, contract_list in strikes_map.items():
+                                    for contract in contract_list:
+                                        diag_symbol = contract.get("symbol", "N/A")
+                                        diag_oi = contract.get("openInterest", "N/A")
+                                        diag_dte = contract.get("daysToExpiration", "N/A")
+                                        log_line = f"  Raw Contract: {diag_symbol}, OI: {diag_oi}, DTE: {diag_dte}\n"
+                                        diag_file.write(log_line) # Write to log file
+                                        # print(log_line.strip()) # Optional: also print to console
+                                        
+                                        open_interest = contract.get("openInterest", 0)
+                                        days_to_expiration = contract.get("daysToExpiration")
+                                        passes_oi_filter = open_interest >= STREAMING_FILTER_MIN_OPEN_INTEREST
+                                        passes_dte_filter = True
+                                        if STREAMING_FILTER_DTE is not None:
+                                            if days_to_expiration is not None:
+                                                passes_dte_filter = (days_to_expiration == STREAMING_FILTER_DTE)
+                                            else:
+                                                passes_dte_filter = False
+                                        if passes_oi_filter and passes_dte_filter and "symbol" in contract:
+                                            keys.append(contract["symbol"])
+                    diag_file.write("--- End of Raw Contract Data ---\n")
+                    filtered_keys = list(set(keys))
+                    print(f"Found {len(filtered_keys)} unique contract keys for {underlying_symbol} after filtering.")
+                    if not filtered_keys:
+                        print(f"Warning: No contracts for {underlying_symbol} matched the filters.")
+                else:
+                    error_msg = f"API Error (Option Chain for {underlying_symbol}): Status not SUCCESS - {options_data.get('status')}\n"
+                    print(error_msg.strip())
+                    diag_file.write(error_msg)
             else:
-                print(f"API Error (Option Chain for {underlying_symbol}): Status not SUCCESS - {options_data.get('status')}")
-        else:
-            print(f"HTTP Error (Option Chain for {underlying_symbol}): {response.status_code} - {response.text}")
+                error_msg = f"HTTP Error (Option Chain for {underlying_symbol}): {response.status_code} - {response.text}\n"
+                print(error_msg.strip())
+                diag_file.write(error_msg)
     except Exception as e:
-        print(f"Exception while fetching/filtering option keys for {underlying_symbol}: {e}")
+        error_msg = f"Exception while fetching/filtering option keys for {underlying_symbol}: {e}\n"
+        print(error_msg.strip())
+        if 'diag_file' in locals() and not diag_file.closed:
+             diag_file.write(error_msg)
         import traceback
         traceback.print_exc()
     return list(set(keys))

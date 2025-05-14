@@ -34,9 +34,10 @@
 
 ### Debugging Contract Filtering (Current Focus)
 
-- [x] Add diagnostic printing to `get_filtered_option_contract_keys` in `fetch_options_chain.py` to show raw contract data (symbol, OI, DTE) before filters are applied.
-- [ ] User to run the modified `fetch_options_chain.py` and provide the diagnostic output showing raw contract data.
-- [ ] Analyze the diagnostic output to understand how the API reports OI and DTE for the specified symbols (e.g., AAPL 0DTE).
+- [x] ~~Add diagnostic printing to `get_filtered_option_contract_keys` in `fetch_options_chain.py` to show raw contract data (symbol, OI, DTE) before filters are applied.~~ (Superseded by log file)
+- [x] Modify `get_filtered_option_contract_keys` to write raw contract data (symbol, OI, DTE) to a log file (`raw_contracts_diag.log`) for comprehensive analysis.
+- [ ] User to run the modified `fetch_options_chain.py` and provide the `raw_contracts_diag.log` file.
+- [ ] Analyze the diagnostic log to understand how the API reports OI and DTE for the specified symbols (e.g., AAPL 0DTE).
 - [ ] Refine the contract filtering logic in `get_filtered_option_contract_keys` based on the analysis of the diagnostic output, if necessary.
 - [ ] Test the refined filtering to ensure it correctly identifies contracts based on user criteria (0DTE, OI > 0).
 
