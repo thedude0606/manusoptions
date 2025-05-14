@@ -70,6 +70,7 @@
         *   Unexpected characters after line continuations in `logging.basicConfig` format strings.
         *   Improper backslash escaping within f-strings (e.g., in `strftime` calls or API error messages).
     *   Corrected `ImportError` in `dashboard_utils/streaming_manager.py` by changing `from schwabdev.stream import Streamer` to `from schwabdev import SchwabStreamer` and updating usage to `SchwabStreamer.StreamService.LEVELONE_OPTIONS`.
+    *   Further corrected `ImportError` in `dashboard_utils/streaming_manager.py` by removing the direct import of `SchwabStreamer` and accessing `StreamService` via the streamer instance (`self.streamer_instance.StreamService.LEVELONE_OPTIONS`).
 
 ### Current Work in Progress
 

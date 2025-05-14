@@ -5,7 +5,7 @@ import time
 import logging
 # Assuming schwabdev.Client is the main client, and it has a .streamer() method
 # from schwabdev import Client # This would be in the main app
-from schwabdev import SchwabStreamer # Corrected import for StreamService enum
+# Removed: from schwabdev import SchwabStreamer # Corrected import for StreamService enum
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(threadName)s - %(levelname)s - %(message)s")
@@ -19,7 +19,7 @@ class StreamingManager:
         """
         self.schwab_client_getter = schwab_client_getter
         self.account_id_getter = account_id_getter # May not be used if client.streamer() handles it
-        self.streamer = None # This will be the schwabdev.client.StreamerWrapper instance
+        self.streamer_instance = None # This will be the schwabdev.client.StreamerWrapper instance. Renamed from self.streamer to avoid confusion with the class attribute if any.
         self.is_running = False
         self.stream_thread = None
         self.current_subscriptions = set() # Set of contract keys currently subscribed to
@@ -58,7 +58,7 @@ class StreamingManager:
             return
 
         try:
-            self.streamer = schwab_client.streamer() # Get the streamer instance
+            self.streamer_instance = schwab_client.streamer() # Get the streamer instance
             
             if not option_keys_to_subscribe:
                 logging.info("Stream worker: No symbols to subscribe.")
@@ -78,14 +78,14 @@ class StreamingManager:
 
             # The streamer.start() method is blocking and handles its own loop for messages.
             # It will call self._handle_stream_message for each message.
-            self.streamer.start(
+            self.streamer_instance.start(
                 handler=self._handle_stream_message, 
-                service=SchwabStreamer.StreamService.LEVELONE_OPTIONS, # Corrected usage
+                service=self.streamer_instance.StreamService.LEVELONE_OPTIONS, # Access StreamService via the instance
                 symbols=keys_string, 
                 fields=fields_to_request
             )
-            # If streamer.start() returns, it means the stream was stopped or an unhandled error occurred.
-            logging.info("Stream worker: streamer.start() returned. Stream has ended.")
+            # If streamer_instance.start() returns, it means the stream was stopped or an unhandled error occurred.
+            logging.info("Stream worker: streamer_instance.start() returned. Stream has ended.")
 
         except Exception as e:
             logging.error(f"Error in stream worker: {e}", exc_info=True)
@@ -98,7 +98,7 @@ class StreamingManager:
                 if not self.error_message: # If no specific error, set to stopped
                     self.status_message = "Stream: Stopped."
                 # else status_message will retain the error that caused the stop
-            self.streamer = None # Clear streamer instance
+            self.streamer_instance = None # Clear streamer instance
             logging.info("Stream worker finished.")
 
     def _handle_stream_message(self, message_list):
@@ -189,13 +189,13 @@ class StreamingManager:
 
     def _internal_stop_stream(self):
         """Internal method to stop the stream, called with lock already acquired or from within manager."""
-        if self.streamer and hasattr(self.streamer, "stop"):
+        if self.streamer_instance and hasattr(self.streamer_instance, "stop"):
             try:
-                logging.info("Calling streamer.stop()...")
-                self.streamer.stop() # This should make streamer.start() return in the worker thread
+                logging.info("Calling streamer_instance.stop()...")
+                self.streamer_instance.stop() # This should make streamer_instance.start() return in the worker thread
             except Exception as e:
-                logging.error(f"Exception during streamer.stop(): {e}", exc_info=True)
-        self.is_running = False # Signal to worker, though streamer.stop() is primary
+                logging.error(f"Exception during streamer_instance.stop(): {e}", exc_info=True)
+        self.is_running = False # Signal to worker, though streamer_instance.stop() is primary
         # Worker thread will handle its own cleanup and status update on exit
 
     def stop_stream(self):
