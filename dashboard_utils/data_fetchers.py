@@ -12,7 +12,7 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)),
 TOKENS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "tokens.json")
 
 # Configure basic logging for this module if not already configured by app
-# logging.basicConfig(level=logging.INFO, format=\'%(asctime)s - %(levelname)s - %(message)s\')
+# logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def get_schwab_client():
     """Helper to initialize and return a Schwab client if tokens exist."""
@@ -107,7 +107,7 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
 
         options_data = response.json()
         if options_data.get("status") == "FAILED":
-             return pd.DataFrame(), pd.DataFrame(), f"Failed to fetch options chain for {symbol}: {options_data.get(\'error\', \'Unknown API error\')}"
+             return pd.DataFrame(), pd.DataFrame(), f"Failed to fetch options chain for {symbol}: {options_data.get('error', 'Unknown API error')}"
 
         calls_list = []
         puts_list = []
@@ -138,17 +138,6 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
         
         calls_df = pd.DataFrame(calls_list)
         puts_df = pd.DataFrame(puts_list)
-
-        for df_ref in [calls_df, puts_df]:
-            if not df_ref.empty:
-                for col in columns:
-                    if col not in df_ref.columns:
-                        df_ref[col] = None
-                # Ensure correct column order, even if df was initially empty and columns added
-                # This line has an issue, df_ref is a reference, reassigning it won't modify the original calls_df/puts_df
-                # Instead, modify in place or reassign to original names
-            # else: # If df is empty, create it with the correct columns
-            #    df_ref = pd.DataFrame(columns=columns) # This also won't modify original if df_ref is just a copy
 
         # Correctly ensure columns and order for calls_df
         if not calls_df.empty:
@@ -193,7 +182,7 @@ def get_option_contract_keys(client: schwabdev.Client, symbol: str):
 
         options_data = response.json()
         if options_data.get("status") == "FAILED":
-            return set(), f"Failed to fetch option chains for keys: {options_data.get(\'error\', \'Unknown API error\')}"
+            return set(), f"Failed to fetch option chains for keys: {options_data.get('error', 'Unknown API error')}"
 
         for exp_date_map_type in ["callExpDateMap", "putExpDateMap"]:
             if exp_date_map_type in options_data and options_data[exp_date_map_type]:

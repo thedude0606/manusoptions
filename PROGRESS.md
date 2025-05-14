@@ -67,11 +67,11 @@
     *   **Robustness & Testing:** Refined `StreamingManager` for better error handling, thread management (using `schwabdev.client.StreamerWrapper`), and message parsing. Tested stream start/stop, data updates, and error conditions.
 *   **Dashboard Syntax Fixes:**
     *   Corrected a `SyntaxError` in `dashboard_app.py` related to an unexpected character after a line continuation in the `logging.basicConfig` format string.
-    *   Corrected `SyntaxError`s in `dashboard_app.py` related to improper backslash escaping within f-strings (e.g., in `strftime` calls).
+    *   Corrected `SyntaxError`s in `dashboard_app.py` and `dashboard_utils/data_fetchers.py` related to improper backslash escaping within f-strings (e.g., in `strftime` calls or API error messages).
 
 ### Current Work in Progress
 
-*   Awaiting user validation after syntax fixes for `dashboard_app.py`.
+*   Awaiting user validation after syntax fixes for `dashboard_app.py` and `dashboard_utils/data_fetchers.py`.
 
 ### Known Issues or Challenges
 
