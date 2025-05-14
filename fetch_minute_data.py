@@ -64,7 +64,7 @@ def main():
             if price_data.get("candles"):
                 print(f"Number of candles received: {len(price_data['candles'])}")
                 # Save to a file for inspection
-                output_filename = f"/home/ubuntu/manusoptions/{SYMBOL}_minute_data_last_90_days.json"
+                output_filename = f"{SYMBOL}_minute_data_last_90_days.json"
                 with open(output_filename, "w") as f:
                     json.dump(price_data, f, indent=2)
                 print(f"Data saved to {output_filename}")
