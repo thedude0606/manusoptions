@@ -10,72 +10,99 @@ load_dotenv()
 APP_KEY = os.getenv("APP_KEY")
 APP_SECRET = os.getenv("APP_SECRET")
 CALLBACK_URL = os.getenv("CALLBACK_URL")
-TOKENS_FILE = "tokens.json"  # Relative path for local execution
+TOKENS_FILE = "tokens.json"  # Assumes tokens.json is in the same directory
 
-# Placeholder for symbol, user can modify this
+# --- Symbol to fetch --- (User can change this)
 SYMBOL = "AAPL"
-OUTPUT_FILE = f"{SYMBOL}_options_chain.json" # Relative path for output
+# --- Options Chain Parameters --- (User can adjust these as needed)
+CONTRACT_TYPE = "ALL"  # "ALL", "CALL", "PUT"
+STRIKE_COUNT = None  # Number of strikes around the at-the-money price
+INCLUDE_UNDERLYING_QUOTE = True
+STRATEGY = "SINGLE"  # e.g., SINGLE, STRADDLE, etc.
+RANGE = "ALL" # e.g., ITM, NTM, OTM, ALL
+# Dates can be datetime objects or strings like "YYYY-MM-DD"
+# By default, fetches for the nearest available expiration dates if fromDate/toDate are None
+FROM_DATE = None 
+TO_DATE = None 
+EXP_MONTH = "ALL" # e.g., JAN, FEB, ALL
+OPTION_TYPE = "ALL" # e.g., S, NS, ALL
+
 
 def main():
     print(f"Attempting to fetch options chain data for {SYMBOL}")
 
-    if not os.path.exists(TOKENS_FILE):
-        print(f"Error: Tokens file 	{TOKENS_FILE} not found. Please run the authentication script first.")
+    if not all([APP_KEY, APP_SECRET, CALLBACK_URL]):
+        print("Error: APP_KEY, APP_SECRET, or CALLBACK_URL not found in .env file.")
         return
 
-    try:
-        client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file=TOKENS_FILE, capture_callback=False)
+    client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file=TOKENS_FILE, capture_callback=False)
 
-        if not (client.tokens and client.tokens.access_token):
-            print("Error: No valid access token found in tokens file. Please re-authenticate.")
+    if not os.path.exists(TOKENS_FILE):
+        print(f"Error: {TOKENS_FILE} not found. Please run auth_script.py first.")
+        return
+    
+    if not client.token_manager.tokens_valid():
+        print("Tokens are invalid or expired. Attempting to refresh...")
+        try:
+            client.token_manager.refresh_tokens()
+            if client.token_manager.tokens_valid():
+                print("Tokens refreshed successfully.")
+            else:
+                print("Failed to refresh tokens. Please re-authenticate using auth_script.py.")
+                return
+        except Exception as e:
+            print(f"Error refreshing tokens: {e}. Please re-authenticate using auth_script.py.")
             return
-        print("Client initialized and token appears to be loaded.")
 
-        print(f"Fetching options chain for {SYMBOL} using instruments endpoint...")
-        # The `instruments` endpoint with projection="optionchain" should provide options data.
-        # The Schwab API itself for options chains might take other parameters like contractType, strikeCount, etc.
-        # The schwabdev library might pass these through or have specific ways to handle them.
-        # For now, this is the most direct way to get the option chain via the instruments endpoint based on typical API structures.
-        response = client.instruments(symbol=SYMBOL, projection="optionchain")
+    print("Client initialized and token appears to be loaded and valid.")
+    print(f"Fetching options chain for {SYMBOL} using client.option_chains()...")
+
+    try:
+        response = client.option_chains(
+            symbol=SYMBOL,
+            contractType=CONTRACT_TYPE,
+            strikeCount=STRIKE_COUNT,
+            includeUnderlyingQuote=INCLUDE_UNDERLYING_QUOTE,
+            strategy=STRATEGY,
+            range=RANGE,
+            fromDate=FROM_DATE,
+            toDate=TO_DATE,
+            expMonth=EXP_MONTH,
+            optionType=OPTION_TYPE
+        )
 
         if response.ok:
             options_data = response.json()
-            print(f"Successfully fetched options chain data for {SYMBOL}.")
+            output_filename = f"{SYMBOL}_options_chain.json"
+            with open(output_filename, "w") as f:
+                json.dump(options_data, f, indent=4)
+            print(f"Options chain data successfully fetched and saved to {output_filename}")
             
-            with open(OUTPUT_FILE, "w") as f:
-                json.dump(options_data, f, indent=2)
-            print(f"Options chain data saved to {OUTPUT_FILE}")
-
-            # The structure of the options_data from client.instruments might be different
-            # from a dedicated options chain endpoint. We need to inspect it.
-            # Common structures involve a map of expiration dates to strikes.
-            # Example check (actual keys might vary based on schwabdev library's parsing of the response):
-            if options_data.get(SYMBOL) and isinstance(options_data[SYMBOL], list) and options_data[SYMBOL][0].get("optionChain"):
-                print("Option chain data seems to be present in the expected structure.")
-                # Further parsing would go here based on actual response structure
-            elif options_data.get("callExpDateMap") or options_data.get("putExpDateMap"):
-                 print("Options data retrieved with call/put expiration date maps.")
+            # Optional: Print some basic info from the response
+            if options_data.get('status') == "SUCCESS":
+                print(f"Symbol: {options_data.get('symbol')}")
+                print(f"Underlying Price: {options_data.get('underlyingPrice')}")
+                print(f"Number of Contracts: {options_data.get('numberOfContracts')}")
+                if options_data.get('callExpDateMap'):
+                    print(f"Number of call expiration dates: {len(options_data['callExpDateMap'])}")
+                if options_data.get('putExpDateMap'):
+                    print(f"Number of put expiration dates: {len(options_data['putExpDateMap'])}")
             else:
-                print("Options data retrieved, but the structure needs inspection. Full response:")
-                # print(json.dumps(options_data, indent=2)) # Potentially very large output
-                if len(json.dumps(options_data)) < 2000: # Print only if reasonably small
-                    print(json.dumps(options_data, indent=2))
-                else:
-                    print("Response is large, not printing to console. Check the output file.")
+                print(f"API call successful but status is not SUCCESS: {options_data.get('status')}")
 
         else:
-            print(f"Error fetching options chain data: {response.status_code}")
-            print(f"Response: {response.text}")
-            error_output_file = f"{SYMBOL}_options_chain_error.json"
-            with open(error_output_file, "w") as f:
-                f.write(response.text)
-            print(f"Error response saved to {error_output_file}")
+            error_message = f"Error fetching options chain data: {response.status_code}"
+            try:
+                error_details = response.json()
+                error_message += f"\nResponse: {json.dumps(error_details)}"
+                output_filename = f"{SYMBOL}_options_chain_error.json"
+                with open(output_filename, "w") as f:
+                    json.dump(error_details, f, indent=4)
+                print(f"Error response saved to {output_filename}")
+            except json.JSONDecodeError:
+                error_message += f"\nResponse: {response.text}"
+            print(error_message)
 
-    except AttributeError as ae:
-        print(f"An AttributeError occurred: {ae}")
-        print("This might indicate that the method or attribute is not available in the schwabdev library version you are using, or the client object was not initialized correctly.")
-        import traceback
-        traceback.print_exc()
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
         import traceback
