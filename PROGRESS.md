@@ -65,14 +65,15 @@
         *   Ensured UI updates for options tables are driven by data from `StreamingManager` via a `dcc.Interval`.
     *   **Stream Status & Error UI:** Implemented a display area in the Options Chain tab to show real-time stream status (e.g., Idle, Connecting, Streaming, Error) and any errors from `StreamingManager`.
     *   **Robustness & Testing:** Refined `StreamingManager` for better error handling, thread management (using `schwabdev.client.StreamerWrapper`), and message parsing. Tested stream start/stop, data updates, and error conditions.
-*   **Dashboard Syntax Fixes (Iterative):**
+*   **Dashboard Syntax & Import Fixes (Iterative):**
     *   Corrected `SyntaxError`s in `dashboard_app.py`, `dashboard_utils/data_fetchers.py`, and `dashboard_utils/streaming_manager.py` related to:
         *   Unexpected characters after line continuations in `logging.basicConfig` format strings.
         *   Improper backslash escaping within f-strings (e.g., in `strftime` calls or API error messages).
+    *   Corrected `ImportError` in `dashboard_utils/streaming_manager.py` by changing `from schwabdev.stream import Streamer` to `from schwabdev import SchwabStreamer` and updating usage to `SchwabStreamer.StreamService.LEVELONE_OPTIONS`.
 
 ### Current Work in Progress
 
-*   Awaiting user validation after comprehensive syntax fixes across `dashboard_app.py`, `dashboard_utils/data_fetchers.py`, and `dashboard_utils/streaming_manager.py`.
+*   Awaiting user validation after comprehensive syntax and import fixes across `dashboard_app.py`, `dashboard_utils/data_fetchers.py`, and `dashboard_utils/streaming_manager.py`.
 
 ### Known Issues or Challenges
 

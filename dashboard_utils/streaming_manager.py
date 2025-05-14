@@ -5,7 +5,7 @@ import time
 import logging
 # Assuming schwabdev.Client is the main client, and it has a .streamer() method
 # from schwabdev import Client # This would be in the main app
-from schwabdev.stream import Streamer # For StreamService enum
+from schwabdev import SchwabStreamer # Corrected import for StreamService enum
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(threadName)s - %(levelname)s - %(message)s")
@@ -80,7 +80,7 @@ class StreamingManager:
             # It will call self._handle_stream_message for each message.
             self.streamer.start(
                 handler=self._handle_stream_message, 
-                service=Streamer.StreamService.LEVELONE_OPTIONS, 
+                service=SchwabStreamer.StreamService.LEVELONE_OPTIONS, # Corrected usage
                 symbols=keys_string, 
                 fields=fields_to_request
             )
