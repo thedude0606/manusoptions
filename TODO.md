@@ -1,26 +1,18 @@
-# TODO.md
+## TODO List
 
-## Prioritized Tasks
+### Setup and Initial Debugging
 
-- [x] Review Schwab API documentation (https://tylerebowers.github.io/Schwabdev/)
-- [x] Review Schwab API example project (https://github.com/tylerebowers/Schwabdev)
-- [x] Implement Schwab API authentication flow
-- [ ] Request callback URL from user
-- [✓] Fetch minute-by-minute data (90 days)
-- [✓] Aggregate minute data to hourly (90 days)
-- [✓] Aggregate minute data to daily (90 days)
-- [✓] Implement Fair Value Gap analysis (1 min, 15 min, 1 hour, daily)
-- [✓] Implement MACD analysis (1 min, 15 min, 1 hour, daily)
-- [✓] Implement RSI analysis (1 min, 15 min, 1 hour, daily)
-- [✓] Implement Candle Pattern recognition (bullish/bearish signals) (1 min, 15 min, 1 hour, daily)
-- [x] Implement Options chain data retrieval (calls and puts, 5-second updates)s
+- [x] Clone GitHub repository (`https://github.com/thedude0606/manusoptions`)
+- [x] Analyze `fetch_options_chain.py` for `AttributeError`
+- [x] Review `auth_script.py` and `schwabdev` library usage for token management
+- [x] Create `PROGRESS.md` and populate initial content
+- [ ] Create `TODO.md` and populate initial tasks (this task)
+- [ ] Create `DECISIONS.md` and populate initial decisions/observations
+- [ ] Modify `fetch_options_chain.py` to fix `AttributeError` by using `client.tokens` (or equivalent `schwabdev` methods) for token validation and refresh.
+- [ ] Test the corrected `fetch_options_chain.py` (initially for `AttributeError` resolution).
+- [ ] Push all code changes and tracking files (PROGRESS.md, TODO.md, DECISIONS.md) to the GitHub repository.
+- [ ] Request callback URL from the user for full testing with real data (once the script is structurally sound).
 
-- API authentication is a prerequisite for data fetching.
-- Minute data fetching is a prerequisite for aggregation and most technical analysis.
+### Future Enhancements (Placeholder)
 
-## Status Indicators
-
-- [ ] Not Started
-- [x] In Progress
-- [✓] Completed
-
+- [ ] Implement further enhancements based on user requests.
