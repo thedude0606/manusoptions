@@ -65,11 +65,12 @@
         *   Ensured UI updates for options tables are driven by data from `StreamingManager` via a `dcc.Interval`.
     *   **Stream Status & Error UI:** Implemented a display area in the Options Chain tab to show real-time stream status (e.g., Idle, Connecting, Streaming, Error) and any errors from `StreamingManager`.
     *   **Robustness & Testing:** Refined `StreamingManager` for better error handling, thread management (using `schwabdev.client.StreamerWrapper`), and message parsing. Tested stream start/stop, data updates, and error conditions.
+*   **Dashboard Syntax Fix (Logging):**
+    *   Corrected a `SyntaxError` in `dashboard_app.py` related to an unexpected character after a line continuation in the `logging.basicConfig` format string.
 
 ### Current Work in Progress
 
-*   Finalizing documentation updates for the WebSocket streaming implementation.
-*   Preparing for user validation of the streaming options chain.
+*   Awaiting user validation after syntax fix for `dashboard_app.py`.
 
 ### Known Issues or Challenges
 

@@ -13,7 +13,7 @@ from dashboard_utils.data_fetchers import get_schwab_client, get_minute_data, ge
 from dashboard_utils.streaming_manager import StreamingManager
 
 # Configure basic logging for the app
-logging.basicConfig(level=logging.INFO, format=\'%(asctime)s - %(levelname)s - %(message)s\')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Initialize the Dash app
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
