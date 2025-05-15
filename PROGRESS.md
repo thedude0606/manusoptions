@@ -504,3 +504,19 @@ This suggests a potential environment limitation or a very specific issue with h
 - Verify if the data merging and dashboard formatting changes have resolved the "N/A" and "YYYY-MM-DD" display issues.
 - Address any remaining issues based on user feedback and log analysis.
 
+
+
+
+## Dash v2+ Compatibility Fix (May 15, 2025)
+
+**Completed Tasks:**
+
+- Updated `dashboard_app.py` to replace the deprecated `app.run_server(...)` with `app.run(...)` in the main execution block.
+  - **Rationale:** The user encountered an `ObsoleteAttributeException` indicating that `app.run_server` is no longer used in recent versions of the Dash library. This change ensures compatibility with Dash v2.0 and later.
+
+**Current Focus & Next Steps:**
+
+- Request user to test the application with this latest change to confirm it launches without the `ObsoleteAttributeException`.
+- Verify if the options chain data is now displayed correctly with the previous data merging and formatting fixes.
+- Continue to investigate the persistent "Subscription ADD failed for LEVELONE_OPTIONS" error if it still occurs, by requesting full terminal logs from the user, including the initial subscription payload.
+

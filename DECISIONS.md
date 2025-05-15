@@ -285,3 +285,10 @@ This addition is crucial for providing user control over the streaming process, 
     2.  **Fallback to Key Parsing:** If dedicated fields are missing or result in an invalid format (e.g., "N/A"), the code falls back to parsing these details directly from the option contract key string (e.g., `MSFT  250530C00435000`) using a regular expression (`OPTION_KEY_REGEX`). This provides a more reliable way to extract the date, strike (adjusting for the 1000x factor), and call/put identifier.
     3.  **Improved Logging:** Added logging to trace how these fields are derived for easier debugging of display issues.
   - This dual approach (dedicated fields first, then key parsing as fallback) aims to maximize the chances of correctly displaying the essential option contract details.
+
+
+
+## Dash v2+ Compatibility (May 15, 2025)
+
+- **Decision:** Update the main execution block in `dashboard_app.py` to use `app.run(...)` instead of the deprecated `app.run_server(...)`.
+  - **Rationale:** The user encountered an `ObsoleteAttributeException` after updating Dash or its dependencies, as `app.run_server` has been replaced by `app.run` in Dash v2.0 and later. This change is necessary for the application to launch correctly with current versions of the Dash library.
