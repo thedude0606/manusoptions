@@ -154,3 +154,21 @@ These changes are crucial for the stability and correctness of the streaming fun
     - A Python syntax check (`python3.11 -m py_compile dashboard_utils/streaming_manager.py`) was performed on the modified file, which passed, confirming the `SyntaxError` was resolved.
 
 This decision to use the user-provided content as a workaround allowed progress despite an environmental limitation. The subsequent scripted fix ensured the `SyntaxError` was correctly addressed.
+
+
+
+## Addition of `get_status()` Method to StreamingManager (May 15, 2025 - Late Evening)
+
+- **Decision:** Implement a `get_status()` method in the `StreamingManager` class (`dashboard_utils/streaming_manager.py`).
+  - **Rationale:**
+    - The `dashboard_app.py` file, specifically in the `update_options_chain_stream_data` callback (around line 296), attempts to call `STREAMING_MANAGER.get_status()` to retrieve the current stream status and any error messages for display in the UI.
+    - This call was failing with an `AttributeError: 'StreamingManager' object has no attribute 'get_status'` because the method did not exist.
+    - To resolve this error and enable the UI to display stream status, the `get_status()` method was added.
+  - **Implementation Details:**
+    - The `get_status(self)` method was added to the `StreamingManager` class.
+    - It accesses `self.status_message` and `self.error_message` to retrieve the current status and error information.
+    - A `threading.Lock` (`self._lock`) is used when accessing these attributes to ensure thread safety, as they can be modified by the streaming worker thread and accessed by the Dash app's callback thread.
+    - The method returns a tuple: `(status_message, error_message)`.
+    - Debug logging was added to the method to trace its calls and return values.
+
+This addition is essential for the `dashboard_app.py` to correctly report the streaming status and any errors to the user via the web interface.

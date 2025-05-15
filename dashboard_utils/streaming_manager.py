@@ -284,3 +284,15 @@ class StreamingManager:
             self.is_running = True
             self.error_message = None
             self.status_message = "Stream: Starting..."
+
+
+    def get_status(self):
+        """Returns the current status message and error message of the stream."""
+        with self._lock:
+            # Create copies to avoid returning direct references to internal mutable state if they were complex objects
+            # For strings, this is less critical but good practice for consistency.
+            status = self.status_message
+            error = self.error_message
+        logger.debug(f"get_status() called. Returning status: 	'{status}	', error: 	'{error}	'")
+        return status, error
+

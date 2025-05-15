@@ -299,3 +299,29 @@ This suggests a potential environment limitation or a very specific issue with h
 
 - A `requirements.txt` file is still needed for the project.
 - The root cause of the initial file read truncation issue within the environment remains, but is now bypassed for this specific file.
+
+
+
+## AttributeError Fix: Added `get_status()` to StreamingManager (May 15, 2025 - Late Evening)
+
+**Issue:**
+
+- User reported an `AttributeError: 'StreamingManager' object has no attribute 'get_status'` originating from `dashboard_app.py` (line 296) where `STREAMING_MANAGER.get_status()` was being called.
+
+**Solution Implemented:**
+
+- A new method `get_status(self)` was added to the `StreamingManager` class in `dashboard_utils/streaming_manager.py`.
+- This method returns a tuple `(status_message, error_message)` by accessing `self.status_message` and `self.error_message` within a thread lock (`self._lock`) to ensure thread safety.
+- Added debug logging within the `get_status` method.
+- The modified `streaming_manager.py` file passed syntax checks.
+
+**Updated Completed Tasks:**
+
+- Addressed `AttributeError: 'StreamingManager' object has no attribute 'get_status'` by implementing the `get_status` method in `StreamingManager`.
+- Verified syntax of the updated `streaming_manager.py`.
+
+**Next Steps:**
+
+- Update `TODO.md` and `DECISIONS.md`.
+- Push the fix and updated documentation to GitHub.
+- Notify the user of the fix.
