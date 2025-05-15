@@ -4,23 +4,28 @@ This document records key architectural choices, technology selections, design p
 
 ## Initial Setup and Error Resolution
 
-- **Decision (2025-05-14):** Address the `ModuleNotFoundError: No module named 'schwabdev.streamer_client'` as the first priority.
+- **Decision (2025-05-14):** Address the `ModuleNotFoundError: No module named \'schwabdev.streamer_client\'` as the first priority.
   - **Rationale:** This error prevents the application from running, blocking further development and testing.
 - **Decision (2025-05-14):** Clone the GitHub repository `https://github.com/thedude0606/manusoptions` to the local sandbox environment for development.
   - **Rationale:** Direct access to the codebase is necessary for debugging and implementing changes.
 - **Decision (2025-05-14):** Create and maintain `TODO.md`, `PROGRESS.md`, and `DECISIONS.md` files as requested by the user.
   - **Rationale:** To provide clear tracking of tasks, progress, and key decisions, facilitating collaboration and project management.
 
+## Schwabdev Streaming API and Configuration Update (2025-05-15)
 
+- **Decision:** Refactor `dashboard_utils/streaming_manager.py` to use the `client.stream` attribute for accessing Schwab\'s streaming services and adopt service-specific subscription methods. Additionally, establish the use of a `.env` file for managing sensitive configurations like `SCHWAB_ACCOUNT_HASH`.
+  - **Rationale for `client.stream`:** During the initial investigation of a `ModuleNotFoundError` for `schwabdev.streamer_client`, it was discovered through the official `schwabdev` library documentation (specifically, `https://tylerebowers.github.io/Schwabdev/` and its linked pages) that the `StreamerClient` class and the `schwabdev.streamer_client` module are deprecated. The current, recommended approach is to obtain a stream object via the `stream` attribute of an authenticated `schwabdev.Client` instance (i.e., `schwab_api_client.stream`). This change was critical to resolve the initial import error.
 
-## Schwabdev Streaming API Update (2025-05-14)
+  - **Rationale for Service-Specific Subscriptions (Removal of `StreamService`):** A subsequent `ImportError: cannot import name \'StreamService\' from \'schwabdev.stream\'` indicated that the `StreamService` enum, previously assumed to be available for specifying service types (e.g., `LEVELONE_OPTIONS`) in the `stream_client.start()` method, is not part of the current `schwabdev` API as expected. Further review of the `schwabdev` library\'s `stream.py` source code and common usage patterns for similar libraries revealed that subscriptions are typically managed by calling dedicated methods on the stream object for each service type. Consequently, the `StreamingManager` was updated to:
+    1. Remove any attempted imports of `StreamService`.
+    2. Utilize service-specific subscription methods, such as `self.stream_client.add_levelone_option_subscription(keys=keys_list, fields=fields_to_request_list)`, to register interest in particular data streams (e.g., Level One options data). The service name (like "LEVELONE_OPTIONS") is handled internally by these dedicated methods within the `schwabdev` library.
+    3. Modify the `self.stream_client.start()` method call to only include the `handler` (e.g., `handler=self._handle_stream_message`). Parameters like `service`, `symbols`, `fields`, and `account_id` are no longer passed directly to `start()`, as these are now managed through the specific subscription calls and the client\'s existing authentication context.
 
-- **Decision:** Refactor `dashboard_utils/streaming_manager.py` to use the `client.stream` attribute for accessing Schwab's streaming services, replacing the previous implementation that relied on `from schwabdev.streamer_client import StreamerClient`.
-  - **Rationale:** During the initial investigation of a `ModuleNotFoundError` for `schwabdev.streamer_client`, it was discovered through the official `schwabdev` library documentation (specifically, the information available at `https://tylerebowers.github.io/Schwabdev/` and its linked pages like `https://tylerebowers.github.io/Schwabdev/?source=pages%2Fstream.html`) that the `StreamerClient` class and the `schwabdev.streamer_client` module are no longer the standard way to interact with the streaming API. The library has been updated, and the current, recommended approach is to obtain a stream object via the `stream` attribute of an authenticated `schwabdev.Client` instance (i.e., `schwab_api_client.stream`).
-  This change was critical because the old import path directly caused the application to fail at startup. The refactor involved modifying the `StreamingManager` class to:
-    1. Remove the outdated import: `from schwabdev.streamer_client import StreamerClient`.
-    2. Import the main `schwabdev` library: `import schwabdev`.
-    3. Obtain the stream handling object using `self.stream_client = schwab_api_client.stream` within the `_stream_worker` method, where `schwab_api_client` is an instance of `schwabdev.Client`.
-    4. Update the import for `StreamService` to `from schwabdev.stream import StreamService` as this enum is now directly available from the `schwabdev.stream` module.
-    5. Ensure that the `account_id` (account hash) is passed to the `self.stream_client.start()` method, as this was previously a parameter for the `StreamerClient` constructor and is necessary for the stream to function correctly for a specific account.
-  This architectural adjustment ensures compatibility with the latest version of the `schwabdev` library, resolves the critical import error, and allows the application to correctly initialize and manage streaming data from the Schwab API. Adherence to the library's current API is essential for long-term maintainability and access to future updates or bug fixes in the `schwabdev` package.
+  - **Rationale for `.env` Configuration and `SCHWAB_ACCOUNT_HASH` Handling:** The runtime error `Streaming: SCHWAB_ACCOUNT_HASH not set in .env` highlighted the need for a clear and secure way to manage essential configuration variables. The `dashboard_app.py` relies on `os.getenv("SCHWAB_ACCOUNT_HASH")`.
+    1. It was decided to recommend and implement the use of a `.env` file in the project root to store `SCHWAB_ACCOUNT_HASH`.
+    2. The `python-dotenv` library is used to load these variables.
+    3. **Crucially, further investigation (prompted by user feedback and review of `schwabdev` documentation, including `examples/stream_demo.py`) revealed that `SCHWAB_ACCOUNT_HASH` is NOT strictly required for general market data streaming (e.g., `LEVELONE_OPTIONS`) within the `schwabdev` library. It is primarily necessary for account-specific streams like `ACCT_ACTIVITY`.**
+    4. **Decision Update (2025-05-15):** Modify `dashboard_utils/streaming_manager.py` and `dashboard_app.py` to make `SCHWAB_ACCOUNT_HASH` optional for market data streams. The `streaming_manager` will now log its presence if found but will not fail or prevent streaming if it is absent when subscribing to market data like `LEVELONE_OPTIONS`. `dashboard_app.py` will no longer treat a missing `SCHWAB_ACCOUNT_HASH` as a blocking error at startup if the primary use is market data streaming. This aligns with `schwabdev` library behavior and prevents unnecessary errors for users who only need market data.
+
+  These architectural adjustments ensure compatibility with the latest version of the `schwabdev` library, resolve critical runtime errors, allow the application to correctly initialize and manage streaming data, and promote better configuration management practices. Adherence to the library\'s current API and standard configuration patterns is essential for long-term maintainability and security.
+
