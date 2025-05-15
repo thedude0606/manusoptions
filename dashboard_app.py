@@ -146,7 +146,7 @@ def update_selected_symbol(selected_symbol):
 )
 def update_tab_headers(selected_symbol):
     if selected_symbol:
-        minute_header = f"Minute Data for {selected_symbol}"
+        minute_header = f"Minute Data for {selected_symbol} (up to 90 days)"
         tech_header = f"Technical Indicators for {selected_symbol}"
         options_header = f"Options Chain for {selected_symbol} (Streaming)"
         return minute_header, tech_header, options_header
@@ -187,7 +187,8 @@ def update_minute_data_tab(selected_symbol, current_errors):
             return [], [], new_errors[:10]
         SCHWAB_CLIENT = client_to_use
 
-    df, error = get_minute_data(client_to_use, selected_symbol)
+    # Fetch up to 90 days of minute data
+    df, error = get_minute_data(client_to_use, selected_symbol, days_history=90)
 
     if error:
         error_msg = f"{timestamp_str}: MinData for {selected_symbol}: {error}"
@@ -353,23 +354,21 @@ def update_options_chain_stream_data(n_intervals, selected_symbol, current_error
         
         # Log potentially problematic date fields
         if n_intervals % 10 == 1: # Log a sample of these periodically
-            app_logger.debug(f"Raw date fields for {contract_key_str}: Year=\"{exp_year}\", Month=\"{data_dict.get('expirationMonth')}\", Day=\"{data_dict.get('expirationDay')}\"")
-            app_logger.debug(f"Raw strike for {contract_key_str}: {data_dict.get('strikePrice')}")
-            app_logger.debug(f"Raw contractType field for {contract_key_str}: {data_dict.get('contractType')}")
+            app_logger.debug(f"Raw date components for {contract_key_str}: Year={exp_year}, Month={exp_month}, Day={exp_day}")
 
         record = {
             "Expiration Date": f"{exp_year}-{exp_month}-{exp_day}",
-            "Strike": data_dict.get("strikePrice"),
-            "Last": data_dict.get("lastPrice"),
-            "Bid": data_dict.get("bidPrice"),
-            "Ask": data_dict.get("askPrice"),
-            "Volume": data_dict.get("totalVolume"),
-            "Open Interest": data_dict.get("openInterest"),
-            "Implied Volatility": data_dict.get("volatility"),
-            "Delta": data_dict.get("delta"),
-            "Gamma": data_dict.get("gamma"),
-            "Theta": data_dict.get("theta"),
-            "Vega": data_dict.get("vega"),
+            "Strike": data_dict.get("strikePrice", "N/A"),
+            "Last": data_dict.get("lastPrice", "N/A"),
+            "Bid": data_dict.get("bidPrice", "N/A"),
+            "Ask": data_dict.get("askPrice", "N/A"),
+            "Volume": data_dict.get("totalVolume", "N/A"),
+            "Open Interest": data_dict.get("openInterest", "N/A"),
+            "Implied Volatility": data_dict.get("volatility", "N/A"),
+            "Delta": data_dict.get("delta", "N/A"),
+            "Gamma": data_dict.get("gamma", "N/A"),
+            "Theta": data_dict.get("theta", "N/A"),
+            "Vega": data_dict.get("vega", "N/A"),
             "Contract Key": contract_key_str
         }
         
@@ -377,39 +376,21 @@ def update_options_chain_stream_data(n_intervals, selected_symbol, current_error
             calls_list.append(record)
         elif is_put:
             puts_list.append(record)
-        # If neither, it's already logged and skipped for table display
+        # else: contract is not added if type unknown
 
-    app_logger.info(f"Processed into {len(calls_list)} calls and {len(puts_list)} puts for UI.")
-
-    # Ensure DataFrames have all columns even if empty, to prevent Dash errors
     calls_df = pd.DataFrame(calls_list)
     puts_df = pd.DataFrame(puts_list)
 
+    # Ensure columns are present even if df is empty
     if calls_df.empty:
         calls_df = pd.DataFrame(columns=option_cols_def)
-    else:
-        for col in option_cols_def: 
-            if col not in calls_df.columns: calls_df[col] = None # Add missing columns with None
-        calls_df = calls_df[option_cols_def] # Ensure column order
-
     if puts_df.empty:
         puts_df = pd.DataFrame(columns=option_cols_def)
-    else:
-        for col in option_cols_def:
-            if col not in puts_df.columns: puts_df[col] = None
-        puts_df = puts_df[option_cols_def]
 
+    app_logger.info(f"Processed {len(calls_list)} calls and {len(puts_list)} puts for UI update.")
     return option_cols, calls_df.to_dict("records"), option_cols, puts_df.to_dict("records"), status_display, new_errors[:10]
 
-
 if __name__ == "__main__":
-    import atexit
-    def stop_stream_on_exit():
-        app_logger.info("Stopping stream on application exit...")
-        STREAMING_MANAGER.stop_stream()
-        app_logger.info("Stream stopped.")
-    atexit.register(stop_stream_on_exit)
-
-    app_logger.info("Starting Dash app...")
-    app.run(debug=True, host="0.0.0.0", port=8050)
+    app_logger.info("Starting Dash application...")
+    app.run_server(debug=True, host="0.0.0.0", port=8050)
 
