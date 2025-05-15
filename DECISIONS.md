@@ -310,3 +310,22 @@ This addition is crucial for providing user control over the streaming process, 
     4. The feature branch will be pushed to the remote GitHub repository.
     5. Once the task is completed and verified, the feature branch will be merged back into the `main` branch (though in this automated context, I will push the branch and the user can decide on the merge strategy, or I can merge if instructed).
 
+
+
+## Phase 2: Moving Average Convergence Divergence (MACD) - Backend Implementation (May 15, 2025)
+
+- **Decision:** Implement MACD backend logic in `analysis_utils/technical_indicators.py` for table data and pattern detection, without an immediate UI component, as per user clarification.
+  - **Rationale:**
+    - **Consistent Backend Structure:** Add `calculate_macd` to the same module as `calculate_bollinger_bands` and `calculate_rsi` for logical grouping of technical indicator calculations.
+    - **User-Directed Focus:** Prioritize backend data generation for tables and pattern detection, deferring UI charting components for MACD based on user feedback (May 15, 2025).
+    - **Standard Calculation:** The MACD calculation uses standard EMA periods (12-day for short-term, 26-day for long-term) and a 9-day EMA for the signal line. These are common defaults but can be made customizable later if needed.
+  - **Implementation Details (MACD Backend - `technical_indicators.py`):
+    - The `calculate_macd` function takes a list of prices and optional window parameters (short_window=12, long_window=26, signal_window=9).
+    - It utilizes `pandas` for efficient calculation of Exponential Moving Averages (EMAs).
+    - Calculates the MACD line (Short EMA - Long EMA), the Signal Line (EMA of MACD Line), and the MACD Histogram (MACD Line - Signal Line).
+    - Returns three lists: `macd_line_list`, `signal_line_list`, and `macd_histogram_list`, padded with `None` for initial periods where calculation is not possible, ensuring alignment with the input price list length.
+    - Includes example usage within `if __name__ == "__main__":` for direct testing of the function, alongside previous examples for BB and RSI to ensure all functions remain operational.
+  - **Verification:**
+    - Ensured `calculate_bollinger_bands`, `calculate_rsi`, and `calculate_macd` functions are all present and correctly defined in `technical_indicators.py`.
+    - Verified that the `if __name__ == "__main__":` block in `technical_indicators.py` runs without errors and produces output for all three indicators, confirming their basic functionality and importability.
+    - Generated `requirements.txt` on the feature branch to include `pandas` and other necessary dependencies.

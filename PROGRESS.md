@@ -1,7 +1,3 @@
-# Project Progress
-
-This document tracks the progress of the Manus Options project.
-
 ## Completed Features/Tasks (as of 2025-05-15)
 
 *   Initial repository setup and cloning.
@@ -20,14 +16,17 @@ This document tracks the progress of the Manus Options project.
 *   Fixed f-string `SyntaxError` in `StreamingManager`.
 *   Addressed dashboard data formatting issues (partial).
 *   Fixed `ObsoleteAttributeException` by updating `app.run_server` to `app.run` in `dashboard_app.py`.
+*   **Phase 2: Implemented backend logic and UI visualization for Bollinger Bands (BB) in `analysis_utils/technical_indicators.py` and `dashboard_app.py`.** (UI part was before user clarification)
+*   **Phase 2: Implemented backend logic and UI visualization for Relative Strength Index (RSI) in `analysis_utils/technical_indicators.py` and `dashboard_app.py`.** (UI part was before user clarification)
+*   **Phase 2: Implemented backend logic for Moving Average Convergence Divergence (MACD) in `analysis_utils/technical_indicators.py` for table data and pattern detection.**
 
 *(For a detailed list of all completed sub-tasks, please refer to the `TODO.md` file.)*
 
 ## Current Work In Progress
 
 *   **Phase 2: Options Recommendation Platform - Core Technical Analysis Engine**
-    *   Status: Starting
-    *   Details: Beginning implementation of backend logic for Bollinger Bands (BB).
+    *   Status: In Progress
+    *   Details: Completed Bollinger Bands (Backend & UI - UI as per old plan), RSI (Backend & UI - UI as per old plan), and MACD (Backend only). Preparing for the next indicator (e.g., IMI - backend only).
 
 ## Known Issues or Challenges
 
@@ -35,8 +34,8 @@ This document tracks the progress of the Manus Options project.
 
 ## Next Steps
 
-1.  **Implement Bollinger Bands (BB) calculation logic (backend).** (High Priority - Phase 2)
-2.  **Create `requirements.txt` file:** Document all Python dependencies for the project.
+1.  **Implement Intraday Momentum Index (IMI) calculation logic (backend only for table data and pattern detection).** (High Priority - Phase 2)
+2.  **Ensure `requirements.txt` file is fully up-to-date:** Document all Python dependencies for the project.
 3.  **Continue with Phase 2: Options Recommendation Platform Features:**
-    *   Implement other technical indicators (RSI, MACD, etc.) as per `TODO.md`.
+    *   Implement other technical indicators (MFI etc. - backend only) as per `TODO.md`.
     *   (Refer to `TODO.md` for the detailed breakdown of all Phase 2 tasks).
