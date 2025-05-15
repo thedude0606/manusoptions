@@ -281,6 +281,7 @@ class StreamingManager:
                     logger.info("New subscriptions requested or stream not live. Restarting stream...")
                     self._internal_stop_stream(wait_for_thread=True)
 
-            self.is_running = True 
-            self.error_message =
+            self.is_running = True
+            self.error_message = None
+            self.status_message = "Stream: Starting..."
 (Content truncated due to size limit. Use line ranges to read in chunks)
