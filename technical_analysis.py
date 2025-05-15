@@ -38,6 +38,19 @@ def load_candles(file_path):
         print(f"Error loading data from {file_path}: {e}")
         return pd.DataFrame()
 
+def calculate_bollinger_bands(df, window=20, num_std_dev=2):
+    if 'close' not in df.columns or len(df) < window:
+        return df
+    # Calculate Middle Band (SMA)
+    df[f'bb_middle_{window}'] = df['close'].rolling(window=window).mean()
+    # Calculate Standard Deviation
+    std_dev = df['close'].rolling(window=window).std()
+    # Calculate Upper Band
+    df[f'bb_upper_{window}'] = df[f'bb_middle_{window}'] + (std_dev * num_std_dev)
+    # Calculate Lower Band
+    df[f'bb_lower_{window}'] = df[f'bb_middle_{window}'] - (std_dev * num_std_dev)
+    return df
+
 def calculate_rsi(df, period=14):
     if 'close' not in df.columns or len(df) < period:
         return df
@@ -158,7 +171,8 @@ def main():
         if df.empty:
             print(f"No data loaded for {timeframe}, skipping TA.")
             continue
-
+        
+        df = calculate_bollinger_bands(df.copy())
         df = calculate_rsi(df.copy())
         df = calculate_macd(df.copy())
         df = identify_fair_value_gaps(df.copy())
