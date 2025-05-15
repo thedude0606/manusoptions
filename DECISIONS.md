@@ -100,3 +100,14 @@ These changes are crucial for the stability and correctness of the streaming fun
     4.  **Corrected Date Formatting:** Ensured `expirationMonth` and `expirationDay` are zero-padded when constructing the `Expiration Date` string for display.
 
   - **Expected Outcome:** These changes are expected to resolve the empty options table issue by correctly categorizing contracts and ensuring that the data, now confirmed to be arriving in the backend, is properly processed and displayed in the UI. The enhanced logging will also provide much clearer diagnostics if any further UI-related data mapping issues arise.
+
+
+
+## Hotfix: Resolve `NameError: name 'app' is not defined` in `dashboard_app.py` (May 15, 2025)
+
+- **Decision:** Correct the initialization order in `dashboard_app.py` to define the `app` object before its attributes (like `app.layout` or `@app.callback`) are accessed.
+  - **Rationale:** 
+    - After deploying the UI data propagation fixes, the user encountered a `NameError: name 'app' is not defined` upon running `dashboard_app.py`. This prevented the application from starting.
+    - The error was caused by the Dash application instance (`app`) being referenced (e.g., `app.layout = ...`) before it was initialized with `app = dash.Dash(__name__, ...)`. This was likely an inadvertent code reordering during previous edits.
+    - The fix involved moving the lines `app = dash.Dash(__name__, suppress_callback_exceptions=True)` and `app.title = "Trading Dashboard"` to an earlier position in the script, specifically before the `app.layout` definition and any callback decorators. This ensures the `app` object exists when it's first used, resolving the `NameError`.
+

@@ -207,3 +207,25 @@ After confirming that `StreamingManager` was successfully receiving and storing 
 - If issues persist, analyze the new, highly detailed logs from both `StreamingManager` and `dashboard_app.py`.
 - Address any remaining minor issues or create the `requirements.txt` file.
 
+
+
+
+## Hotfix: Resolve `NameError: name 'app' is not defined` in `dashboard_app.py` (May 15, 2025)
+
+Following the deployment of the UI data propagation fix, the user reported a `NameError: name 'app' is not defined` when attempting to run `dashboard_app.py`. This error prevented the application from starting.
+
+**Investigation and Solution:**
+
+- **Cause:** The error was traced to the `dashboard_app.py` script where the Dash application instance (`app`) was being used to define `app.layout` *before* the line `app = dash.Dash(__name__, suppress_callback_exceptions=True)` was executed. This was likely an accidental reordering during previous edits.
+- **Fix:** The Dash app initialization lines (`app = dash.Dash(...)` and `app.title = ...`) were moved to an earlier point in the script, ensuring that the `app` object is defined before its attributes (like `layout` or `callback`) are accessed.
+
+**Updated Completed Tasks:**
+
+- Identified and fixed the `NameError: name 'app' is not defined` in `dashboard_app.py`.
+- Ensured correct Dash application initialization order.
+- Pushed the hotfix to GitHub.
+
+**Current Status:**
+
+- The application should now start without the `NameError` and is ready for testing of the options data streaming and display functionality.
+

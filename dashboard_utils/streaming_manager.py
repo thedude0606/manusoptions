@@ -16,9 +16,53 @@ if not logger.hasHandlers(): # Avoid adding multiple handlers if already configu
 logger.setLevel(logging.INFO) # Set to INFO for general, DEBUG for verbose
 
 # To get more detailed logs from schwabdev library itself, uncomment the following line:
-# logging.getLogger('schwabdev').setLevel(logging.DEBUG)
+# logging.getLogger("schwabdev").setLevel(logging.DEBUG)
 
 class StreamingManager:
+    # Corrected Field map based on user-provided list
+    # Steamer number - streamer field
+    # 0-Symbol, 2-Bid Price, 3-Ask Price, 4-Last Price, 8-Total Volume, 9-Open Interest,
+    # 10-Volatility, 12-Expiration Year, 16-Bid Size, 17-Ask Size, 18-Last Size,
+    # 20-Strike Price, 21-Contract Type, 23-Expiration Month, 26-Expiration Day,
+    # 28-Delta, 29-Gamma, 30-Theta, 31-Vega
+    SCHWAB_FIELD_IDS_TO_REQUEST = "0,2,3,4,8,9,10,12,16,17,18,20,21,23,26,28,29,30,31"
+    
+    # Mapping from Schwab numeric field ID (as string) to our internal descriptive key
+    SCHWAB_FIELD_MAP = {
+        "0": "key", # Symbol/Contract Key
+        "2": "bidPrice",
+        "3": "askPrice",
+        "4": "lastPrice",
+        "8": "totalVolume",
+        "9": "openInterest",
+        "10": "volatility", # Implied Volatility
+        "12": "expirationYear",
+        "16": "bidSize",
+        "17": "askSize",
+        "18": "lastSize",
+        "20": "strikePrice",
+        "21": "contractType", # C or P
+        "23": "expirationMonth",
+        "26": "expirationDay",
+        "28": "delta",
+        "29": "gamma",
+        "30": "theta",
+        "31": "vega"
+        # Add other fields here if needed in the future, e.g.:
+        # "1": "description", "5": "highPrice", "6": "lowPrice", "7": "closePrice",
+        # "11": "moneyIntrinsicValue", "13": "multiplier", "14": "digits", "15": "openPrice",
+        # "19": "netChange", "22": "underlying", "24": "deliverables", "25": "timeValue",
+        # "27": "daysToExpiration", "32": "rho", "33": "securityStatus", 
+        # "34": "theoreticalOptionValue", "35": "underlyingPrice", "36": "uvExpirationType",
+        # "37": "markPrice", "38": "quoteTimeInLong", "39": "tradeTimeInLong", 
+        # "40": "exchange", "41": "exchangeName", "42": "lastTradingDay", 
+        # "43": "settlementType", "44": "netPercentChange", "45": "markPriceNetChange",
+        # "46": "markPricePercentChange", "47": "impliedYield", "48": "isPennyPilot",
+        # "49": "optionRoot", "50": "52WeekHigh", "51": "52WeekLow",
+        # "52": "indicativeAskPrice", "53": "indicativeBidPrice", "54": "indicativeQuoteTime",
+        # "55": "exerciseType"
+    }
+
     def __init__(self, schwab_client_getter, account_id_getter):
         self.schwab_client_getter = schwab_client_getter
         self.account_id_getter = account_id_getter
@@ -56,7 +100,7 @@ class StreamingManager:
         schwab_api_client = self._get_schwab_client()
         if not schwab_api_client:
             with self._lock:
-                self.status_message = f"Stream: Error - {self.error_message or 'Failed to get Schwab client'}"
+                self.status_message = f"Stream: Error - {self.error_message or "Failed to get Schwab client"}"
                 self.is_running = False
             logger.error("Stream worker: Failed to get Schwab client. Worker terminating.")
             return
@@ -79,17 +123,14 @@ class StreamingManager:
                     self.is_running = False
                 return
 
-            logger.info("Stream worker: Starting schwabdev's stream listener (which runs in its own thread)...")
+            logger.info("Stream worker: Starting schwabdev"s stream listener (which runs in its own thread)...")
             self.stream_client.start(self._handle_stream_message)
-            logger.info("Stream worker: schwabdev's stream_client.start() called. Listener should be active in its own thread.")
+            logger.info("Stream worker: schwabdev"s stream_client.start() called. Listener should be active in its own thread.")
 
             time.sleep(2) 
 
             keys_str = ",".join(list(option_keys_to_subscribe))
-            # Fields for LEVELONE_OPTIONS: 0=Symbol, 2=Last Price, 7=Ask Price, 8=Bid Price, 9=Ask Size, 10=Bid Size, 11=Total Volume,
-            # 15=Volatility, 16=Delta, 17=Gamma, 18=Theta, 19=Vega, 21=Open Interest,
-            # 26=Strike Price, 27=Contract Type (CALL/PUT), 23=Expiration Day, 24=Expiration Month, 25=Expiration Year
-            fields_str = "0,2,7,8,9,10,11,15,16,17,18,19,21,23,24,25,26,27"
+            fields_str = self.SCHWAB_FIELD_IDS_TO_REQUEST
             
             subscription_payload = self.stream_client.level_one_options(keys_str, fields_str, command="ADD")
             logger.info(f"Stream worker: Preparing to send LEVELONE_OPTIONS subscription. Keys: {keys_str}. Fields: {fields_str}.")
@@ -117,7 +158,7 @@ class StreamingManager:
             logger.info("Stream worker: Exited monitoring loop.")
 
         except Exception as e:
-            logger.error(f"Error in stream worker's main try block: {e}", exc_info=True)
+            logger.error(f"Error in stream worker"s main try block: {e}", exc_info=True)
             with self._lock:
                 self.error_message = f"Stream error: {e}"
                 self.status_message = f"Stream: Error - {self.error_message}"
@@ -142,12 +183,12 @@ class StreamingManager:
             with self._lock:
                 active_schwab_client = self.stream_client
 
-            if active_schwab_client and hasattr(active_schwab_client, 'stop') and active_schwab_client.active:
+            if active_schwab_client and hasattr(active_schwab_client, "stop") and active_schwab_client.active:
                 try:
-                    logger.info("Stream worker's finally block: Attempting to stop schwabdev stream client.")
+                    logger.info("Stream worker"s finally block: Attempting to stop schwabdev stream client.")
                     active_schwab_client.stop()
                 except Exception as e_stop:
-                    logger.error(f"Stream worker's finally block: Error stopping schwabdev stream client: {e_stop}")
+                    logger.error(f"Stream worker"s finally block: Error stopping schwabdev stream client: {e_stop}")
             
             with self._lock:
                 self.stream_client = None
@@ -184,29 +225,30 @@ class StreamingManager:
                         logger.warning(f"[MsgID:{current_message_id}] Skipping non-LEVELONE_OPTIONS or malformed data item: {item}")
                         continue
                     content_list = item.get("content", [])
-                    for content_index, contract_data in enumerate(content_list):
-                        logger.debug(f"[MsgID:{current_message_id}] Processing content #{content_index} from item #{item_index}: {contract_data}")
-                        if not isinstance(contract_data, dict) or "key" not in contract_data:
-                            logger.warning(f"[MsgID:{current_message_id}] Skipping malformed contract_data (no key): {contract_data}")
+                    for content_index, contract_data_from_stream in enumerate(content_list):
+                        logger.debug(f"[MsgID:{current_message_id}] Processing content #{content_index} from item #{item_index}: {contract_data_from_stream}")
+                        if not isinstance(contract_data_from_stream, dict) or "key" not in contract_data_from_stream:
+                            logger.warning(f"[MsgID:{current_message_id}] Skipping malformed contract_data (no key): {contract_data_from_stream}")
                             continue
-                        contract_key = contract_data.get("key")
+                        contract_key = contract_data_from_stream.get("key")
                         if not contract_key:
-                            logger.warning(f"[MsgID:{current_message_id}] Skipping contract_data with empty key: {contract_data}")
+                            logger.warning(f"[MsgID:{current_message_id}] Skipping contract_data with empty key: {contract_data_from_stream}")
                             continue
                         
-                        processed_data = {
-                            "key": contract_key,
-                            "lastPrice": contract_data.get("2"), "askPrice": contract_data.get("7"),
-                            "bidPrice": contract_data.get("8"), "askSize": contract_data.get("9"),
-                            "bidSize": contract_data.get("10"), "totalVolume": contract_data.get("11"),
-                            "volatility": contract_data.get("15"), "delta": contract_data.get("16"),
-                            "gamma": contract_data.get("17"), "theta": contract_data.get("18"),
-                            "vega": contract_data.get("19"), "openInterest": contract_data.get("21"),
-                            "expirationDay": contract_data.get("23"), "expirationMonth": contract_data.get("24"),
-                            "expirationYear": contract_data.get("25"),
-                            "strikePrice": contract_data.get("26"), "contractType": contract_data.get("27"),
-                             "lastUpdated": time.time()
-                        }
+                        # Map numeric field IDs from stream to descriptive names
+                        processed_data = {}
+                        for field_id, value in contract_data_from_stream.items():
+                            if field_id in self.SCHWAB_FIELD_MAP:
+                                processed_data[self.SCHWAB_FIELD_MAP[field_id]] = value
+                            # else: # Optionally log unmapped fields if needed for debugging
+                                # logger.debug(f"[MsgID:{current_message_id}] Unmapped field ID {field_id} for key {contract_key}")
+                        
+                        # Ensure the primary key from the stream is always present in our processed_data
+                        if "key" not in processed_data and contract_key:
+                             processed_data["key"] = contract_key
+                        
+                        processed_data["lastUpdated"] = time.time()
+                        
                         logger.info(f"[MsgID:{current_message_id}] Storing data for key {contract_key}: {processed_data}")
                         updated_keys_in_batch.append(contract_key)
                         with self._lock:
@@ -255,9 +297,9 @@ class StreamingManager:
         
         active_stream_client_local = self.stream_client
 
-        if active_stream_client_local and hasattr(active_stream_client_local, 'stop') and active_stream_client_local.active:
+        if active_stream_client_local and hasattr(active_stream_client_local, "stop") and active_stream_client_local.active:
             try:
-                logger.info("Calling schwabdev's stream_client.stop()...")
+                logger.info("Calling schwabdev"s stream_client.stop()...")
                 active_stream_client_local.stop()
             except Exception as e:
                 logger.error(f"Exception during stream_client.stop(): {e}", exc_info=True)
@@ -288,36 +330,27 @@ class StreamingManager:
         
         with self._lock:
             if self.status_message == "Stream: Stopping...": 
-                 self.status_message = "Stream: Stopped."
-            elif not self.is_running and self.status_message != "Stream: Stopped.": 
-                 if not self.error_message: 
-                    self.status_message = "Idle"
-            logger.info("latest_data_store cleared on stop_stream if stream was stopping.")
-            self.latest_data_store.clear() # Clear data when stream is explicitly stopped
-
-        logger.info("Stream stop process complete.")
+                self.status_message = "Stream: Stopped."
+            self.current_subscriptions.clear()
+            # Do not clear latest_data_store here, let it persist until next start
+            logger.info("Stream stopped. Subscriptions cleared.")
 
     def get_latest_data(self):
         with self._lock:
-            store_size = len(self.latest_data_store)
-            sample_data_log = ""
-            if store_size > 0:
-                sample_keys = list(self.latest_data_store.keys())[:3] 
-                sample_data_log = f" Sample keys: {sample_keys}."
-            
-            logger.info(f"get_latest_data called. Store size: {store_size}.{sample_data_log}")
-            return dict(self.latest_data_store) # Return a copy
+            # Return a copy to avoid modification issues if the caller modifies it
+            # and to ensure thread safety during iteration if the store is modified elsewhere.
+            store_copy = dict(self.latest_data_store)
+            logger.info(f"get_latest_data called. Returning {len(store_copy)} items. Current status: {self.status_message}")
+            if store_copy:
+                 logger.debug(f"Sample item from get_latest_data: {json.dumps(list(store_copy.values())[0], indent=2)}")
+            return store_copy
 
     def get_status(self):
         with self._lock:
-            if self.is_running and (self.stream_thread is None or not self.stream_thread.is_alive()) \
-               and self.status_message not in ["Stream: Starting...", "Stream: Initializing..."]:
-                if not self.error_message:
-                    self.error_message = "Worker thread died unexpectedly."
-                self.status_message = f"Stream: Error - {self.error_message or 'Worker thread died'}"
-                self.is_running = False 
             return self.status_message, self.error_message
 
-if __name__ == "__main__":
-    pass
+    @property
+    def is_active(self):
+        with self._lock:
+            return self.is_running and self.stream_thread is not None and self.stream_thread.is_alive()
 

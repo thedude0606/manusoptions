@@ -32,8 +32,13 @@
   - [x] Implement fix in `dashboard_app.py`: Parse Call/Put from option key, enhance UI data logging.
   - [x] Commit and push `dashboard_app.py` fix to GitHub.
   - [x] Update `PROGRESS.md` with `dashboard_app.py` fix details.
-  - [ ] Update `TODO.md` with `dashboard_app.py` fix details (this item).
-  - [ ] Update `DECISIONS.md` regarding `dashboard_app.py` fix strategy.
+  - [x] Update `TODO.md` with `dashboard_app.py` fix details.
+  - [x] Update `DECISIONS.md` regarding `dashboard_app.py` fix strategy.
+  - [x] Hotfix: Resolve `NameError: name 'app' is not defined` in `dashboard_app.py`.
+  - [x] Commit and push hotfix to GitHub.
+  - [x] Update `PROGRESS.md` with hotfix details.
+  - [ ] Update `TODO.md` with hotfix details (this item).
+  - [ ] Update `DECISIONS.md` regarding hotfix.
   - [ ] Request user to test application and confirm fix.
   - [ ] If fixed, proceed to final documentation and `requirements.txt`.
   - [ ] If not fixed, analyze new logs and iterate.
