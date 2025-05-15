@@ -16,10 +16,18 @@
   - [x] Add verbose logging to `StreamingManager` (in `_handle_stream_message` and `get_latest_data`)
   - [x] Commit and push verbose logging changes to GitHub
   - [x] Update `PROGRESS.md` with verbose logging details
-  - [ ] Update `TODO.md` with verbose logging details (this item)
-  - [ ] Update `DECISIONS.md` regarding diagnostic logging strategy
-  - [ ] Request user to run app and provide new verbose logs
-  - [ ] Analyze new verbose logs to identify data propagation failure point
+  - [x] Update `TODO.md` with verbose logging details
+  - [x] Update `DECISIONS.md` regarding diagnostic logging strategy
+  - [x] Request user to run app and provide new verbose logs (Round 1)
+  - [x] Analyze user-provided logs (Round 1) - still no data in tables
+  - [x] Enhance logging: Log full subscription payload and all raw incoming messages in `StreamingManager`
+  - [x] Validate `LEVELONE_OPTIONS` subscription fields
+  - [x] Commit and push enhanced logging (Round 2) changes to GitHub
+  - [x] Update `PROGRESS.md` with enhanced logging (Round 2) details
+  - [ ] Update `TODO.md` with enhanced logging (Round 2) details (this item)
+  - [ ] Update `DECISIONS.md` regarding enhanced logging (Round 2) strategy
+  - [ ] Request user to run app and provide new verbose logs (Round 2)
+  - [ ] Analyze new verbose logs (Round 2) to identify data propagation failure point
   - [ ] Implement fix for empty options tables based on new logs
   - [ ] Iteratively commit and push fix to GitHub
   - [ ] Update `PROGRESS.md`, `TODO.md`, `DECISIONS.md` for this fix

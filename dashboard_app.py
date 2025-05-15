@@ -8,29 +8,25 @@ import datetime
 import os # For account ID
 import logging # For app-level logging
 import json # For pretty printing dicts in logs
+import re # For parsing option key
 
 # Import utility functions
 from dashboard_utils.data_fetchers import get_schwab_client, get_minute_data, get_options_chain_data, get_option_contract_keys
 from dashboard_utils.streaming_manager import StreamingManager
 
 # Configure basic logging for the app
-# Use a specific logger for this module to avoid conflicts if other modules also configure root logger
 app_logger = logging.getLogger(__name__)
-if not app_logger.hasHandlers(): # Avoid adding multiple handlers if already configured
+if not app_logger.hasHandlers():
     app_handler = logging.StreamHandler()
     app_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     app_handler.setFormatter(app_formatter)
     app_logger.addHandler(app_handler)
-app_logger.setLevel(logging.INFO) # Set to INFO or DEBUG as needed
-
-# Initialize the Dash app
-app = dash.Dash(__name__, suppress_callback_exceptions=True)
-app.title = "Trading Dashboard"
+app_logger.setLevel(logging.INFO)
 
 # --- Schwab Client and Account ID Setup ---
 def schwab_client_provider():
     """Provides the Schwab client instance."""
-    client, _ = get_schwab_client() # We only need the client object here
+    client, _ = get_schwab_client()
     return client
 
 def account_id_provider():
@@ -38,7 +34,7 @@ def account_id_provider():
     return os.getenv("SCHWAB_ACCOUNT_HASH") 
 
 # --- Global Instances --- 
-SCHWAB_CLIENT, client_init_error = get_schwab_client() # For REST calls
+SCHWAB_CLIENT, client_init_error = get_schwab_client()
 STREAMING_MANAGER = StreamingManager(schwab_client_provider, account_id_provider)
 
 initial_errors = []
@@ -270,6 +266,12 @@ def manage_options_stream(selected_symbol, active_tab, current_errors):
     app_logger.info(f"manage_options_stream returning keys: {len(option_keys_for_stream)} keys.")
     return option_keys_for_stream, new_errors
 
+# Regex to find C or P in an option key, typically after YYMMDD
+# Example: MSFT  250530C00435000 - We want the 'C'
+# Root(any) YYMMDD (C/P) Strike(any)
+# This regex looks for 6 digits (date) followed by C or P.
+OPTION_TYPE_REGEX = re.compile(r"\d{6}([CP])")
+
 @app.callback(
     Output("options-calls-table", "columns"),
     Output("options-calls-table", "data"),
@@ -283,7 +285,7 @@ def manage_options_stream(selected_symbol, active_tab, current_errors):
     prevent_initial_call=True
 )
 def update_options_chain_stream_data(n_intervals, selected_symbol, current_errors):
-    app_logger.debug(f"update_options_chain_stream_data triggered. Interval: {n_intervals}, Symbol: {selected_symbol}")
+    app_logger.info(f"update_options_chain_stream_data triggered for {selected_symbol} at interval {n_intervals}.")
     new_errors = list(current_errors)
     
     stream_status_msg, stream_error_msg = STREAMING_MANAGER.get_status()
@@ -296,19 +298,63 @@ def update_options_chain_stream_data(n_intervals, selected_symbol, current_error
     option_cols = [{"name": i, "id": i} for i in option_cols_def]
 
     if not selected_symbol or not STREAMING_MANAGER.is_running:
-        app_logger.debug("No selected symbol or stream not running. Returning empty tables.")
+        app_logger.info("No selected symbol or stream not running. Returning empty tables.")
         return option_cols, [], option_cols, [], status_display, new_errors[:10]
 
     latest_stream_data = STREAMING_MANAGER.get_latest_data()
-    app_logger.debug(f"Fetched {len(latest_stream_data)} items from STREAMING_MANAGER.get_latest_data(). Sample: {json.dumps(list(latest_stream_data.values())[:1], indent=2) if latest_stream_data else json.dumps({})}")
+    app_logger.info(f"Fetched {len(latest_stream_data)} items from STREAMING_MANAGER.get_latest_data().")
+    if latest_stream_data:
+        app_logger.debug(f"Sample data item from stream store: {json.dumps(list(latest_stream_data.values())[0], indent=2)}")
     
     calls_list = []
     puts_list = []
 
-    for _contract_key, data_dict in latest_stream_data.items():
-        # Corrected f-string for Expiration Date construction
+    for contract_key_from_store, data_dict in latest_stream_data.items():
+        # Defensive: ensure data_dict is a dict
+        if not isinstance(data_dict, dict):
+            app_logger.warning(f"Skipping non-dict item in latest_stream_data for key {contract_key_from_store}: {type(data_dict)}")
+            continue
+
+        # WORKAROUND: Determine Call/Put from the contract key itself due to issues with field 27
+        # The key is usually like: ROOTYYMMDD(C/P)STRIKE
+        # Example: MSFT  250530C00435000
+        contract_key_str = str(data_dict.get("key", ""))
+        is_call = False
+        is_put = False
+        
+        match = OPTION_TYPE_REGEX.search(contract_key_str)
+        if match:
+            type_char = match.group(1)
+            if type_char == 'C':
+                is_call = True
+            elif type_char == 'P':
+                is_put = True
+        else:
+            # Fallback for older style keys or if regex fails, check common positions
+            # This is less reliable and depends on fixed length assumptions
+            if 'C' in contract_key_str[6:10]: # Check a common range for C/P
+                 is_call = True
+            elif 'P' in contract_key_str[6:10]:
+                 is_put = True
+        
+        if not is_call and not is_put:
+            app_logger.warning(f"Could not determine contract type (C/P) from key: {contract_key_str}. Also, contractType field from stream was: {data_dict.get('contractType')}. Skipping this contract.")
+            # continue # Skip if type cannot be determined
+            # For now, let's log and see if any other field helps, but this contract won't be sorted
+
+        # Construct record, being mindful that some data fields from stream might be incorrect
+        exp_year = data_dict.get("expirationYear", "YYYY")
+        exp_month = str(data_dict.get("expirationMonth", "MM")).zfill(2)
+        exp_day = str(data_dict.get("expirationDay", "DD")).zfill(2)
+        
+        # Log potentially problematic date fields
+        if n_intervals % 10 == 1: # Log a sample of these periodically
+            app_logger.debug(f"Raw date fields for {contract_key_str}: Year=\"{exp_year}\", Month=\"{data_dict.get('expirationMonth')}\", Day=\"{data_dict.get('expirationDay')}\"")
+            app_logger.debug(f"Raw strike for {contract_key_str}: {data_dict.get('strikePrice')}")
+            app_logger.debug(f"Raw contractType field for {contract_key_str}: {data_dict.get('contractType')}")
+
         record = {
-            "Expiration Date": f"{data_dict.get('expirationYear')}-{str(data_dict.get('expirationMonth', '')).zfill(2)}-{str(data_dict.get('expirationDay', '')).zfill(2)}",
+            "Expiration Date": f"{exp_year}-{exp_month}-{exp_day}",
             "Strike": data_dict.get("strikePrice"),
             "Last": data_dict.get("lastPrice"),
             "Bid": data_dict.get("bidPrice"),
@@ -320,23 +366,31 @@ def update_options_chain_stream_data(n_intervals, selected_symbol, current_error
             "Gamma": data_dict.get("gamma"),
             "Theta": data_dict.get("theta"),
             "Vega": data_dict.get("vega"),
-            "Contract Key": data_dict.get("key")
+            "Contract Key": contract_key_str
         }
-        if data_dict.get("contractType") == "CALL":
+        
+        if is_call:
             calls_list.append(record)
-        elif data_dict.get("contractType") == "PUT":
+        elif is_put:
             puts_list.append(record)
+        # If neither, it's already logged and skipped for table display
 
-    app_logger.debug(f"Processed into {len(calls_list)} calls and {len(puts_list)} puts.")
+    app_logger.info(f"Processed into {len(calls_list)} calls and {len(puts_list)} puts for UI.")
 
+    # Ensure DataFrames have all columns even if empty, to prevent Dash errors
     calls_df = pd.DataFrame(calls_list)
     puts_df = pd.DataFrame(puts_list)
 
-    if not calls_df.empty:
+    if calls_df.empty:
+        calls_df = pd.DataFrame(columns=option_cols_def)
+    else:
         for col in option_cols_def: 
-            if col not in calls_df.columns: calls_df[col] = None
-        calls_df = calls_df[option_cols_def]
-    if not puts_df.empty:
+            if col not in calls_df.columns: calls_df[col] = None # Add missing columns with None
+        calls_df = calls_df[option_cols_def] # Ensure column order
+
+    if puts_df.empty:
+        puts_df = pd.DataFrame(columns=option_cols_def)
+    else:
         for col in option_cols_def:
             if col not in puts_df.columns: puts_df[col] = None
         puts_df = puts_df[option_cols_def]
