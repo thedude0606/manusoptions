@@ -310,3 +310,21 @@ This addition is crucial for providing user control over the streaming process, 
     4. The feature branch will be pushed to the remote GitHub repository.
     5. Once the task is completed and verified, the feature branch will be merged back into the `main` branch (though in this automated context, I will push the branch and the user can decide on the merge strategy, or I can merge if instructed).
 
+
+
+## Phase 2: Core Technical Analysis Engine - Bollinger Bands (May 15, 2025)
+
+- **Decision:** Implement the Bollinger Bands (BB) calculation as a standalone function within a new module `analysis_utils/technical_indicators.py`.
+  - **Rationale:**
+    - **Modularity:** Grouping technical indicator calculations in a dedicated module (`technical_indicators.py`) under an `analysis_utils` directory promotes better code organization and reusability. This structure allows for easy expansion with other indicators in the future.
+    - **Clarity:** A standalone function `calculate_bollinger_bands` with clear inputs (prices, window, number of standard deviations) and outputs (upper, middle, lower bands) makes the logic easy to understand, test, and integrate.
+    - **Standard Library Usage:** Utilized the built-in `statistics` module for `stdev` calculation, avoiding external dependencies for this specific indicator if not strictly necessary for basic calculations. This keeps the initial implementation lightweight.
+    - **Input/Output:** The function accepts a list of prices and returns three lists (upper, middle, lower bands), with `None` values for periods where the bands cannot be calculated (due to insufficient data for the window). This explicit handling of initial data points is important for correct usage in downstream applications or visualizations.
+  - **Implementation Details:**
+    - The function `calculate_bollinger_bands(prices: list[float], window: int = 20, num_std_dev: int = 2)` was created.
+    - It calculates the Simple Moving Average (SMA) for the middle band.
+    - Standard deviation is calculated over the same window.
+    - Upper band = SMA + (num_std_dev * std_dev)
+    - Lower band = SMA - (num_std_dev * std_dev)
+    - Includes basic example usage within an `if __name__ == "__main__":` block for direct testing of the module.
+
