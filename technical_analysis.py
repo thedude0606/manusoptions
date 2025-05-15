@@ -28,31 +28,25 @@ def load_candles(file_path):
         # Ensure correct data types
         for col in ["open", "high", "low", "close", "volume"]:
             if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-        df = df.dropna(subset=["open", "high", "low", "close", "volume"])
+                df[col] = pd.to_numeric(df[col], errors=\'coerce
+olumns or len(df) < period:
         return df
-    except FileNotFoundError:
-        print(f"Error: Data file {file_path} not found.")
-        return pd.DataFrame()
-    except Exception as e:
-        print(f"Error loading data from {file_path}: {e}")
-        return pd.DataFrame()
+    # Gains (close > open)
+    gains = df["close"] - df["open"]
+    gains[df["close"] <= df["open"]] = 0
+    sum_gains = gains.rolling(window=period).sum()
 
-def calculate_bollinger_bands(df, window=20, num_std_dev=2):
-    if 'close' not in df.columns or len(df) < window:
-        return df
-    # Calculate Middle Band (SMA)
-    df[f'bb_middle_{window}'] = df['close'].rolling(window=window).mean()
-    # Calculate Standard Deviation
-    std_dev = df['close'].rolling(window=window).std()
-    # Calculate Upper Band
-    df[f'bb_upper_{window}'] = df[f'bb_middle_{window}'] + (std_dev * num_std_dev)
-    # Calculate Lower Band
-    df[f'bb_lower_{window}'] = df[f'bb_middle_{window}'] - (std_dev * num_std_dev)
+    # Losses (close < open)
+    losses = df["open"] - df["close"]
+    losses[df["close"] >= df["open"]] = 0
+    sum_losses = losses.rolling(window=period).sum()
+
+    imi = (sum_gains / (sum_gains + sum_losses)) * 100
+    df[f"imi_{period}"] = imi
     return df
 
 def calculate_rsi(df, period=14):
-    if 'close' not in df.columns or len(df) < period:
+    if \'close\' not in df.columns or len(df) < period:
         return df
     delta = df["close"].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
@@ -62,7 +56,7 @@ def calculate_rsi(df, period=14):
     return df
 
 def calculate_macd(df, short_window=12, long_window=26, signal_window=9):
-    if 'close' not in df.columns or len(df) < long_window:
+    if \'close\' not in df.columns or len(df) < long_window:
         return df
     short_ema = df["close"].ewm(span=short_window, adjust=False).mean()
     long_ema = df["close"].ewm(span=long_window, adjust=False).mean()
@@ -78,29 +72,16 @@ def identify_fair_value_gaps(df):
     df["fvg_bearish"] = np.nan
 
     for i in range(1, len(df) - 1):
-        # Bullish FVG: Current low is higher than previous high, and next low is higher than current high
-        # More common definition: Gap between high of candle i-1 and low of candle i+1
-        # Check if candle i is the middle of a 3-candle sequence forming the gap
         prev_high = df["high"].iloc[i-1]
         curr_low = df["low"].iloc[i]
         curr_high = df["high"].iloc[i]
         next_low = df["low"].iloc[i+1]
 
-        # Bullish FVG (gap below current candle i)
-        # Low of candle i+1 is above high of candle i-1
         if next_low > prev_high:
-            # The FVG is the space between prev_high and next_low
-            # We mark the FVG at candle 'i' as it's the middle of the pattern that creates it.
-            # Or, more accurately, the FVG exists *after* candle i+1 forms.
-            # For simplicity, let's mark candle i+1 as having a bullish FVG below it.
-            # The FVG range is (prev_high, next_low)
-            # Storing the top and bottom of the FVG
             df.loc[df.index[i+1], "fvg_bullish_top"] = next_low
             df.loc[df.index[i+1], "fvg_bullish_bottom"] = prev_high
-            df.loc[df.index[i+1], "fvg_bullish"] = True # Mark that a bullish FVG was formed
+            df.loc[df.index[i+1], "fvg_bullish"] = True
 
-        # Bearish FVG (gap above current candle i)
-        # High of candle i+1 is below low of candle i-1
         prev_low = df["low"].iloc[i-1]
         next_high = df["high"].iloc[i+1]
         if next_high < prev_low:
@@ -114,7 +95,7 @@ def save_candles_with_ta(df, output_path, symbol="AAPL"):
         print(f"DataFrame is empty, not saving to {output_path}")
         return
     df_reset = df.reset_index()
-    df_reset["datetime"] = df_reset["datetime"].astype(np.int64) // 10**6 # Convert to milliseconds
+    df_reset["datetime"] = df_reset["datetime"].astype(np.int64) // 10**6
     candles_list = df_reset.to_dict(orient="records")
     with open(output_path, "w") as f:
         json.dump({"symbol": symbol, "candles": candles_list}, f, indent=2)
@@ -123,22 +104,21 @@ def save_candles_with_ta(df, output_path, symbol="AAPL"):
 def aggregate_to_15_min(minute_df):
     if minute_df.empty:
         return pd.DataFrame()
-    # Resample to 15 minutes
     agg_funcs = {
-        'open': 'first',
-        'high': 'max',
-        'low': 'min',
-        'close': 'last',
-        'volume': 'sum'
+        \'open\': \'first\',
+        \'high\': \'max\',
+        \'low\': \'min\',
+        \'close\': \'last\',
+        \'volume\': \'sum\'
     }
-    fifteen_min_df = minute_df.resample('15min').agg(agg_funcs)
-    fifteen_min_df = fifteen_min_df.dropna() # Remove intervals with no data
+    fifteen_min_df = minute_df.resample(\'15min\').agg(agg_funcs)
+    fifteen_min_df = fifteen_min_df.dropna()
     return fifteen_min_df
 
 def main():
     data_files = {
         "minute": (MINUTE_DATA_FILE, MINUTE_DATA_WITH_TA_FILE),
-        "15_minute": (None, FIFTEEN_MINUTE_DATA_WITH_TA_FILE), # Will be generated
+        "15_minute": (None, FIFTEEN_MINUTE_DATA_WITH_TA_FILE),
         "hourly": (HOURLY_DATA_FILE, HOURLY_DATA_WITH_TA_FILE),
         "daily": (DAILY_DATA_FILE, DAILY_DATA_WITH_TA_FILE),
     }
@@ -148,20 +128,17 @@ def main():
         print("Minute data is empty, cannot proceed with 15-minute aggregation or TA.")
         return
 
-    # Aggregate 1-minute to 15-minute
     fifteen_min_df_raw = aggregate_to_15_min(minute_df_raw.copy())
     if not fifteen_min_df_raw.empty:
-        # Save the aggregated 15-min data (without TA yet, for consistency with other raw files)
-        save_candles_with_ta(fifteen_min_df_raw, FIFTEEN_MINUTE_DATA_FILE) # Using TA save function for format
+        save_candles_with_ta(fifteen_min_df_raw, FIFTEEN_MINUTE_DATA_FILE)
         print(f"Aggregated 15-minute data saved to {FIFTEEN_MINUTE_DATA_FILE}")
     else:
         print("15-minute aggregation resulted in empty data.")
 
-    # Process each timeframe
     for timeframe, (input_file, output_file) in data_files.items():
         print(f"\nProcessing {timeframe} data...")
         if timeframe == "15_minute":
-            df = fifteen_min_df_raw.copy() # Use the aggregated one
+            df = fifteen_min_df_raw.copy()
         elif input_file:
             df = load_candles(input_file)
         else:
@@ -175,10 +152,10 @@ def main():
         df = calculate_bollinger_bands(df.copy())
         df = calculate_rsi(df.copy())
         df = calculate_macd(df.copy())
+        df = calculate_imi(df.copy()) # Added IMI calculation
         df = identify_fair_value_gaps(df.copy())
-        # Placeholder for candle patterns - this is complex and will be added later
-        df["candle_pattern_bullish"] = False # Placeholder
-        df["candle_pattern_bearish"] = False # Placeholder
+        df["candle_pattern_bullish"] = False
+        df["candle_pattern_bearish"] = False
 
         save_candles_with_ta(df, output_file)
         if not df.empty:
