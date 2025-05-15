@@ -329,3 +329,22 @@ This addition is crucial for providing user control over the streaming process, 
     - Ensured `calculate_bollinger_bands`, `calculate_rsi`, and `calculate_macd` functions are all present and correctly defined in `technical_indicators.py`.
     - Verified that the `if __name__ == "__main__":` block in `technical_indicators.py` runs without errors and produces output for all three indicators, confirming their basic functionality and importability.
     - Generated `requirements.txt` on the feature branch to include `pandas` and other necessary dependencies.
+
+
+## UI Strategy Update: Multi-Timeframe Indicator Table (May 15, 2025)
+
+- **Decision:** Shift UI strategy for technical indicators. Instead of individual charts for each indicator (as done for BB and RSI initially) or a backend-only approach (as planned for MACD and subsequent indicators), all technical indicators (SMA, RSI, MACD, IMI, MFI, etc.) will now be displayed in a consolidated table within the UI. This table will show indicator values across multiple timeframes: 1-minute, 15-minute, 1-hour, and Daily.
+  - **Rationale:**
+    - **User Requirement:** This change is based on direct user feedback and a provided screenshot (image.png, May 15, 2025) illustrating the desired table-based UI for multi-timeframe indicator analysis.
+    - **Consolidated View:** A table provides a compact and comparable overview of various indicators across different timeframes, which can be more efficient for at-a-glance analysis than multiple individual charts.
+    - **Pattern Detection Support:** While the primary display is a table, the backend data aggregated for these timeframes will also support future pattern detection features.
+  - **High-Level Approach:**
+    - **Backend Data Aggregation:** For each symbol, price data (OHLCV) will need to be fetched and/or aggregated for 1-minute, 15-minute, 1-hour, and Daily intervals. The source of this data (streaming, historical API calls) needs to be determined and implemented.
+    - **Indicator Calculation per Timeframe:** The backend logic for each technical indicator (`technical_indicators.py`) will be used or adapted to calculate its value for each of the specified timeframes.
+    - **UI Implementation (`dashboard_app.py`):**
+        - The "Technical Indicators" tab will be redesigned to feature a Dash DataTable.
+        - This table will display rows for each indicator (e.g., SMA(20), RSI(14), MACD(12,26,9)) and columns for each timeframe (1min, 15min, 1h, Daily), showing the latest calculated value.
+        - The existing chart-based UI for BB and RSI might be removed or retained elsewhere, but the primary display for all indicators will be this new table.
+  - **Impact on Workflow:**
+    - Each technical indicator task in `TODO.md` will now include backend work for multi-timeframe data aggregation and calculation, followed by UI work to integrate its results into the shared multi-timeframe table.
+    - The backend-only approach for MACD and subsequent indicators is now superseded by this new UI table requirement.

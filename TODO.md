@@ -75,14 +75,39 @@
 
 ### I. Core Technical Analysis Engine (Backend & UI)
 
-- **A. Technical Indicators Suite**
-  - [ ] Backend: Implement Bollinger Bands (BB) calculation logic (customizable periods, std dev).
-  - [ ] Backend: Implement Relative Strength Index (RSI) calculation logic (customizable period, overbought/oversold levels).
-  - [x] Backend: Implement Moving Average Convergence Divergence (MACD) calculation logic (customizable EMAs, signal line).
-  - [ ] Backend: Implement Intraday Momentum Index (IMI) calculation logic (customizable period).
-  - [ ] Backend: Implement Money Flow Index (MFI) calculation logic (customizable period, volume-weighted RSI).
-  - [ ] Backend: Develop a system for users to customize parameters for all indicators.
-  - [ ] Backend: Store/manage calculated indicator values efficiently for different symbols and timeframes.
+- **A. Technical Indicators Suite (Revised for Multi-Timeframe Table UI - May 15, 2025)**
+  - **General Tasks for Multi-Timeframe Table UI:**
+    - [ ] Backend: Develop/Refine system to fetch/aggregate price data for 1min, 15min, 1h, Daily timeframes.
+    - [ ] UI: Implement core Dash DataTable in `dashboard_app.py` for displaying indicators across timeframes.
+    - [ ] Backend: Develop a system for users to customize parameters for all indicators (relevant for table display).
+    - [ ] Backend: Store/manage calculated indicator values efficiently for different symbols and timeframes (relevant for table display).
+
+  - **Bollinger Bands (BB):**
+    - [x] Backend: Implement Bollinger Bands (BB) calculation logic (customizable periods, std dev).
+    - [ ] Backend: Aggregate BB data for multiple timeframes (1min, 15min, 1h, Daily).
+    - [ ] UI: Integrate BB values into multi-timeframe indicator table.
+    (Note: Previous individual chart UI for BB is superseded by the table view as per user request - May 15, 2025)
+
+  - **Relative Strength Index (RSI):**
+    - [x] Backend: Implement Relative Strength Index (RSI) calculation logic (customizable period, overbought/oversold levels).
+    - [ ] Backend: Aggregate RSI data for multiple timeframes (1min, 15min, 1h, Daily).
+    - [ ] UI: Integrate RSI values into multi-timeframe indicator table.
+    (Note: Previous individual chart UI for RSI is superseded by the table view as per user request - May 15, 2025)
+
+  - **Moving Average Convergence Divergence (MACD):**
+    - [x] Backend: Implement Moving Average Convergence Divergence (MACD) calculation logic (customizable EMAs, signal line).
+    - [ ] Backend: Aggregate MACD data for multiple timeframes (1min, 15min, 1h, Daily).
+    - [ ] UI: Integrate MACD values into multi-timeframe indicator table.
+
+  - **Intraday Momentum Index (IMI):**
+    - [ ] Backend: Implement Intraday Momentum Index (IMI) calculation logic (customizable period).
+    - [ ] Backend: Aggregate IMI data for multiple timeframes (1min, 15min, 1h, Daily).
+    - [ ] UI: Integrate IMI values into multi-timeframe indicator table.
+
+  - **Money Flow Index (MFI):**
+    - [ ] Backend: Implement Money Flow Index (MFI) calculation logic (customizable period, volume-weighted RSI).
+    - [ ] Backend: Aggregate MFI data for multiple timeframes (1min, 15min, 1h, Daily).
+    - [ ] UI: Integrate MFI values into multi-timeframe indicator table.
 
 - **B. Fair Value Gaps (FVG)**
   - [ ] Backend: Implement logic to identify Fair Value Gaps (3-candle pattern) from price data.
