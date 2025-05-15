@@ -60,15 +60,10 @@
 - [x] Address `AttributeError: 'StreamingManager' object has no attribute 'stop_stream'`.
   - [x] Implemented `stop_stream()` and `_internal_stop_stream()` methods in `dashboard_utils/streaming_manager.py`.
   - [x] Verified syntax of the updated file.
-- [x] Diagnose issue: Options tables empty, `get_latest_data()` returns 0 items (May 15, Evening).
-  - [x] Reviewed `StreamingManager` data flow and subscription logic.
-  - [x] Added extensive verbose logging to `StreamingManager` for detailed diagnostics.
-  - [x] Analyzed user-provided logs and Schwab API documentation.
-  - [x] Identified that contract key can be under field name `"key"` or `"0"`.
-  - [x] Updated contract key parsing logic in `_handle_stream_message` to check for both `"key"` and `"0"`.
-  - [x] Updated `SCHWAB_FIELD_MAP` to include `"key": "key"`.
-  - [x] Verified syntax of the updated `streaming_manager.py`.
-
+- [x] Implement data merging logic in `StreamingManager` to handle partial updates and reduce N/A values.
+- [x] Fix f-string `SyntaxError` in `StreamingManager`.
+- [x] Review and fix dashboard data formatting (e.g., "YYYY-MM-DD", remaining "N/A"s).
+- [ ] Investigate persistent "Subscription ADD failed for LEVELONE_OPTIONS" error (requires full logs with subscription payload).
 - [ ] Future/General Tasks
   - [ ] Create `requirements.txt` file
 

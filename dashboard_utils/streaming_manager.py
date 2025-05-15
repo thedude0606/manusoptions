@@ -76,7 +76,7 @@ class StreamingManager:
 
     def _stream_worker(self, option_keys_to_subscribe_tuple):
         option_keys_to_subscribe = set(option_keys_to_subscribe_tuple)
-        logger.info(f"_stream_worker started for {len(option_keys_to_subscribe)} keys: {option_keys_to_subscribe}")
+        logger.info(f"_stream_worker started for {len(option_keys_to_subscribe)} keys: {list(option_keys_to_subscribe)[:20]}...") # Log a sample of keys
         with self._lock:
             self.status_message = "Stream: Initializing worker..."
             self.error_message = None # Clear previous errors
@@ -118,7 +118,7 @@ class StreamingManager:
             fields_str = self.SCHWAB_FIELD_IDS_TO_REQUEST
             
             subscription_payload = self.stream_client.level_one_options(keys_str, fields_str, command="ADD")
-            logger.info(f"_stream_worker: Preparing to send LEVELONE_OPTIONS subscription. Keys: {keys_str}. Fields: {fields_str}.")
+            logger.info(f"_stream_worker: Preparing to send LEVELONE_OPTIONS subscription. Keys (first 200 chars): {keys_str[:200]}... Fields: {fields_str}.")
             logger.debug(f"_stream_worker: Full subscription payload being sent: {json.dumps(subscription_payload)}")
             
             self.stream_client.send(subscription_payload)
@@ -219,39 +219,45 @@ class StreamingManager:
                             logger.warning(f"[MsgID:{current_message_id}] Skipping non-dict contract_data #{content_index}: {contract_data_from_stream}")
                             continue
                         
-                        # Attempt to get contract key from "key" field first, then fallback to "0"
                         contract_key = contract_data_from_stream.get("key")
                         if not contract_key:
                             contract_key = contract_data_from_stream.get("0")
                         
                         if not contract_key:
-                            logger.warning(f"[MsgID:{current_message_id}] Skipping contract_data with missing contract key (tried 'key' and '0'): {contract_data_from_stream}")
+                            logger.warning(f"[MsgID:{current_message_id}] Skipping contract_data with missing contract key (tried \"key\" and \"0\"): {contract_data_from_stream}")
                             continue
                         
-                        processed_data = {}
+                        # Prepare new data from the current stream message
+                        new_update_data = {}
                         for field_id, value in contract_data_from_stream.items():
                             if field_id in self.SCHWAB_FIELD_MAP:
-                                processed_data[self.SCHWAB_FIELD_MAP[field_id]] = value
+                                new_update_data[self.SCHWAB_FIELD_MAP[field_id]] = value
                         
-                        # Ensure the primary key from the stream is always present in our processed_data, using the determined contract_key
-                        if "key" not in processed_data:
-                             processed_data["key"] = contract_key # Store the identified key as "key"
+                        if "key" not in new_update_data: # Ensure the contract key itself is in the update if it was mapped from "0"
+                            new_update_data["key"] = contract_key
                         
-                        processed_data["lastUpdated"] = time.time()
+                        new_update_data["lastUpdated"] = time.time()
                         
-                        logger.info(f"[MsgID:{current_message_id}] Preparing to store data for key \"{contract_key}\". Data: {processed_data}")
+                        logger.info(f"[MsgID:{current_message_id}] Processing update for key \"{contract_key}\". New data: {new_update_data}")
                         updated_keys_in_batch.append(contract_key)
+                        
                         with self._lock:
-                            self.latest_data_store[contract_key] = processed_data
-                            new_store_size = len(self.latest_data_store)
+                            # Get existing record or an empty dict if it\"s a new key
+                            existing_record = self.latest_data_store.get(contract_key, {})
+                            # Merge new update into existing record
+                            existing_record.update(new_update_data)
+                            # Store the merged record back
+                            self.latest_data_store[contract_key] = existing_record
+                            
+                            logger.debug(f"[MsgID:{current_message_id}] Data for key \"{contract_key}\" merged/stored. Full record: {existing_record}. Store size: {len(self.latest_data_store)}.")
+
                             current_status = self.status_message
                             if not current_status.startswith("Stream: Error") and \
                                (not current_status.startswith("Stream: Actively receiving data") or \
                                 f"for {len(self.current_subscriptions)} contracts" not in current_status or \
-                                f"Store size: {new_store_size}" not in current_status):
-                                self.status_message = f"Stream: Actively receiving data for {len(self.current_subscriptions)} contracts. Store size: {new_store_size}."
+                                f"Store size: {len(self.latest_data_store)}" not in current_status):
+                                self.status_message = f"Stream: Actively receiving data for {len(self.current_subscriptions)} contracts. Store size: {len(self.latest_data_store)}."
                                 logger.info(f"[MsgID:{current_message_id}] Status updated: {self.status_message}")
-                            logger.debug(f"[MsgID:{current_message_id}] Data stored for key \"{contract_key}\". New store size: {new_store_size}.")
                 
                 if updated_keys_in_batch:
                      logger.info(f"[MsgID:{current_message_id}] Batch processed. Updated keys: {updated_keys_in_batch}. Store size: {len(self.latest_data_store)}. Sample: {list(self.latest_data_store.keys())[:3]}")
@@ -260,15 +266,18 @@ class StreamingManager:
 
             elif "response" in message_dict or "responses" in message_dict:
                 logger.info(f"[MsgID:{current_message_id}] Stream admin/response: {message_dict}")
-                if isinstance(message_dict.get("response"), list):
-                    for resp_item in message_dict["response"]:
-                        if resp_item.get("service") == "LEVELONE_OPTIONS" and resp_item.get("command") == "ADD":
-                            if resp_item.get("code") == 0:
+                responses_list = message_dict.get("response", []) or message_dict.get("responses", []) # Handle both singular and plural
+                if isinstance(responses_list, list):
+                    for resp_item in responses_list:
+                        if isinstance(resp_item, dict) and resp_item.get("service") == "LEVELONE_OPTIONS" and resp_item.get("command") == "ADD":
+                            if resp_item.get("content", {}).get("code") == 0: # Check code within content
                                 logger.info(f"[MsgID:{current_message_id}] Subscription ADD successful for LEVELONE_OPTIONS.")
                                 with self._lock:
                                      self.status_message = f"Stream: Subscription confirmed for {len(self.current_subscriptions)} contracts. Waiting for data..."
                             else:
-                                err_msg = f"Subscription ADD failed for LEVELONE_OPTIONS. Code: {resp_item.get('code')}, Msg: {resp_item.get('msg')}"
+                                code = resp_item.get("content", {}).get("code", "N/A")
+                                msg = resp_item.get("content", {}).get("msg", "N/A")
+                                err_msg = f"Subscription ADD failed for LEVELONE_OPTIONS. Code: {code}, Msg: {msg}"
                                 logger.error(f"[MsgID:{current_message_id}] {err_msg}")
                                 with self._lock:
                                     self.error_message = err_msg
@@ -340,7 +349,7 @@ class StreamingManager:
 
     def get_latest_data(self):
         with self._lock:
-            data_copy = dict(self.latest_data_store)
+            data_copy = {k: dict(v) for k, v in self.latest_data_store.items()} # Return a deep copy
         logger.debug(f"get_latest_data() called. Returning data store with {len(data_copy)} items. Sample keys: {list(data_copy.keys())[:3]}")
         return data_copy
 
@@ -378,7 +387,8 @@ class StreamingManager:
         with self._lock:
             self.stream_thread = None 
             self.current_subscriptions.clear()
-            self.latest_data_store.clear()
+            # Do not clear latest_data_store on stop, so UI can still show last known data if stream is toggled
+            # self.latest_data_store.clear()
             
             if self.error_message and "Error" in initial_status_before_stop:
                  self.status_message = f"Stream: Error - {self.error_message}"

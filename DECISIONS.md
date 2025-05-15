@@ -270,3 +270,18 @@ This addition is crucial for providing user control over the streaming process, 
     - This dual check makes the parsing more robust and compatible with the observed and documented data formats from the Schwab Streamer API.
 
 - **Expected Outcome:** This change should allow the `StreamingManager` to correctly parse incoming options data, populate the `latest_data_store`, and consequently enable the dashboard to display the options chain information.
+
+
+
+## Data Merging and Dashboard Formatting Fixes (May 15, 2025)
+
+- **Decision (StreamingManager - Data Merging):** Modify `_handle_stream_message` in `dashboard_utils/streaming_manager.py` to merge incoming partial updates for an option contract with any existing data for that contract in `latest_data_store`.
+  - **Rationale:** The Schwab `LEVELONE_OPTIONS` stream often sends partial updates (only fields that changed). The previous logic would overwrite the existing record with the partial update, leading to many fields appearing as "N/A" in the dashboard if they weren't part of the latest specific update. The new merging logic (`existing_record.update(new_update_data)`) ensures that all data received for a contract over time is accumulated, providing a more complete record and reducing "N/A" values.
+
+- **Decision (Dashboard App - Field Parsing & Formatting):** Enhance `update_options_chain_stream_data` in `dashboard_app.py` to more robustly parse and format Expiration Date, Strike Price, and Contract Type (Call/Put).
+  - **Rationale:** The dashboard was displaying "YYYY-MM-DD" for expiration dates and "N/A" for strikes, and potentially misclassifying calls/puts due to unreliable streamed fields.
+  - **Implementation Details:**
+    1.  **Prioritize Dedicated Fields:** The code now first attempts to use the dedicated fields from the stream data (`expirationYear`, `expirationMonth`, `expirationDay`, `strikePrice`, `contractType`) if they are present and valid.
+    2.  **Fallback to Key Parsing:** If dedicated fields are missing or result in an invalid format (e.g., "N/A"), the code falls back to parsing these details directly from the option contract key string (e.g., `MSFT  250530C00435000`) using a regular expression (`OPTION_KEY_REGEX`). This provides a more reliable way to extract the date, strike (adjusting for the 1000x factor), and call/put identifier.
+    3.  **Improved Logging:** Added logging to trace how these fields are derived for easier debugging of display issues.
+  - This dual approach (dedicated fields first, then key parsing as fallback) aims to maximize the chances of correctly displaying the essential option contract details.

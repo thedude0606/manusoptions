@@ -465,3 +465,42 @@ This suggests a potential environment limitation or a very specific issue with h
 - Update `TODO.md` and `DECISIONS.md`.
 - Push the fix and updated documentation to GitHub.
 - Request the user to test the application and confirm if options data is now displayed.
+
+
+
+## Data Merging and Syntax Fix in StreamingManager (May 15, 2025)
+
+**Completed Tasks:**
+
+- Implemented logic in `_handle_stream_message` within `dashboard_utils/streaming_manager.py` to merge partial updates for option contracts. Instead of overwriting, new data for an existing contract key is now merged into the existing record in `latest_data_store`. This is intended to reduce the number of "N/A" values in the dashboard by accumulating all received fields for a contract over time.
+- Fixed a `SyntaxError: f-string expression part cannot include a backslash` in `_stream_worker` within `dashboard_utils/streaming_manager.py`. The problematic f-string was corrected to use single quotes for the outer string, allowing double quotes within the expression.
+- Verified the syntax of the updated `streaming_manager.py` file.
+
+**Current Focus:**
+
+- Validating the effectiveness of the data merging logic in populating more fields in the dashboard.
+- Continuing to investigate the persistent "Subscription ADD failed for LEVELONE_OPTIONS" error. This requires capturing and analyzing the exact subscription payload sent to the Schwab API.
+- Addressing the "YYYY-MM-DD" and "N/A" display issues in the dashboard table, which involves reviewing and correcting the field extraction and formatting in `dashboard_app.py` after confirming data completeness from `StreamingManager`.
+
+
+
+
+## Dashboard Display Fixes: Data Merging and Formatting (May 15, 2025)
+
+**Completed Tasks:**
+
+- **Data Merging in `StreamingManager`:** Implemented logic in `_handle_stream_message` within `dashboard_utils/streaming_manager.py` to merge partial updates for option contracts. Instead of overwriting, new data for an existing contract key is now merged into the existing record in `latest_data_store`. This is intended to reduce the number of "N/A" values in the dashboard by accumulating all received fields for a contract over time.
+- **Syntax Error Fix:** Fixed a `SyntaxError: f-string expression part cannot include a backslash` in `_stream_worker` within `dashboard_utils/streaming_manager.py`.
+- **Dashboard Data Parsing and Formatting in `dashboard_app.py`:**
+    - Enhanced the logic in `update_options_chain_stream_data` to more robustly parse option contract details.
+    - Prioritized using dedicated fields from the stream (`expirationYear`, `expirationMonth`, `expirationDay`, `strikePrice`, `contractType`) for Expiration Date, Strike, and Call/Put type.
+    - Implemented a fallback mechanism to parse Expiration Date, Strike, and Call/Put type directly from the option contract key string (using regex `OPTION_KEY_REGEX`) if the dedicated fields are missing or invalid.
+    - This aims to correctly display these critical fields and reduce "YYYY-MM-DD" and "N/A" placeholders.
+
+**Current Focus & Next Steps:**
+
+- Request user to test the application with these latest changes and provide new terminal logs (especially the initial part showing the subscription payload) and a screenshot of the dashboard.
+- Analyze the new logs to confirm if the "Subscription ADD failed" error persists and, if so, to diagnose it using the full subscription payload.
+- Verify if the data merging and dashboard formatting changes have resolved the "N/A" and "YYYY-MM-DD" display issues.
+- Address any remaining issues based on user feedback and log analysis.
+

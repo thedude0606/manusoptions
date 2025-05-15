@@ -271,11 +271,15 @@ def manage_options_stream(selected_symbol, active_tab, current_errors):
     app_logger.info(f"manage_options_stream returning keys: {len(option_keys_for_stream)} keys.")
     return option_keys_for_stream, new_errors
 
-# Regex to find C or P in an option key, typically after YYMMDD
-# Example: MSFT  250530C00435000 - We want the 'C'
-# Root(any) YYMMDD (C/P) Strike(any)
-# This regex looks for 6 digits (date) followed by C or P.
-OPTION_TYPE_REGEX = re.compile(r"\d{6}([CP])")
+# Regex to parse OCC option symbol format
+# Example: MSFT  250530C00435000 or SPXW  240520C05300000
+# Group 1: Underlying (e.g., "MSFT  " or "SPXW  ")
+# Group 2: Year (YY)
+# Group 3: Month (MM)
+# Group 4: Day (DD)
+# Group 5: Type (C or P)
+# Group 6: Strike Price (integer, divide by 1000)
+OPTION_KEY_REGEX = re.compile(r"^([A-Z ]+)(\d{2})(\d{2})(\d{2})([CP])(\d{8})$")
 
 @app.callback(
     Output("options-calls-table", "columns"),
@@ -308,57 +312,78 @@ def update_options_chain_stream_data(n_intervals, selected_symbol, current_error
 
     latest_stream_data = STREAMING_MANAGER.get_latest_data()
     app_logger.info(f"Fetched {len(latest_stream_data)} items from STREAMING_MANAGER.get_latest_data().")
-    if latest_stream_data:
-        app_logger.debug(f"Sample data item from stream store: {json.dumps(list(latest_stream_data.values())[0], indent=2)}")
+    if latest_stream_data and n_intervals % 5 == 0: # Log a sample periodically
+        sample_key = list(latest_stream_data.keys())[0]
+        app_logger.debug(f"Sample data item (key: {sample_key}) from stream store: {json.dumps(latest_stream_data[sample_key], indent=2)}")
     
     calls_list = []
     puts_list = []
 
     for contract_key_from_store, data_dict in latest_stream_data.items():
-        # Defensive: ensure data_dict is a dict
         if not isinstance(data_dict, dict):
             app_logger.warning(f"Skipping non-dict item in latest_stream_data for key {contract_key_from_store}: {type(data_dict)}")
             continue
 
-        # WORKAROUND: Determine Call/Put from the contract key itself due to issues with field 27
-        # The key is usually like: ROOTYYMMDD(C/P)STRIKE
-        # Example: MSFT  250530C00435000
         contract_key_str = str(data_dict.get("key", ""))
+        parsed_expiration_date = "N/A"
+        parsed_strike_price = "N/A"
         is_call = False
         is_put = False
-        
-        match = OPTION_TYPE_REGEX.search(contract_key_str)
-        if match:
-            type_char = match.group(1)
-            if type_char == 'C':
-                is_call = True
-            elif type_char == 'P':
-                is_put = True
-        else:
-            # Fallback for older style keys or if regex fails, check common positions
-            # This is less reliable and depends on fixed length assumptions
-            if 'C' in contract_key_str[6:10]: # Check a common range for C/P
-                 is_call = True
-            elif 'P' in contract_key_str[6:10]:
-                 is_put = True
-        
-        if not is_call and not is_put:
-            app_logger.warning(f"Could not determine contract type (C/P) from key: {contract_key_str}. Also, contractType field from stream was: {data_dict.get('contractType')}. Skipping this contract.")
-            # continue # Skip if type cannot be determined
-            # For now, let's log and see if any other field helps, but this contract won't be sorted
 
-        # Construct record, being mindful that some data fields from stream might be incorrect
-        exp_year = data_dict.get("expirationYear", "YYYY")
-        exp_month = str(data_dict.get("expirationMonth", "MM")).zfill(2)
-        exp_day = str(data_dict.get("expirationDay", "DD")).zfill(2)
+        # Try to parse from dedicated fields first
+        exp_year_val = data_dict.get("expirationYear")
+        exp_month_val = data_dict.get("expirationMonth")
+        exp_day_val = data_dict.get("expirationDay")
+        strike_val = data_dict.get("strikePrice")
+        contract_type_val = data_dict.get("contractType")
+
+        if isinstance(exp_year_val, (int, float)) and isinstance(exp_month_val, (int, float)) and isinstance(exp_day_val, (int, float)):
+            try:
+                parsed_expiration_date = f"20{int(exp_year_val):02d}-{int(exp_month_val):02d}-{int(exp_day_val):02d}"
+            except ValueError:
+                app_logger.warning(f"Could not format date from fields for key {contract_key_str}: Y={exp_year_val}, M={exp_month_val}, D={exp_day_val}")
         
-        # Log potentially problematic date fields
-        if n_intervals % 10 == 1: # Log a sample of these periodically
-            app_logger.debug(f"Raw date components for {contract_key_str}: Year={exp_year}, Month={exp_month}, Day={exp_day}")
+        if isinstance(strike_val, (int, float)):
+            parsed_strike_price = strike_val
+        
+        if contract_type_val == "CALL" or contract_type_val == "C":
+            is_call = True
+        elif contract_type_val == "PUT" or contract_type_val == "P":
+            is_put = True
+
+        # Fallback to parsing from contract key if dedicated fields are missing/invalid or type is unknown
+        if parsed_expiration_date == "N/A" or parsed_strike_price == "N/A" or (not is_call and not is_put):
+            key_match = OPTION_KEY_REGEX.match(contract_key_str.replace(" ", "")) # Remove spaces for regex
+            if key_match:
+                if parsed_expiration_date == "N/A":
+                    year, month, day = key_match.group(2), key_match.group(3), key_match.group(4)
+                    parsed_expiration_date = f"20{year}-{month}-{day}"
+                
+                if parsed_strike_price == "N/A":
+                    try:
+                        parsed_strike_price = float(key_match.group(6)) / 1000.0
+                    except ValueError:
+                        app_logger.warning(f"Could not parse strike from key {contract_key_str}")
+                
+                if not is_call and not is_put:
+                    type_char = key_match.group(5)
+                    if type_char == "C":
+                        is_call = True
+                    elif type_char == "P":
+                        is_put = True
+            else:
+                if n_intervals % 10 == 1: # Log periodically
+                    app_logger.warning(f"Could not parse option key {contract_key_str} with regex. Date/Strike/Type might be N/A.")
+
+        if not is_call and not is_put:
+            # If still unknown, log and skip (or assign to a default list if necessary)
+            if n_intervals % 10 == 1: # Log periodically
+                app_logger.warning(f"Final check: Could not determine contract type for key: {contract_key_str}. Skipping.")
+            continue
 
         record = {
-            "Expiration Date": f"{exp_year}-{exp_month}-{exp_day}",
-            "Strike": data_dict.get("strikePrice", "N/A"),
+            "Expiration Date": parsed_expiration_date,
+            "Strike": parsed_strike_price,
             "Last": data_dict.get("lastPrice", "N/A"),
             "Bid": data_dict.get("bidPrice", "N/A"),
             "Ask": data_dict.get("askPrice", "N/A"),
@@ -371,26 +396,16 @@ def update_options_chain_stream_data(n_intervals, selected_symbol, current_error
             "Vega": data_dict.get("vega", "N/A"),
             "Contract Key": contract_key_str
         }
-        
+
         if is_call:
             calls_list.append(record)
         elif is_put:
             puts_list.append(record)
-        # else: contract is not added if type unknown
-
-    calls_df = pd.DataFrame(calls_list)
-    puts_df = pd.DataFrame(puts_list)
-
-    # Ensure columns are present even if df is empty
-    if calls_df.empty:
-        calls_df = pd.DataFrame(columns=option_cols_def)
-    if puts_df.empty:
-        puts_df = pd.DataFrame(columns=option_cols_def)
 
     app_logger.info(f"Processed {len(calls_list)} calls and {len(puts_list)} puts for UI update.")
-    return option_cols, calls_df.to_dict("records"), option_cols, puts_df.to_dict("records"), status_display, new_errors[:10]
+    return option_cols, calls_list, option_cols, puts_list, status_display, new_errors[:10]
 
+# --- Main Execution --- 
 if __name__ == "__main__":
-    app_logger.info("Starting Dash application...")
-    app.run(debug=True, host="0.0.0.0", port=8050) # Changed from app.run_server to app.run
+    app.run_server(debug=True, host="0.0.0.0", port=8050)
 
