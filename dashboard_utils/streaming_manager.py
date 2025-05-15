@@ -284,4 +284,3 @@ class StreamingManager:
             self.is_running = True
             self.error_message = None
             self.status_message = "Stream: Starting..."
-(Content truncated due to size limit. Use line ranges to read in chunks)

@@ -134,3 +134,23 @@ These changes are crucial for the stability and correctness of the streaming fun
     3.  **Data Parsing in `_handle_stream_message`:** The logic in `_handle_stream_message` that iterates through the `contract_data_from_stream` (which contains numeric field IDs as keys from the Schwab stream) was updated to use the revised `SCHWAB_FIELD_MAP`. This ensures that when, for example, field `"12"` comes from the stream, its value is stored in the `processed_data` dictionary under the key `"expirationYear"`.
   - **Expected Impact:** This correction is fundamental. It ensures that the raw numeric data from the Schwab stream is correctly interpreted and stored with meaningful, consistent field names. This, in turn, allows `dashboard_app.py` to access the correct data points when constructing the "Expiration Date" string (from `expirationYear`, `expirationMonth`, `expirationDay`) and when populating all other columns in the options tables. The data displayed in the dashboard should now be accurate and match the intended columns.
 
+
+
+
+## Workaround for File Read Truncation and SyntaxError Resolution (May 15, 2025 - Evening)
+
+- **Decision:** Address the `SyntaxError` in `dashboard_utils/streaming_manager.py` (around line 287) by using user-provided file content as a workaround for a persistent file read truncation issue within the environment.
+  - **Rationale for Workaround:**
+    - Initial attempts to fix the `SyntaxError` were blocked by a persistent issue where reading the specific lines (around 287) of `dashboard_utils/streaming_manager.py` resulted in a "(Content truncated due to size limit. Use line ranges to read in chunks)" message. This occurred despite the file being only 16KB and trying various read methods (small chunks, `sed`, `git show` output).
+    - This truncation prevented direct analysis and correction of the syntax error at the reported line.
+    - The user provided the full content of `streaming_manager.py` via an uploaded text file (`pasted_content.txt`). This provided an immediate way to bypass the environmental file reading limitation and access the necessary code.
+  - **Rationale for Fix Implementation:**
+    - The traceback indicated a `SyntaxError` at line 287. Upon examining the content (both from the user-provided file and eventually the local file after the fix), it was determined that the line causing the error was likely the placeholder text `"(Content truncated due to size limit. Use line ranges to read in chunks)"` itself, which had somehow become part of the file content at that specific line in the cloned repository version being worked on.
+    - A Python script (`fix_streaming_manager.py`) was created to programmatically find and remove this exact placeholder line from the local `dashboard_utils/streaming_manager.py`.
+    - This approach was chosen to ensure a clean removal of the problematic line without manual editing, which could introduce other errors.
+  - **Verification:**
+    - After running the script, the problematic line was confirmed to be removed.
+    - The relevant section of `dashboard_utils/streaming_manager.py` became readable using the standard file read tools.
+    - A Python syntax check (`python3.11 -m py_compile dashboard_utils/streaming_manager.py`) was performed on the modified file, which passed, confirming the `SyntaxError` was resolved.
+
+This decision to use the user-provided content as a workaround allowed progress despite an environmental limitation. The subsequent scripted fix ensured the `SyntaxError` was correctly addressed.

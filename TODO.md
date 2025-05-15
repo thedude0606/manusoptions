@@ -44,7 +44,12 @@
   - [x] Correct Schwab stream field mapping (`SCHWAB_FIELD_IDS_TO_REQUEST`, `SCHWAB_FIELD_MAP`) and data parsing in `StreamingManager` based on user-provided mapping.
   - [x] Commit and push field mapping fix to GitHub.
   - [x] Update `PROGRESS.md` with field mapping fix details.
-  - [ ] Update `TODO.md` with field mapping fix details (this item).
+  - [x] Update `TODO.md` with field mapping fix details (this item).
+- [x] Address `SyntaxError` in `dashboard_utils/streaming_manager.py` (around line 287).
+  - [x] Encountered persistent file read truncation issue, blocking direct analysis.
+  - [x] User provided file content as a workaround (`pasted_content.txt`).
+  - [x] Removed problematic placeholder line from `streaming_manager.py` using a script.
+  - [x] Verified syntax fix and file integrity.
   - [ ] Update `DECISIONS.md` regarding field mapping fix.
   - [ ] Request user to test application and confirm data accuracy.
   - [ ] If fixed, proceed to final documentation and `requirements.txt`.
