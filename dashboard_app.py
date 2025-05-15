@@ -23,6 +23,10 @@ if not app_logger.hasHandlers():
     app_logger.addHandler(app_handler)
 app_logger.setLevel(logging.INFO)
 
+# Initialize the Dash app BEFORE defining layout or callbacks
+app = dash.Dash(__name__, suppress_callback_exceptions=True)
+app.title = "Trading Dashboard"
+
 # --- Schwab Client and Account ID Setup ---
 def schwab_client_provider():
     """Provides the Schwab client instance."""

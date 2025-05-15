@@ -152,3 +152,58 @@ Despite previous verbose logging, the terminal output from the user still did no
 - Meticulously analyze the new logs, paying close attention to the logged subscription payload, any responses from Schwab to the subscription, and the full content of all messages received by `_handle_stream_message`.
 - Implement a fix based on this detailed analysis.
 
+
+
+
+## Resolving Empty Options Tables: UI Data Propagation and Parsing Fix (May 15, 2025)
+
+After confirming that `StreamingManager` was successfully receiving and storing `LEVELONE_OPTIONS` data (as evidenced by logs showing "Storing data for key MSFT..."), the investigation shifted to why this data was not appearing in the dashboard tables in `dashboard_app.py`.
+
+**Investigation and Solution:**
+
+- **Analysis of `dashboard_app.py`:** The `update_options_chain_stream_data` callback was reviewed. The primary suspect was the logic responsible for:
+    1.  Retrieving data from `STREAMING_MANAGER.get_latest_data()`.
+    2.  Processing each contract's data dictionary.
+    3.  Correctly identifying contracts as Calls or Puts.
+    4.  Formatting the data for the Dash DataTables.
+
+- **Key Findings from Logs and Code Review:**
+    - The logs from `StreamingManager` showed that the `contractType` field (field `27`) from the stream was sometimes inconsistent or not mapping directly to "CALL" or "PUT" as expected by the original `dashboard_app.py` logic. For example, logs showed `contractType` having values like `P` or `C` (single characters) or even numerical values, instead of the full strings "CALL" or "PUT".
+    - The expiration date construction also needed to be robust to ensure correct formatting.
+
+- **Modifications to `dashboard_app.py` (`update_options_chain_stream_data` callback):**
+    1.  **Robust Contract Type Parsing:** Instead of relying solely on the streamed `contractType` field, a workaround was implemented to parse the contract type (Call/Put) directly from the option contract key string (e.g., `MSFT  250530C00435000`). A regular expression (`OPTION_TYPE_REGEX = re.compile(r"\d{6}([CP])")`) was added to extract the 'C' or 'P' character following the 6-digit date in the key. This provides a more reliable way to distinguish calls from puts.
+    2.  **Enhanced Logging in UI Callback:** More detailed logging was added within the `update_options_chain_stream_data` callback to trace:
+        - When the callback is triggered.
+        - The number of items fetched from `STREAMING_MANAGER.get_latest_data()`.
+        - A sample of a raw data item from the `StreamingManager` store.
+        - The raw values of `expirationYear`, `expirationMonth`, `expirationDay`, and the streamed `contractType` field for sample contracts (logged periodically).
+        - The number of contracts processed into calls and puts lists for the UI.
+    3.  **Defensive Data Handling:** Added checks to ensure `data_dict` is a dictionary before processing. Ensured that DataFrames for calls and puts are initialized with all expected columns even if they are empty, to prevent Dash errors.
+    4.  **Corrected Expiration Date Formatting:** Ensured that `expirationMonth` and `expirationDay` are zero-padded when constructing the `Expiration Date` string.
+
+- **Rationale for Changes:**
+    - Parsing the contract type from the option key is a pragmatic workaround for the unreliable streamed `contractType` field, ensuring correct categorization of options.
+    - The enhanced UI-side logging helps verify the data transformation process within the Dash callback and pinpoint any discrepancies in how data is mapped to table columns.
+    - These changes directly address the most likely reasons for the data being present in the backend (`StreamingManager`) but not appearing correctly in the UI tables.
+
+**Updated Completed Tasks:**
+
+- Confirmed `StreamingManager` is successfully receiving and storing `LEVELONE_OPTIONS` data.
+- Investigated data propagation logic in `dashboard_app.py`.
+- Implemented a fix in `dashboard_app.py` to reliably parse Call/Put type from the option contract key.
+- Enhanced logging in the `update_options_chain_stream_data` callback for better diagnostics of UI data handling.
+- Ensured robust DataFrame creation for Dash tables.
+- Pushed fixes and enhancements for `dashboard_app.py` to GitHub.
+
+**Current Status:**
+
+- The primary known blocker (empty options tables) should now be addressed. The application is expected to display streaming options data correctly.
+
+**Next Steps:**
+
+- Update `TODO.md` and `DECISIONS.md` to reflect these fixes.
+- Request the user to run the application with the latest changes and confirm if the options tables are now populated.
+- If issues persist, analyze the new, highly detailed logs from both `StreamingManager` and `dashboard_app.py`.
+- Address any remaining minor issues or create the `requirements.txt` file.
+

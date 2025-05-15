@@ -24,14 +24,22 @@
   - [x] Validate `LEVELONE_OPTIONS` subscription fields
   - [x] Commit and push enhanced logging (Round 2) changes to GitHub
   - [x] Update `PROGRESS.md` with enhanced logging (Round 2) details
-  - [ ] Update `TODO.md` with enhanced logging (Round 2) details (this item)
-  - [ ] Update `DECISIONS.md` regarding enhanced logging (Round 2) strategy
-  - [ ] Request user to run app and provide new verbose logs (Round 2)
-  - [ ] Analyze new verbose logs (Round 2) to identify data propagation failure point
-  - [ ] Implement fix for empty options tables based on new logs
-  - [ ] Iteratively commit and push fix to GitHub
-  - [ ] Update `PROGRESS.md`, `TODO.md`, `DECISIONS.md` for this fix
-  - [ ] Report final fix status to user
+  - [x] Update `TODO.md` with enhanced logging (Round 2) details
+  - [x] Update `DECISIONS.md` regarding enhanced logging (Round 2) strategy
+  - [x] Request user to run app and provide new verbose logs (Round 2)
+  - [x] Analyze new verbose logs (Round 2) - Confirmed `StreamingManager` receives and stores data.
+  - [x] Investigate `dashboard_app.py` for UI data propagation issues.
+  - [x] Implement fix in `dashboard_app.py`: Parse Call/Put from option key, enhance UI data logging.
+  - [x] Commit and push `dashboard_app.py` fix to GitHub.
+  - [x] Update `PROGRESS.md` with `dashboard_app.py` fix details.
+  - [ ] Update `TODO.md` with `dashboard_app.py` fix details (this item).
+  - [ ] Update `DECISIONS.md` regarding `dashboard_app.py` fix strategy.
+  - [ ] Request user to test application and confirm fix.
+  - [ ] If fixed, proceed to final documentation and `requirements.txt`.
+  - [ ] If not fixed, analyze new logs and iterate.
+
+- [ ] Future/General Tasks
+  - [ ] Create `requirements.txt` file
 
 - [ ] Future/General Tasks
   - [ ] Create `requirements.txt` file

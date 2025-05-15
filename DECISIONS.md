@@ -78,3 +78,25 @@ These changes are crucial for the stability and correctness of the streaming fun
         2.  **Log All Raw Incoming Messages (Full Content):** The `_handle_stream_message` method was modified to log the *entirety* of every `raw_message` received from the `schwabdev` stream handler. A message counter was also added to give each logged message a unique ID for easier correlation.
         3.  **Validate Subscription Fields:** The `fields_str` used for `LEVELONE_OPTIONS` was explicitly reviewed and confirmed to be `"0,2,7,8,9,10,11,15,16,17,18,19,21,23,24,25,26,27"`, which should cover all necessary data points for the dashboard.
     - These enhancements provide maximum visibility into the exact communication with the Schwab API (what is sent and what is received in its raw form), which is critical for diagnosing why `LEVELONE_OPTIONS` data is not populating the application's data store.
+
+
+
+## UI Data Propagation Fix: Parsing Option Type from Key and Enhanced UI Logging (May 15, 2025)
+
+- **Decision:** Modify `dashboard_app.py` (specifically the `update_options_chain_stream_data` callback) to reliably parse the option contract type (Call/Put) from the contract key string and to add more detailed logging for the data transformation process before it is passed to the Dash DataTables.
+  - **Rationale:** 
+    - After confirming that `StreamingManager` was successfully receiving and storing `LEVELONE_OPTIONS` data, the dashboard tables still remained empty. This pointed to an issue within `dashboard_app.py` concerning how the streamed data was being processed and prepared for UI display.
+    - **Problem 1: Unreliable `contractType` Field:** Analysis of the `StreamingManager` logs (which showed raw data from the stream) indicated that the `contractType` field (field `27`) provided by the Schwab API stream was not consistently the string "CALL" or "PUT". It sometimes appeared as single characters (	extquotesingleC	extquotesingle, 	extquotesingleP	extquotesingle) or other unexpected values. The existing logic in `dashboard_app.py` relied on this field being exactly "CALL" or "PUT" to sort contracts into the respective tables.
+    - **Problem 2: Insufficient UI-Side Logging:** The previous logging in `dashboard_app.py` was not detailed enough to trace exactly how the data received from `StreamingManager` was being transformed and whether the correct records were being generated for the call and put tables.
+
+  - **Solution Details:**
+    1.  **Parse Contract Type from Key:** A regular expression (`OPTION_TYPE_REGEX = re.compile(r"\d{6}([CP])")`) was introduced to parse the option type directly from the standard option contract key string (e.g., `MSFT  250530C00435000`, where 	extquotesingleC	extquotesingle after the date indicates a call). This method is more robust than relying on the potentially inconsistent streamed `contractType` field. The callback now uses this regex to determine if a contract is a call or a put.
+    2.  **Enhanced UI Callback Logging:** The `update_options_chain_stream_data` callback was augmented with more comprehensive logging to track:
+        - The number of data items retrieved from `STREAMING_MANAGER.get_latest_data()`.
+        - A sample of a raw data dictionary for one contract (as received from `StreamingManager`).
+        - The raw values of `expirationYear`, `expirationMonth`, `expirationDay`, and the original streamed `contractType` field for sample contracts (logged periodically for comparison and future debugging).
+        - The final count of records processed into `calls_list` and `puts_list` before being converted to DataFrames for the UI.
+    3.  **Defensive DataFrame Handling:** Ensured that even if `calls_list` or `puts_list` are empty, DataFrames with the correct column structure are created and passed to the Dash DataTable components. This prevents potential Dash errors related to missing columns when tables are empty.
+    4.  **Corrected Date Formatting:** Ensured `expirationMonth` and `expirationDay` are zero-padded when constructing the `Expiration Date` string for display.
+
+  - **Expected Outcome:** These changes are expected to resolve the empty options table issue by correctly categorizing contracts and ensuring that the data, now confirmed to be arriving in the backend, is properly processed and displayed in the UI. The enhanced logging will also provide much clearer diagnostics if any further UI-related data mapping issues arise.
