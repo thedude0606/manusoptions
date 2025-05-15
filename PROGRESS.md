@@ -385,3 +385,49 @@ This suggests a potential environment limitation or a very specific issue with h
 - Update `TODO.md` and `DECISIONS.md`.
 - Push the fix and updated documentation to GitHub.
 - Notify the user of the fix.
+
+
+
+## Diagnosing Empty Options Tables: Added Verbose Logging (May 15, 2025 - Evening)
+
+**Issue:**
+
+- User reported that the options chain tables in the dashboard are empty, and logs from `dashboard_app.py` show that `STREAMING_MANAGER.get_latest_data()` is consistently returning zero items. This indicates that `latest_data_store` in `StreamingManager` is not being populated.
+
+**Action Taken (Diagnostic Logging):**
+
+- To diagnose why `latest_data_store` is not being populated, extensive verbose logging has been added to `dashboard_utils/streaming_manager.py`.
+- The logger level for `dashboard_utils.streaming_manager` was set to `DEBUG`.
+- Logging was enhanced in several key areas:
+    - **Initialization (`__init__`):** Confirms initialization and RLock usage.
+    - **Schwab Client Getter (`_get_schwab_client`):** Logs success or failure in obtaining the client, including full tracebacks on error.
+    - **Stream Worker (`_stream_worker`):** 
+        - Logs start, keys being subscribed, status changes, and client acquisition.
+        - Logs the full subscription payload sent to Schwab.
+        - Logs when subscriptions are sent and when the monitoring loop is active.
+        - Logs errors with full tracebacks and ensures `is_running` is set to `False` on critical errors.
+        - Logs details in the `finally` block about cleanup and stopping the underlying Schwab client.
+    - **Message Handler (`_handle_stream_message`):**
+        - Logs every raw incoming message (truncated if very long) with a unique message ID.
+        - Logs parsed message dictionaries.
+        - Logs details when processing "data" items, including which contract keys are being updated and the state of `latest_data_store`.
+        - Logs administrative/response messages (like subscription confirmations) and heartbeats.
+        - Logs errors during message processing with full tracebacks.
+        - Updates `status_message` to include store size when data is actively received.
+    - **Stream Start/Stop (`start_stream`, `_internal_stop_stream`):**
+        - Logs when these methods are called, the keys involved, and decisions about restarting streams.
+        - Logs when `latest_data_store` and `current_subscriptions` are cleared.
+        - Logs thread management details (initiation, joining, timeouts).
+    - **Data/Status Getters (`get_status`, `get_latest_data`):** Logs calls and basic info about returned data (e.g., store size, sample keys).
+- Changed `self._lock` from `threading.Lock()` to `threading.RLock()` for re-entrant safety, as some internal calls might re-acquire the lock.
+
+**Updated Completed Tasks:**
+
+- Added extensive verbose logging to `dashboard_utils/streaming_manager.py` to diagnose the empty `latest_data_store` issue.
+- Changed `_lock` to `RLock` for increased safety.
+
+**Next Steps:**
+
+- Update `TODO.md` and `DECISIONS.md`.
+- Push the logging changes to GitHub.
+- Request the user to run the application with the new logging and provide the complete terminal output for analysis.

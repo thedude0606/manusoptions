@@ -60,6 +60,9 @@
 - [x] Address `AttributeError: 'StreamingManager' object has no attribute 'stop_stream'`.
   - [x] Implemented `stop_stream()` and `_internal_stop_stream()` methods in `dashboard_utils/streaming_manager.py`.
   - [x] Verified syntax of the updated file.
+- [x] Diagnose issue: Options tables empty, `get_latest_data()` returns 0 items (May 15, Evening).
+  - [x] Reviewed `StreamingManager` data flow and subscription logic.
+  - [x] Added extensive verbose logging to `StreamingManager` for detailed diagnostics.
   - [ ] Update `DECISIONS.md` regarding field mapping fix.
   - [ ] Request user to test application and confirm data accuracy.
   - [ ] If fixed, proceed to final documentation and `requirements.txt`.

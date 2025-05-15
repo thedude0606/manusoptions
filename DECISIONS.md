@@ -215,3 +215,32 @@ This addition is essential for `dashboard_app.py` to retrieve and display the la
     - Logging was added to trace the execution flow of stopping the stream.
 
 This addition is crucial for providing user control over the streaming process, allowing resources to be released when the stream is no longer needed, and preventing runaway threads or connections.
+
+
+
+## Enhanced Logging for Diagnosing Empty Data Store (May 15, 2025 - Evening)
+
+- **Decision:** Add extensive verbose (DEBUG level) logging throughout the `StreamingManager` class (`dashboard_utils/streaming_manager.py`).
+  - **Rationale:**
+    - The user reported that `STREAMING_MANAGER.get_latest_data()` was returning zero items, leading to empty options chain tables in the dashboard. This suggests a breakdown in the data reception, processing, or storage pipeline within `StreamingManager`.
+    - Existing INFO-level logging was insufficient to pinpoint the exact location of the failure (e.g., subscription failure, no data messages received, errors in message handling, or issues with `latest_data_store` updates).
+    - Verbose DEBUG logging was added to trace:
+        - Initialization and client acquisition.
+        - The entire lifecycle of the `_stream_worker` thread, including subscription payload details, confirmation messages from the server, and the status of the monitoring loop.
+        - Every raw message received by `_handle_stream_message`, its parsing, and the logic for processing "data", "response", or "notify" message types.
+        - Detailed updates to `latest_data_store`, including keys being added/updated and the store size.
+        - Calls to `start_stream`, `stop_stream`, `get_status`, and `get_latest_data` with relevant internal state information.
+        - Full tracebacks for any exceptions caught.
+  - **Implementation Details:**
+    - Changed the logger level for `dashboard_utils.streaming_manager` to `logging.DEBUG`.
+    - Added detailed log statements at critical points in all major methods of `StreamingManager`.
+    - Used `RLock` instead of `Lock` for `self._lock` to provide re-entrant capability, potentially improving robustness in complex lock interactions, though the immediate need was not strictly proven, it was a proactive measure during refactoring.
+    - Ensured that status messages (`self.status_message`) are updated more dynamically, for instance, to include the current size of the data store when data is actively being received.
+
+- **Strategy:** The goal of this enhanced logging is to obtain a complete trace from the user's environment. This trace will be analyzed to understand if:
+    - The Schwab stream connection is established.
+    - Subscription requests are being sent correctly.
+    - Subscription confirmation responses are received and are successful.
+    - Actual `LEVELONE_OPTIONS` data messages are being received.
+    - Data messages are being parsed and processed correctly into `latest_data_store`.
+    - Any errors or unexpected conditions are occurring during this process.
