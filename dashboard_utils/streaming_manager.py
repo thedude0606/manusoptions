@@ -226,8 +226,16 @@ class StreamingManager:
                         continue
                     content_list = item.get("content", [])
                     for content_index, contract_data_from_stream in enumerate(content_list):
-                        logger.debug(f"[MsgID:{current_message_id}] Processing content #{content_index} from item #{item_index}: {contract_data_from_stream}")
-                        if not isinstance(contract_data_from_stream, dict) or "key" not in contract_data_from_stream:
+                        logger.debug(f"[MsgID:{current_message_id}] Processing content #{content_index} from item #{item_index}: {contract_data_from_stream}"""
+                        if not isinstance(contract_data_from_stream, dict):
+                            logger.warning(f"[MsgID:{current_message_id}] Skipping non-dict contract_data: {contract_data_from_stream}")
+                            continue
+                        # Get the contract key using its numeric field ID "0" (Symbol/Contract Key)
+                        contract_key = contract_data_from_stream.get("0") 
+                        if not contract_key:
+                            logger.warning(f"[MsgID:{current_message_id}] Skipping contract_data with missing or empty field '0' (contract key): {contract_data_from_stream}")
+                            continue
+"""key" not in contract_data_from_stream:
                             logger.warning(f"[MsgID:{current_message_id}] Skipping malformed contract_data (no key): {contract_data_from_stream}")
                             continue
                         contract_key = contract_data_from_stream.get("key")
@@ -295,62 +303,5 @@ class StreamingManager:
         logger.info("Internal stop stream called.")
         self.is_running = False
         
-        active_stream_client_local = self.stream_client
-
-        if active_stream_client_local and hasattr(active_stream_client_local, "stop") and active_stream_client_local.active:
-            try:
-                logger.info("Calling schwabdev\'s stream_client.stop()...")
-                active_stream_client_local.stop()
-            except Exception as e:
-                logger.error(f"Exception during stream_client.stop(): {e}", exc_info=True)
-        else:
-            logger.info("No active schwabdev stream_client to stop, or it does not have a stop method, or not active.")
-
-        thread_to_join = self.stream_thread
-        if wait_for_thread and thread_to_join and thread_to_join.is_alive():
-            logger.info("Waiting for stream worker thread to join after stop signal...")
-            thread_to_join.join(timeout=10) 
-            if thread_to_join.is_alive():
-                logger.warning("Stream worker thread did not terminate gracefully after stop request and join timeout.")
-            else:
-                logger.info("Stream worker thread joined successfully.")
-        self.stream_thread = None
-
-    def stop_stream(self):
-        with self._lock:
-            if not self.is_running and (self.stream_thread is None or not self.stream_thread.is_alive()):
-                logger.info("Stream stop requested, but not running or thread already stopped.")
-                if self.status_message not in ["Idle", "Stream: Stopped."]:
-                     self.status_message = "Idle"
-                return
-
-            logger.info("Requesting stream stop...")
-            self.status_message = "Stream: Stopping..."
-            self._internal_stop_stream(wait_for_thread=True)
-        
-        with self._lock:
-            if self.status_message == "Stream: Stopping...": 
-                self.status_message = "Stream: Stopped."
-            self.current_subscriptions.clear()
-            # Do not clear latest_data_store here, let it persist until next start
-            logger.info("Stream stopped. Subscriptions cleared.")
-
-    def get_latest_data(self):
-        with self._lock:
-            # Return a copy to avoid modification issues if the caller modifies it
-            # and to ensure thread safety during iteration if the store is modified elsewhere.
-            store_copy = dict(self.latest_data_store)
-            logger.info(f"get_latest_data called. Returning {len(store_copy)} items. Current status: {self.status_message}")
-            if store_copy:
-                 logger.debug(f"Sample item from get_latest_data: {json.dumps(list(store_copy.values())[0], indent=2)}")
-            return store_copy
-
-    def get_status(self):
-        with self._lock:
-            return self.status_message, self.error_message
-
-    @property
-    def is_active(self):
-        with self._lock:
-            return self.is_running and self.stream_thread is not None and self.stream_thread.is_alive()
-
+  
+(Content truncated due to size limit. Use line ranges to read in chunks)
