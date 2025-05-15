@@ -63,13 +63,11 @@
 - [x] Diagnose issue: Options tables empty, `get_latest_data()` returns 0 items (May 15, Evening).
   - [x] Reviewed `StreamingManager` data flow and subscription logic.
   - [x] Added extensive verbose logging to `StreamingManager` for detailed diagnostics.
-  - [ ] Update `DECISIONS.md` regarding field mapping fix.
-  - [ ] Request user to test application and confirm data accuracy.
-  - [ ] If fixed, proceed to final documentation and `requirements.txt`.
-  - [ ] If not fixed, analyze new logs and iterate.
-
-- [ ] Future/General Tasks
-  - [ ] Create `requirements.txt` file
+  - [x] Analyzed user-provided logs and Schwab API documentation.
+  - [x] Identified that contract key can be under field name `"key"` or `"0"`.
+  - [x] Updated contract key parsing logic in `_handle_stream_message` to check for both `"key"` and `"0"`.
+  - [x] Updated `SCHWAB_FIELD_MAP` to include `"key": "key"`.
+  - [x] Verified syntax of the updated `streaming_manager.py`.
 
 - [ ] Future/General Tasks
   - [ ] Create `requirements.txt` file

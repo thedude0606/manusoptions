@@ -431,3 +431,37 @@ This suggests a potential environment limitation or a very specific issue with h
 - Update `TODO.md` and `DECISIONS.md`.
 - Push the logging changes to GitHub.
 - Request the user to run the application with the new logging and provide the complete terminal output for analysis.
+
+
+
+## Fix: Updated Contract Key Parsing in StreamingManager (May 15, 2025 - Evening)
+
+**Issue:**
+
+- Despite verbose logging, the dashboard continued to show no options data. Analysis of the user-provided logs (after adding extensive DEBUG logging) revealed numerous messages like: `Skipping contract_data with missing key (field \"0\")`.
+- Further inspection of the raw data in the logs and the provided `Schwab_Trader_API_Streamer_Guide.pdf` (specifically LEVELONE_EQUITIES and LEVELONE_OPTIONS examples) confirmed that the contract identifier (symbol or option key) can be present under the field name `"key"` in the JSON payload, not just the numeric field ID `"0"`.
+- The previous parsing logic in `_handle_stream_message` only checked for `contract_data_from_stream.get("0")` to identify the contract key, causing valid data to be skipped if the key was provided under the `"key"` field name.
+
+**Solution Implemented:**
+
+- The `_handle_stream_message` method in `dashboard_utils/streaming_manager.py` was updated to correctly parse the contract key.
+- The logic now first attempts to get the contract key using `contract_data_from_stream.get("key")`.
+- If that is not found, it falls back to `contract_data_from_stream.get("0")`.
+- If neither is found, the item is logged and skipped as before.
+- The `SCHWAB_FIELD_MAP` was also updated to include `"key": "key"` to ensure that if the contract key is found under the field name `"key"`, it is correctly mapped to our internal `"key"` field in `processed_data`.
+- This change ensures that options data is correctly identified and processed regardless of whether the API returns the contract identifier under field `"0"` or `"key"`.
+- The syntax of the updated `streaming_manager.py` was verified.
+
+**Updated Completed Tasks:**
+
+- Analyzed user-provided verbose logs and `Schwab_Trader_API_Streamer_Guide.pdf`.
+- Identified that contract keys can be under field name `"key"` in addition to numeric ID `"0"`.
+- Updated parsing logic in `_handle_stream_message` to check for both `"key"` and `"0"` for the contract identifier.
+- Updated `SCHWAB_FIELD_MAP` to include `"key": "key"`.
+- Verified syntax of the updated `streaming_manager.py`.
+
+**Next Steps:**
+
+- Update `TODO.md` and `DECISIONS.md`.
+- Push the fix and updated documentation to GitHub.
+- Request the user to test the application and confirm if options data is now displayed.

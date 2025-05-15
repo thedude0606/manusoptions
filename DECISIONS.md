@@ -244,3 +244,29 @@ This addition is crucial for providing user control over the streaming process, 
     - Actual `LEVELONE_OPTIONS` data messages are being received.
     - Data messages are being parsed and processed correctly into `latest_data_store`.
     - Any errors or unexpected conditions are occurring during this process.
+
+
+
+## Updated Contract Key Parsing Logic in StreamingManager (May 15, 2025 - Evening)
+
+- **Decision:** Modify the `_handle_stream_message` method in `StreamingManager` to correctly identify the contract key from incoming Schwab API stream data. The logic will now check for the contract key under the field name `"key"` first, and if not found, fall back to checking the numeric field ID `"0"`.
+  - **Rationale:**
+    - User-provided logs (after extensive DEBUG logging was added) showed numerous warnings: `Skipping contract_data with missing key (field \"0\")`.
+    - Analysis of the raw data within these logs indicated that the contract identifier (e.g., option symbol) was often present under the field name `"key"` in the JSON payload, rather than the numeric field ID `"0"` which the parsing logic was exclusively checking for.
+    - Review of the `Schwab_Trader_API_Streamer_Guide.pdf` (provided by the user), specifically the examples for LEVELONE_EQUITIES and LEVELONE_OPTIONS data responses, confirmed that the primary identifier for a streamed item is indeed often labeled as `"key"` in the `content` array objects.
+    - The previous parsing logic was too restrictive, causing valid data messages to be discarded if the contract identifier was not under the numeric field `"0"`.
+  - **Implementation Details:**
+    - In `dashboard_utils/streaming_manager.py`, within the `_handle_stream_message` method, the section for extracting `contract_key` was changed from:
+      ```python
+      contract_key = contract_data_from_stream.get("0")
+      ```
+      to:
+      ```python
+      contract_key = contract_data_from_stream.get("key")
+      if not contract_key:
+          contract_key = contract_data_from_stream.get("0")
+      ```
+    - The `SCHWAB_FIELD_MAP` dictionary was also updated to include the mapping `"key": "key"`. This ensures that if the contract identifier is found under the field name `"key"`, it is still correctly processed and mapped to our internal `"key"` field in the `processed_data` dictionary.
+    - This dual check makes the parsing more robust and compatible with the observed and documented data formats from the Schwab Streamer API.
+
+- **Expected Outcome:** This change should allow the `StreamingManager` to correctly parse incoming options data, populate the `latest_data_store`, and consequently enable the dashboard to display the options chain information.

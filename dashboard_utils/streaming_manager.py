@@ -24,7 +24,8 @@ class StreamingManager:
     SCHWAB_FIELD_IDS_TO_REQUEST = "0,2,3,4,8,9,10,12,16,17,18,20,21,23,26,28,29,30,31"
     
     SCHWAB_FIELD_MAP = {
-        "0": "key", # Symbol/Contract Key
+        "0": "key", # Symbol/Contract Key (numeric ID)
+        "key": "key", # Symbol/Contract Key (string ID, as seen in PDF examples)
         "2": "bidPrice",
         "3": "askPrice",
         "4": "lastPrice",
@@ -218,9 +219,13 @@ class StreamingManager:
                             logger.warning(f"[MsgID:{current_message_id}] Skipping non-dict contract_data #{content_index}: {contract_data_from_stream}")
                             continue
                         
-                        contract_key = contract_data_from_stream.get("0")
+                        # Attempt to get contract key from "key" field first, then fallback to "0"
+                        contract_key = contract_data_from_stream.get("key")
                         if not contract_key:
-                            logger.warning(f"[MsgID:{current_message_id}] Skipping contract_data with missing key (field \"0\"): {contract_data_from_stream}")
+                            contract_key = contract_data_from_stream.get("0")
+                        
+                        if not contract_key:
+                            logger.warning(f"[MsgID:{current_message_id}] Skipping contract_data with missing contract key (tried 'key' and '0'): {contract_data_from_stream}")
                             continue
                         
                         processed_data = {}
@@ -228,7 +233,10 @@ class StreamingManager:
                             if field_id in self.SCHWAB_FIELD_MAP:
                                 processed_data[self.SCHWAB_FIELD_MAP[field_id]] = value
                         
-                        if "key" not in processed_data: processed_data["key"] = contract_key
+                        # Ensure the primary key from the stream is always present in our processed_data, using the determined contract_key
+                        if "key" not in processed_data:
+                             processed_data["key"] = contract_key # Store the identified key as "key"
+                        
                         processed_data["lastUpdated"] = time.time()
                         
                         logger.info(f"[MsgID:{current_message_id}] Preparing to store data for key \"{contract_key}\". Data: {processed_data}")
