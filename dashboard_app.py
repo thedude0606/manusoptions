@@ -9,10 +9,13 @@ import os # For account ID
 import logging # For app-level logging
 import json # For pretty printing dicts in logs
 import re # For parsing option key
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots # Added for subplots
 
 # Import utility functions
 from dashboard_utils.data_fetchers import get_schwab_client, get_minute_data, get_options_chain_data, get_option_contract_keys
 from dashboard_utils.streaming_manager import StreamingManager
+from analysis_utils.technical_indicators import calculate_bollinger_bands, calculate_rsi # Added calculate_rsi
 
 # Configure basic logging for the app
 app_logger = logging.getLogger(__name__)
@@ -75,13 +78,7 @@ app.layout = html.Div([
         dcc.Tab(label="Technical Indicators", value="tab-tech-indicators", children=[
             html.Div(id="tech-indicators-content", children=[
                 html.H4(id="tech-indicators-header"),
-                dash_table.DataTable(
-                    id="tech-indicators-table", 
-                    columns=[], 
-                    data=[],
-                    page_size=10,
-                    style_table={"overflowX": "auto"}
-                )
+                dcc.Graph(id="tech-indicators-chart", style={"height": "800px"}) # Increased height for subplots
             ])
         ]),
         dcc.Tab(label="Options Chain (Stream)", value="tab-options-chain", children=[
@@ -204,21 +201,100 @@ def update_minute_data_tab(selected_symbol, current_errors):
     return cols, data, new_errors
 
 @app.callback(
-    Output("tech-indicators-table", "columns"),
-    Output("tech-indicators-table", "data"),
+    Output("tech-indicators-chart", "figure"),
+    Output("error-message-store", "data", allow_duplicate=True),
     Input("selected-symbol-store", "data"),
+    State("error-message-store", "data"),
     prevent_initial_call=True
 )
-def update_tech_indicators_tab(selected_symbol):
+def update_tech_indicators_tab(selected_symbol, current_errors):
     if not selected_symbol:
-        return [], []
-    dummy_cols = [{"name": i, "id": i} for i in ["Indicator", "1min", "15min", "1hour", "Daily"]]
-    dummy_data = pd.DataFrame({
-        "Indicator": ["SMA(20)", "RSI(14)"], 
-        "1min": [f"{selected_symbol}-val1", f"{selected_symbol}-val2"], 
-        "15min": [151.0, 48.0], "1hour": [155.0, 55.0], "Daily": [160.0, 60.0]
-    }).to_dict("records")
-    return dummy_cols, dummy_data
+        # Return an empty figure with 2 rows if no symbol is selected
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3])
+        fig.update_layout(title_text="Select a symbol to view indicators", height=800)
+        return fig, current_errors
+
+    global SCHWAB_CLIENT
+    new_errors = list(current_errors)
+    client_to_use = SCHWAB_CLIENT
+    # Create a figure with 2 subplots: one for price/BB, one for RSI
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, 
+                        row_heights=[0.7, 0.3],  # Price chart takes 70%, RSI takes 30%
+                        subplot_titles=(f"{selected_symbol} Price & Bollinger Bands", "Relative Strength Index (RSI)"))
+    timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if not client_to_use:
+        client_to_use, client_err = get_schwab_client()
+        if client_err:
+            error_msg = f"{timestamp_str}: TechInd: {client_err}"
+            new_errors.insert(0, error_msg)
+            fig.add_annotation(text=f"Error: {client_err}", showarrow=False, row=1, col=1)
+            fig.update_layout(height=800)
+            return fig, new_errors[:10]
+        SCHWAB_CLIENT = client_to_use
+
+    price_df, error = get_minute_data(client_to_use, selected_symbol, days_history=60)
+
+    if error:
+        error_msg = f"{timestamp_str}: TechInd Data for {selected_symbol}: {error}"
+        new_errors.insert(0, error_msg)
+        fig.add_annotation(text=f"Error fetching data: {error}", showarrow=False, row=1, col=1)
+        fig.update_layout(height=800)
+        return fig, new_errors[:10]
+    
+    if price_df.empty:
+        fig.add_annotation(text="No price data available to calculate indicators.", showarrow=False, row=1, col=1)
+        fig.update_layout(height=800)
+        return fig, new_errors
+
+    required_cols = ["Timestamp", "Open", "High", "Low", "Close"]
+    if not all(col in price_df.columns for col in required_cols):
+        error_msg = f"{timestamp_str}: TechInd Data for {selected_symbol}: Missing one or more required columns (Timestamp, Open, High, Low, Close) in fetched data."
+        new_errors.insert(0, error_msg)
+        fig.add_annotation(text="Error: Data missing required columns.", showarrow=False, row=1, col=1)
+        fig.update_layout(height=800)
+        return fig, new_errors[:10]
+        
+    price_df["Timestamp"] = pd.to_datetime(price_df["Timestamp"])
+    price_df = price_df.sort_values(by="Timestamp")
+    close_prices = price_df["Close"].tolist()
+
+    # Calculate Bollinger Bands
+    upper_bands, middle_bands, lower_bands = calculate_bollinger_bands(close_prices)
+    
+    # Calculate RSI
+    rsi_values = calculate_rsi(close_prices) # Using default window 14
+
+    # Candlestick chart (Row 1)
+    fig.add_trace(go.Candlestick(x=price_df["Timestamp"],
+                               open=price_df["Open"],
+                               high=price_df["High"],
+                               low=price_df["Low"],
+                               close=price_df["Close"],
+                               name=f"{selected_symbol} Price"), row=1, col=1)
+
+    # Bollinger Bands traces (Row 1)
+    fig.add_trace(go.Scatter(x=price_df["Timestamp"], y=upper_bands, mode="lines", name="Upper Band", line=dict(color="blue", width=1)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=price_df["Timestamp"], y=middle_bands, mode="lines", name="Middle Band (SMA 20)", line=dict(color="orange", width=1)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=price_df["Timestamp"], y=lower_bands, mode="lines", name="Lower Band", line=dict(color="blue", width=1)), row=1, col=1)
+
+    # RSI trace (Row 2)
+    fig.add_trace(go.Scatter(x=price_df["Timestamp"], y=rsi_values, mode="lines", name="RSI (14)", line=dict(color="purple", width=1.5)), row=2, col=1)
+    # Add RSI Overbought/Oversold lines
+    fig.add_hline(y=70, line_dash="dash", line_color="red", line_width=1, annotation_text="Overbought (70)", annotation_position="bottom right", row=2, col=1)
+    fig.add_hline(y=30, line_dash="dash", line_color="green", line_width=1, annotation_text="Oversold (30)", annotation_position="bottom right", row=2, col=1)
+
+    fig.update_layout(
+        height=800, # Ensure height is set for the overall figure
+        xaxis_rangeslider_visible=False, # Hide for the main price chart
+        xaxis2_rangeslider_visible=True, # Optionally show for RSI or hide as well
+        legend_tracegroupgap=180 # Adjust gap if legends overlap with subplots
+    )
+    fig.update_yaxes(title_text="Price", row=1, col=1)
+    fig.update_yaxes(title_text="RSI", range=[0, 100], row=2, col=1) # RSI typically 0-100
+    
+    return fig, new_errors
+
 
 @app.callback(
     Output("current-option-keys-store", "data"),
@@ -272,13 +348,6 @@ def manage_options_stream(selected_symbol, active_tab, current_errors):
     return option_keys_for_stream, new_errors
 
 # Regex to parse OCC option symbol format
-# Example: MSFT  250530C00435000 or SPXW  240520C05300000
-# Group 1: Underlying (e.g., "MSFT  " or "SPXW  ")
-# Group 2: Year (YY)
-# Group 3: Month (MM)
-# Group 4: Day (DD)
-# Group 5: Type (C or P)
-# Group 6: Strike Price (integer, divide by 1000)
 OPTION_KEY_REGEX = re.compile(r"^([A-Z ]+)(\d{2})(\d{2})(\d{2})([CP])(\d{8})$")
 
 @app.callback(
@@ -312,7 +381,7 @@ def update_options_chain_stream_data(n_intervals, selected_symbol, current_error
 
     latest_stream_data = STREAMING_MANAGER.get_latest_data()
     app_logger.info(f"Fetched {len(latest_stream_data)} items from STREAMING_MANAGER.get_latest_data().")
-    if latest_stream_data and n_intervals % 5 == 0: # Log a sample periodically
+    if latest_stream_data and n_intervals % 5 == 0: 
         sample_key = list(latest_stream_data.keys())[0]
         app_logger.debug(f"Sample data item (key: {sample_key}) from stream store: {json.dumps(latest_stream_data[sample_key], indent=2)}")
     
@@ -330,7 +399,6 @@ def update_options_chain_stream_data(n_intervals, selected_symbol, current_error
         is_call = False
         is_put = False
 
-        # Try to parse from dedicated fields first
         exp_year_val = data_dict.get("expirationYear")
         exp_month_val = data_dict.get("expirationMonth")
         exp_day_val = data_dict.get("expirationDay")
@@ -351,37 +419,23 @@ def update_options_chain_stream_data(n_intervals, selected_symbol, current_error
         elif contract_type_val == "PUT" or contract_type_val == "P":
             is_put = True
 
-        # Fallback to parsing from contract key if dedicated fields are missing/invalid or type is unknown
         if parsed_expiration_date == "N/A" or parsed_strike_price == "N/A" or (not is_call and not is_put):
-            key_match = OPTION_KEY_REGEX.match(contract_key_str.replace(" ", "")) # Remove spaces for regex
+            key_match = OPTION_KEY_REGEX.match(contract_key_str)
             if key_match:
-                if parsed_expiration_date == "N/A":
-                    year, month, day = key_match.group(2), key_match.group(3), key_match.group(4)
-                    parsed_expiration_date = f"20{year}-{month}-{day}"
-                
-                if parsed_strike_price == "N/A":
-                    try:
-                        parsed_strike_price = float(key_match.group(6)) / 1000.0
-                    except ValueError:
-                        app_logger.warning(f"Could not parse strike from key {contract_key_str}")
-                
-                if not is_call and not is_put:
-                    type_char = key_match.group(5)
+                _raw_symbol, year_str, month_str, day_str, type_char, strike_raw = key_match.groups()
+                try:
+                    parsed_expiration_date = f"20{year_str}-{month_str}-{day_str}"
+                    parsed_strike_price = float(strike_raw) / 1000.0
                     if type_char == "C":
                         is_call = True
                     elif type_char == "P":
                         is_put = True
+                except ValueError as e:
+                    app_logger.warning(f"Error parsing contract key {contract_key_str}: {e}")
             else:
-                if n_intervals % 10 == 1: # Log periodically
-                    app_logger.warning(f"Could not parse option key {contract_key_str} with regex. Date/Strike/Type might be N/A.")
+                app_logger.warning(f"Could not parse OCC option key: {contract_key_str}")
 
-        if not is_call and not is_put:
-            # If still unknown, log and skip (or assign to a default list if necessary)
-            if n_intervals % 10 == 1: # Log periodically
-                app_logger.warning(f"Final check: Could not determine contract type for key: {contract_key_str}. Skipping.")
-            continue
-
-        record = {
+        row = {
             "Expiration Date": parsed_expiration_date,
             "Strike": parsed_strike_price,
             "Last": data_dict.get("lastPrice", "N/A"),
@@ -398,14 +452,17 @@ def update_options_chain_stream_data(n_intervals, selected_symbol, current_error
         }
 
         if is_call:
-            calls_list.append(record)
+            calls_list.append(row)
         elif is_put:
-            puts_list.append(record)
+            puts_list.append(row)
 
-    app_logger.info(f"Processed {len(calls_list)} calls and {len(puts_list)} puts for UI update.")
-    return option_cols, calls_list, option_cols, puts_list, status_display, new_errors[:10]
+    app_logger.info(f"Processed into {len(calls_list)} calls and {len(puts_list)} puts.")
+    calls_df = pd.DataFrame(calls_list)
+    puts_df = pd.DataFrame(puts_list)
 
-# --- Main Execution --- 
+    return option_cols, calls_df.to_dict("records"), option_cols, puts_df.to_dict("records"), status_display, new_errors[:10]
+
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=8050)
 

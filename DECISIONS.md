@@ -310,3 +310,33 @@ This addition is crucial for providing user control over the streaming process, 
     4. The feature branch will be pushed to the remote GitHub repository.
     5. Once the task is completed and verified, the feature branch will be merged back into the `main` branch (though in this automated context, I will push the branch and the user can decide on the merge strategy, or I can merge if instructed).
 
+
+
+## Phase 2: Relative Strength Index (RSI) - Backend & UI Integration (May 15, 2025)
+
+- **Decision:** Implement RSI backend logic in `analysis_utils/technical_indicators.py` and integrate its visualization into the existing `dashboard_app.py` under the "Technical Indicators" tab, alongside Bollinger Bands.
+  - **Rationale:**
+    - **Consistent Backend Structure:** Add `calculate_rsi` to the same module as `calculate_bollinger_bands` for logical grouping of technical indicator calculations.
+    - **Leverage Existing UI:** Utilize the `make_subplots` functionality from Plotly to display the RSI in a separate panel below the main price/Bollinger Bands chart. This maintains a clean and organized UI within the "Technical Indicators" tab.
+    - **Data Flow (RSI):** The `update_tech_indicators_tab` callback in `dashboard_app.py` was further modified to:
+        1. Fetch historical price data (minute data for the selected symbol).
+        2. Calculate RSI using the `calculate_rsi` function from `analysis_utils.technical_indicators.py`.
+        3. Add a new trace for RSI to the second row of the `make_subplots` figure.
+        4. Include overbought (70) and oversold (30) lines on the RSI subplot for quick visual reference.
+  - **Implementation Details (RSI Backend - `technical_indicators.py`):**
+    - The `calculate_rsi` function takes a list of prices and a window period (default 14).
+    - It uses `pandas` for efficient calculation of price deltas, gains, and losses.
+    - Employs Wilder's smoothing (Exponential Moving Average) for average gains and losses, which is a common method for RSI calculation.
+    - Returns a list of RSI values, padded with `None` for initial periods where RSI cannot be calculated, ensuring the output list aligns with the input price list length.
+    - Includes example usage within `if __name__ == "__main__":` for direct testing of the function.
+  - **Implementation Details (RSI UI - `dashboard_app.py`):**
+    - Imported `make_subplots` from `plotly.subplots` and `calculate_rsi` from `analysis_utils.technical_indicators`.
+    - Modified the `update_tech_indicators_tab` callback:
+        - Initialized `fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.05, row_heights=[0.7, 0.3], subplot_titles=("Price & Bollinger Bands", "Relative Strength Index (RSI)"))`.
+        - The Bollinger Bands chart remains in `row=1, col=1`.
+        - Added a `go.Scatter` trace for RSI values to `row=2, col=1`.
+        - Added horizontal lines (`fig.add_hline`) for RSI 70 (overbought) and 30 (oversold) levels in the RSI subplot.
+        - Updated layout to manage titles and y-axis ranges for both subplots.
+        - Ensured the main chart's `xaxis_rangeslider_visible` is `False` and `xaxis2_rangeslider_visible` (for RSI) is `True` (or can be set to `False` if preferred).
+    - Increased the `dcc.Graph` height in the layout to `800px` to accommodate the two subplots comfortably.
+  - **Verification:** Ensured both `calculate_bollinger_bands` and `calculate_rsi` functions are present and correctly defined in `technical_indicators.py` after an accidental deletion of the former was identified and rectified.
