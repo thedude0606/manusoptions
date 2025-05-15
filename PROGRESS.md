@@ -26,13 +26,14 @@ This document tracks the progress of the Manus Options project.
 *   **Created `requirements.txt` file, documenting all Python dependencies for the project.**
 *   **Implemented Bollinger Bands (BB) calculation logic in `technical_analysis.py`.**
 *   **Verified existing Relative Strength Index (RSI) calculation logic in `technical_analysis.py` as complete and functional.**
+*   **Verified existing Moving Average Convergence Divergence (MACD) calculation logic in `technical_analysis.py` as complete and functional (supports customizable EMAs and signal line).**
 
 *(For a detailed list of all completed sub-tasks, please refer to the `TODO.md` file.)*
 
 ## Current Work In Progress
 
 *   **Documentation Update:** Finalizing updates to `PROGRESS.md` and `TODO.md` after recent development and verification.
-*   **Preparation for Next Development Cycle:** Planning implementation of Moving Average Convergence Divergence (MACD).
+*   **Preparation for Next Development Cycle:** Planning implementation of Intraday Momentum Index (IMI).
 
 ## Known Issues or Challenges
 
@@ -42,6 +43,6 @@ This document tracks the progress of the Manus Options project.
 ## Next Steps
 
 1.  **Push all updated documentation files (`PROGRESS.md`, `TODO.md`) to the GitHub repository.**
-2.  **Notify user of the progress, including the verification of RSI, and the push of these updates.**
-3.  **Continue with Phase 2: Options Recommendation Platform Features** as outlined in `TODO.md`, starting with the implementation of Moving Average Convergence Divergence (MACD) calculation logic.
+2.  **Notify user of the progress, including the verification of MACD, and the push of these updates.**
+3.  **Continue with Phase 2: Options Recommendation Platform Features** as outlined in `TODO.md`, starting with the implementation of Intraday Momentum Index (IMI) calculation logic.
 

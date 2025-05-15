@@ -78,7 +78,7 @@
 - **A. Technical Indicators Suite**
   - [x] Backend: Implement Bollinger Bands (BB) calculation logic (customizable periods, std dev).
   - [x] Backend: Implement Relative Strength Index (RSI) calculation logic (customizable period, overbought/oversold levels).
-  - [ ] Backend: Implement Moving Average Convergence Divergence (MACD) calculation logic (customizable EMAs, signal line).
+  - [x] Backend: Implement Moving Average Convergence Divergence (MACD) calculation logic (customizable EMAs, signal line).
   - [ ] Backend: Implement Intraday Momentum Index (IMI) calculation logic (customizable period).
   - [ ] Backend: Implement Money Flow Index (MFI) calculation logic (customizable period, volume-weighted RSI).
   - [ ] Backend: Develop a system for users to customize parameters for all indicators.
