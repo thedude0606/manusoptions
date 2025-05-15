@@ -300,15 +300,15 @@ def update_options_chain_stream_data(n_intervals, selected_symbol, current_error
         return option_cols, [], option_cols, [], status_display, new_errors[:10]
 
     latest_stream_data = STREAMING_MANAGER.get_latest_data()
-    # Corrected f-string for logging
     app_logger.debug(f"Fetched {len(latest_stream_data)} items from STREAMING_MANAGER.get_latest_data(). Sample: {json.dumps(list(latest_stream_data.values())[:1], indent=2) if latest_stream_data else json.dumps({})}")
     
     calls_list = []
     puts_list = []
 
     for _contract_key, data_dict in latest_stream_data.items():
+        # Corrected f-string for Expiration Date construction
         record = {
-            "Expiration Date": f"{data_dict.get("expirationYear")}-{str(data_dict.get("expirationMonth", "")).zfill(2)}-{str(data_dict.get("expirationDay", "")).zfill(2)}",
+            "Expiration Date": f"{data_dict.get('expirationYear')}-{str(data_dict.get('expirationMonth', '')).zfill(2)}-{str(data_dict.get('expirationDay', '')).zfill(2)}",
             "Strike": data_dict.get("strikePrice"),
             "Last": data_dict.get("lastPrice"),
             "Bid": data_dict.get("bidPrice"),
