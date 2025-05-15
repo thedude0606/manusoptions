@@ -307,3 +307,46 @@ class StreamingManager:
         logger.debug(f"get_latest_data() called. Returning data store with {len(data_copy)} items.")
         return data_copy
 
+
+
+    def _internal_stop_stream(self, wait_for_thread=True):
+        """Internal method to stop the streaming process and clean up resources."""
+        logger.info("Internal stop stream called.")
+        thread_to_join = None
+        with self._lock:
+            if not self.is_running and not (self.stream_thread and self.stream_thread.is_alive()):
+                logger.info("Stream is already stopped or not running. No action needed.")
+                # Ensure status reflects stopped state if it was stuck in stopping
+                if self.status_message == "Stream: Stopping...":
+                    self.status_message = "Stream: Stopped."
+                return
+
+            self.is_running = False # Signal the worker thread to stop
+            self.status_message = "Stream: Stopping..."
+            if self.stream_thread:
+                thread_to_join = self.stream_thread
+        
+        if wait_for_thread and thread_to_join and thread_to_join.is_alive():
+            logger.info(f"Waiting for stream worker thread (ID: {thread_to_join.ident}) to join...")
+            thread_to_join.join(timeout=10) # Wait for the thread to finish
+            if thread_to_join.is_alive():
+                logger.warning(f"Stream worker thread (ID: {thread_to_join.ident}) did not join after 10 seconds.")
+            else:
+                logger.info(f"Stream worker thread (ID: {thread_to_join.ident}) joined successfully.")
+
+        with self._lock:
+            self.stream_thread = None # Clear the thread reference
+            self.current_subscriptions.clear()
+            self.latest_data_store.clear()
+            # The finally block in _stream_worker should also call schwab_api_client.stream.stop()
+            # and update status, but we ensure it here too.
+            if self.status_message == "Stream: Stopping...": # If not updated by worker's finally block
+                 self.status_message = "Stream: Stopped."
+            logger.info("Stream resources cleaned up. Subscriptions and data store cleared.")
+
+    def stop_stream(self):
+        """Public method to stop the data stream."""
+        logger.info("stop_stream() called by external user/application.")
+        self._internal_stop_stream(wait_for_thread=True)
+        logger.info("stop_stream() completed.")
+

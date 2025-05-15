@@ -193,3 +193,25 @@ This addition is essential for the `dashboard_app.py` to correctly report the st
     - Debug logging was added to the method to trace its calls and the number of items being returned.
 
 This addition is essential for `dashboard_app.py` to retrieve and display the latest options contract data received from the stream.
+
+
+
+## Addition of `stop_stream()` Method to StreamingManager (May 15, 2025 - Evening)
+
+- **Decision:** Implement `stop_stream()` and a helper `_internal_stop_stream()` method in the `StreamingManager` class (`dashboard_utils/streaming_manager.py`).
+  - **Rationale:**
+    - The `dashboard_app.py` file, specifically in the `manage_options_stream` callback (around line 269), attempts to call `STREAMING_MANAGER.stop_stream()` to halt the data stream when requested by the user (e.g., by unchecking the "Stream Data" checkbox).
+    - This call was failing with an `AttributeError: 'StreamingManager' object has no attribute 'stop_stream'` because the method did not exist.
+    - To resolve this error and allow the user to control the streaming lifecycle, the `stop_stream()` method was added.
+  - **Implementation Details:**
+    - A public method `stop_stream(self)` was added as the primary interface for stopping the stream.
+    - A private helper method `_internal_stop_stream(self, wait_for_thread=True)` was implemented to encapsulate the core logic for stopping the stream and cleaning up resources. This includes:
+        - Setting the `self.is_running` flag to `False`. This flag is checked by the `_stream_worker` thread's main loop, signaling it to exit.
+        - Updating `self.status_message` to indicate that the stream is stopping.
+        - Explicitly joining `self.stream_thread` (if it exists and is alive) with a timeout. This ensures that the application waits for the worker thread to terminate gracefully before proceeding.
+        - Clearing internal state: `self.stream_thread` is set to `None`, and `self.current_subscriptions` and `self.latest_data_store` are cleared to free up resources and prevent stale data usage.
+        - The `_stream_worker`'s `finally` block is primarily responsible for calling the underlying `schwabdev` stream client's `stop()` method. The `_internal_stop_stream` method ensures that our manager's state is cleaned up regardless.
+    - Both methods utilize `self._lock` for thread-safe access and modification of shared attributes like `is_running`, `status_message`, `stream_thread`, etc.
+    - Logging was added to trace the execution flow of stopping the stream.
+
+This addition is crucial for providing user control over the streaming process, allowing resources to be released when the stream is no longer needed, and preventing runaway threads or connections.

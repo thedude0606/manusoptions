@@ -353,3 +353,35 @@ This suggests a potential environment limitation or a very specific issue with h
 - Update `TODO.md` and `DECISIONS.md`.
 - Push the fix and updated documentation to GitHub.
 - Notify the user of the fix.
+
+
+
+## AttributeError Fix: Added `stop_stream()` to StreamingManager (May 15, 2025 - Evening)
+
+**Issue:**
+
+- User reported an `AttributeError: 'StreamingManager' object has no attribute 'stop_stream'` originating from `dashboard_app.py` (line 269) where `STREAMING_MANAGER.stop_stream()` was being called.
+
+**Solution Implemented:**
+
+- A new public method `stop_stream(self)` and a helper private method `_internal_stop_stream(self, wait_for_thread=True)` were added to the `StreamingManager` class in `dashboard_utils/streaming_manager.py`.
+- `stop_stream()` serves as the public interface for stopping the stream.
+- `_internal_stop_stream()` handles the logic of:
+    - Setting `self.is_running = False` to signal the worker thread to terminate.
+    - Updating `self.status_message` to "Stream: Stopping...".
+    - Joining the `self.stream_thread` with a timeout to allow graceful shutdown.
+    - Clearing `self.stream_thread`, `self.current_subscriptions`, and `self.latest_data_store`.
+    - Ensuring the underlying `schwabdev` stream client's `stop()` method is called (primarily handled in the `_stream_worker`'s `finally` block, but this provides a more direct control path).
+- The methods use `self._lock` for thread-safe access to shared attributes.
+- The modified `streaming_manager.py` file passed syntax checks.
+
+**Updated Completed Tasks:**
+
+- Addressed `AttributeError: 'StreamingManager' object has no attribute 'stop_stream'` by implementing the `stop_stream` and `_internal_stop_stream` methods in `StreamingManager`.
+- Verified syntax of the updated `streaming_manager.py`.
+
+**Next Steps:**
+
+- Update `TODO.md` and `DECISIONS.md`.
+- Push the fix and updated documentation to GitHub.
+- Notify the user of the fix.
