@@ -7,13 +7,21 @@ import pandas as pd
 import datetime
 import os # For account ID
 import logging # For app-level logging
+import json # For pretty printing dicts in logs
 
 # Import utility functions
 from dashboard_utils.data_fetchers import get_schwab_client, get_minute_data, get_options_chain_data, get_option_contract_keys
 from dashboard_utils.streaming_manager import StreamingManager
 
 # Configure basic logging for the app
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Use a specific logger for this module to avoid conflicts if other modules also configure root logger
+app_logger = logging.getLogger(__name__)
+if not app_logger.hasHandlers(): # Avoid adding multiple handlers if already configured
+    app_handler = logging.StreamHandler()
+    app_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    app_handler.setFormatter(app_formatter)
+    app_logger.addHandler(app_handler)
+app_logger.setLevel(logging.INFO) # Set to INFO or DEBUG as needed
 
 # Initialize the Dash app
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
@@ -27,9 +35,6 @@ def schwab_client_provider():
 
 def account_id_provider():
     """Provides the account ID (account hash for streaming), if available."""
-    # SCHWAB_ACCOUNT_HASH is primarily for account-specific streams (e.g., ACCT_ACTIVITY).
-    # For general market data streams like LEVELONE_OPTIONS, it is not strictly required by schwabdev.
-    # The StreamingManager will log its presence if found but won't fail if it's missing for market data.
     return os.getenv("SCHWAB_ACCOUNT_HASH") 
 
 # --- Global Instances --- 
@@ -38,15 +43,11 @@ STREAMING_MANAGER = StreamingManager(schwab_client_provider, account_id_provider
 
 initial_errors = []
 if client_init_error:
-    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     initial_errors.append(f"{timestamp}: REST Client: {client_init_error}")
 
-# SCHWAB_ACCOUNT_HASH is not a blocking error for app startup if only market data streaming is used initially.
-# The StreamingManager will handle its absence appropriately for LEVELONE_OPTIONS.
-# An error will only occur if an account-specific stream is attempted without it.
-# We can log its absence for information if desired, but not as a blocking initial_error.
 if not account_id_provider():
-    logging.info("SCHWAB_ACCOUNT_HASH is not set in .env. This is only required for account-specific data streams.")
+    app_logger.info("SCHWAB_ACCOUNT_HASH is not set in .env. This is only required for account-specific data streams.")
 
 # --- App Layout --- 
 app.layout = html.Div([
@@ -86,20 +87,20 @@ app.layout = html.Div([
         dcc.Tab(label="Options Chain (Stream)", value="tab-options-chain", children=[
             html.Div(id="options-chain-content", children=[
                 html.H4(id="options-chain-header"),
-                html.Div(id="options-chain-stream-status", style={"marginBottom": "10px", "padding": "5px", "border": "1px solid lightgrey"}), # For stream status
+                html.Div(id="options-chain-stream-status", style={"marginBottom": "10px", "padding": "5px", "border": "1px solid lightgrey"}),
                 html.Div([
                     html.Div([html.H5("Calls"), dash_table.DataTable(id="options-calls-table", columns=[], data=[], page_size=10, style_table={"overflowX": "auto"}, sort_action="native") ], style={"width": "49%", "display": "inline-block", "verticalAlign": "top", "marginRight": "1%"}),
                     html.Div([html.H5("Puts"), dash_table.DataTable(id="options-puts-table", columns=[], data=[], page_size=10, style_table={"overflowX": "auto"}, sort_action="native") ], style={"width": "49%", "display": "inline-block", "float": "right", "verticalAlign": "top"})
                 ])
             ]),
-            dcc.Interval(id="options-chain-interval", interval=2*1000, n_intervals=0) # 2-second interval for UI updates from stream
+            dcc.Interval(id="options-chain-interval", interval=2*1000, n_intervals=0) 
         ]),
     ]),
     
     dcc.Store(id="processed-symbols-store"),
     dcc.Store(id="selected-symbol-store"),
     dcc.Store(id="error-message-store", data=initial_errors), 
-    dcc.Store(id="current-option-keys-store", data=[]), # To store keys for current stream
+    dcc.Store(id="current-option-keys-store", data=[]),
 
     html.Div(id="error-log-display", children="No errors yet." if not initial_errors else [html.P(err) for err in initial_errors], style={"marginTop": "20px", "border": "1px solid #ccc", "padding": "10px", "height": "100px", "overflowY": "scroll", "whiteSpace": "pre-wrap"})
 ])
@@ -116,7 +117,7 @@ app.layout = html.Div([
 )
 def process_symbols(n_clicks, input_value):
     if n_clicks > 0 and input_value:
-        symbols = sorted(list(set([s.strip().upper() for s in input_value.split(',') if s.strip()])))
+        symbols = sorted(list(set([s.strip().upper() for s in input_value.split(",") if s.strip()])))
         if not symbols:
             return dash.no_update, [], {"width": "30%", "display": "none"}, None
         
@@ -157,11 +158,10 @@ def update_tab_headers(selected_symbol):
 )
 def update_error_log(error_messages):
     if error_messages:
-        log_content = [html.P(f"{msg}") for msg in reversed(error_messages)] # Show newest first
+        log_content = [html.P(f"{msg}") for msg in reversed(error_messages)]
         return log_content
     return "No new errors."
 
-# Callback for Minute Data Tab (REST-based)
 @app.callback(
     Output("minute-data-table", "columns"),
     Output("minute-data-table", "data"),
@@ -178,13 +178,13 @@ def update_minute_data_tab(selected_symbol, current_errors):
     new_errors = list(current_errors) 
     client_to_use = SCHWAB_CLIENT
 
-    timestamp_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if not client_to_use:
         client_to_use, client_err = get_schwab_client()
         if client_err:
             error_msg = f"{timestamp_str}: MinData: {client_err}"
             new_errors.insert(0, error_msg)
-            return [], [], new_errors[:10] # Limit error log size
+            return [], [], new_errors[:10]
         SCHWAB_CLIENT = client_to_use
 
     df, error = get_minute_data(client_to_use, selected_symbol)
@@ -202,7 +202,6 @@ def update_minute_data_tab(selected_symbol, current_errors):
     data = df.to_dict("records")
     return cols, data, new_errors
 
-# Placeholder callback for Technical Indicators Tab
 @app.callback(
     Output("tech-indicators-table", "columns"),
     Output("tech-indicators-table", "data"),
@@ -220,24 +219,22 @@ def update_tech_indicators_tab(selected_symbol):
     }).to_dict("records")
     return dummy_cols, dummy_data
 
-# --- Options Chain Streaming Callbacks ---
-
 @app.callback(
     Output("current-option-keys-store", "data"),
     Output("error-message-store", "data", allow_duplicate=True),
     Input("selected-symbol-store", "data"),
-    Input("tabs-main", "value"), # To know if options tab is active
+    Input("tabs-main", "value"),
     State("error-message-store", "data"),
     prevent_initial_call=True
 )
 def manage_options_stream(selected_symbol, active_tab, current_errors):
-    """Starts or stops the options stream based on selected symbol and active tab."""
     new_errors = list(current_errors)
     option_keys_for_stream = []
-    timestamp_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    app_logger.info(f"manage_options_stream triggered. Symbol: {selected_symbol}, Active Tab: {active_tab}")
 
     if active_tab == "tab-options-chain" and selected_symbol:
-        logging.info(f"Options tab active for {selected_symbol}. Managing stream.")
+        app_logger.info(f"Options tab active for {selected_symbol}. Managing stream.")
         global SCHWAB_CLIENT
         client_to_use = SCHWAB_CLIENT
         if not client_to_use:
@@ -245,7 +242,8 @@ def manage_options_stream(selected_symbol, active_tab, current_errors):
             if client_err:
                 error_msg = f"{timestamp_str}: StreamCtrl: {client_err}"
                 new_errors.insert(0, error_msg)
-                STREAMING_MANAGER.stop_stream() # Ensure it is stopped if client fails
+                STREAMING_MANAGER.stop_stream()
+                app_logger.error(f"StreamCtrl: Client error - {client_err}")
                 return [], new_errors[:10]
             SCHWAB_CLIENT = client_to_use
         
@@ -254,20 +252,22 @@ def manage_options_stream(selected_symbol, active_tab, current_errors):
             error_msg = f"{timestamp_str}: StreamCtrl Keys for {selected_symbol}: {err}"
             new_errors.insert(0, error_msg)
             STREAMING_MANAGER.stop_stream()
+            app_logger.error(f"StreamCtrl: Error getting keys for {selected_symbol} - {err}")
             return [], new_errors[:10]
         
         if not keys:
-            logging.info(f"No option keys with OI > 0 found for {selected_symbol}. Stopping stream if active.")
+            app_logger.info(f"No option keys with OI > 0 found for {selected_symbol}. Stopping stream if active.")
             STREAMING_MANAGER.stop_stream()
             return [], new_errors
 
         option_keys_for_stream = list(keys)
-        logging.info(f"Attempting to start/update stream for {len(option_keys_for_stream)} keys for {selected_symbol}.")
+        app_logger.info(f"Attempting to start/update stream for {len(option_keys_for_stream)} keys for {selected_symbol}.")
         STREAMING_MANAGER.start_stream(option_keys_for_stream)
     else:
-        logging.info("Options tab not active or no symbol selected. Stopping stream.")
+        app_logger.info("Options tab not active or no symbol selected. Stopping stream.")
         STREAMING_MANAGER.stop_stream()
     
+    app_logger.info(f"manage_options_stream returning keys: {len(option_keys_for_stream)} keys.")
     return option_keys_for_stream, new_errors
 
 @app.callback(
@@ -277,53 +277,56 @@ def manage_options_stream(selected_symbol, active_tab, current_errors):
     Output("options-puts-table", "data"),
     Output("options-chain-stream-status", "children"),
     Output("error-message-store", "data", allow_duplicate=True),
-    Input("options-chain-interval", "n_intervals"), # Triggers UI update
+    Input("options-chain-interval", "n_intervals"),
     State("selected-symbol-store", "data"),
     State("error-message-store", "data"),
-    prevent_initial_call=True # Added this line
+    prevent_initial_call=True
 )
 def update_options_chain_stream_data(n_intervals, selected_symbol, current_errors):
-    """Periodically fetches data from StreamingManager and updates the UI."""
+    app_logger.debug(f"update_options_chain_stream_data triggered. Interval: {n_intervals}, Symbol: {selected_symbol}")
     new_errors = list(current_errors)
     
     stream_status_msg, stream_error_msg = STREAMING_MANAGER.get_status()
     status_display = f"Stream Status: {stream_status_msg}"
     if stream_error_msg:
         status_display += f" | Last Stream Error: {stream_error_msg}"
+    app_logger.debug(f"Stream status for UI: {status_display}")
+
+    option_cols_def = ["Expiration Date", "Strike", "Last", "Bid", "Ask", "Volume", "Open Interest", "Implied Volatility", "Delta", "Gamma", "Theta", "Vega", "Contract Key"]
+    option_cols = [{"name": i, "id": i} for i in option_cols_def]
 
     if not selected_symbol or not STREAMING_MANAGER.is_running:
-        option_cols_def = ["Expiration Date", "Strike", "Last", "Bid", "Ask", "Volume", "Open Interest", "Implied Volatility", "Delta", "Gamma", "Theta", "Vega", "Contract Key"]
-        option_cols = [{"name": i, "id": i} for i in option_cols_def]
+        app_logger.debug("No selected symbol or stream not running. Returning empty tables.")
         return option_cols, [], option_cols, [], status_display, new_errors[:10]
 
     latest_stream_data = STREAMING_MANAGER.get_latest_data()
+    app_logger.debug(f"Fetched {len(latest_stream_data)} items from STREAMING_MANAGER.get_latest_data(). Sample: {json.dumps(list(latest_stream_data.values())[:1], indent=2) if latest_stream_data else "{}"}")
     
     calls_list = []
     puts_list = []
 
     for _contract_key, data_dict in latest_stream_data.items():
         record = {
-            "Expiration Date": f"{data_dict.get('expirationYear')}-{str(data_dict.get('expirationMonth', '')).zfill(2)}-{str(data_dict.get('expirationDay', '')).zfill(2)}",
-            "Strike": data_dict.get('strikePrice'),
-            "Last": data_dict.get('lastPrice'),
-            "Bid": data_dict.get('bidPrice'),
-            "Ask": data_dict.get('askPrice'),
-            "Volume": data_dict.get('totalVolume'),
-            "Open Interest": data_dict.get('openInterest'),
-            "Implied Volatility": data_dict.get('volatility'),
-            "Delta": data_dict.get('delta'),
-            "Gamma": data_dict.get('gamma'),
-            "Theta": data_dict.get('theta'),
-            "Vega": data_dict.get('vega'),
-            "Contract Key": data_dict.get('key')
+            "Expiration Date": f"{data_dict.get("expirationYear")}-{str(data_dict.get("expirationMonth", "")).zfill(2)}-{str(data_dict.get("expirationDay", "")).zfill(2)}",
+            "Strike": data_dict.get("strikePrice"),
+            "Last": data_dict.get("lastPrice"),
+            "Bid": data_dict.get("bidPrice"),
+            "Ask": data_dict.get("askPrice"),
+            "Volume": data_dict.get("totalVolume"),
+            "Open Interest": data_dict.get("openInterest"),
+            "Implied Volatility": data_dict.get("volatility"),
+            "Delta": data_dict.get("delta"),
+            "Gamma": data_dict.get("gamma"),
+            "Theta": data_dict.get("theta"),
+            "Vega": data_dict.get("vega"),
+            "Contract Key": data_dict.get("key")
         }
-        if data_dict.get('contractType') == "CALL":
+        if data_dict.get("contractType") == "CALL":
             calls_list.append(record)
-        elif data_dict.get('contractType') == "PUT":
+        elif data_dict.get("contractType") == "PUT":
             puts_list.append(record)
 
-    option_cols_def = ["Expiration Date", "Strike", "Last", "Bid", "Ask", "Volume", "Open Interest", "Implied Volatility", "Delta", "Gamma", "Theta", "Vega", "Contract Key"]
-    option_cols = [{"name": i, "id": i} for i in option_cols_def]
+    app_logger.debug(f"Processed into {len(calls_list)} calls and {len(puts_list)} puts.")
 
     calls_df = pd.DataFrame(calls_list)
     puts_df = pd.DataFrame(puts_list)
@@ -343,10 +346,11 @@ def update_options_chain_stream_data(n_intervals, selected_symbol, current_error
 if __name__ == "__main__":
     import atexit
     def stop_stream_on_exit():
-        print("Stopping stream on application exit...")
+        app_logger.info("Stopping stream on application exit...")
         STREAMING_MANAGER.stop_stream()
-        print("Stream stopped.")
+        app_logger.info("Stream stopped.")
     atexit.register(stop_stream_on_exit)
 
+    app_logger.info("Starting Dash app...")
     app.run(debug=True, host="0.0.0.0", port=8050)
 
