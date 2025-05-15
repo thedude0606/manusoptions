@@ -25,22 +25,18 @@ This document tracks the progress of the Manus Options project.
 
 ## Current Work In Progress
 
-*   **Investigating "Subscription ADD failed for LEVELONE_OPTIONS" error:**
-    *   Status: In Progress
-    *   Details: This is a persistent error. The next step is to obtain and analyze full logs, including the exact subscription payload being sent to the Schwab API, to understand why the subscription is failing.
+*   **Phase 2: Options Recommendation Platform - Core Technical Analysis Engine**
+    *   Status: Starting
+    *   Details: Beginning implementation of backend logic for Bollinger Bands (BB).
 
 ## Known Issues or Challenges
 
-*   **"Subscription ADD failed for LEVELONE_OPTIONS":** This is the primary blocking issue preventing the streaming of Level One options data.
 *   **Historical Data Truncation (Previously Encountered):** While resolved with workarounds for specific files, vigilance is needed if similar issues arise with large log files or source code files during debugging.
 
 ## Next Steps
 
-1.  **Resolve "Subscription ADD failed for LEVELONE_OPTIONS" error.** (High Priority)
+1.  **Implement Bollinger Bands (BB) calculation logic (backend).** (High Priority - Phase 2)
 2.  **Create `requirements.txt` file:** Document all Python dependencies for the project.
-3.  **Review and fix remaining dashboard data formatting issues:** Ensure all data (dates, N/A values) is displayed correctly.
-4.  **Complete data merging logic in `StreamingManager`:** Ensure robust handling of partial updates to minimize "N/A" values in the UI.
-5.  **Begin Phase 2: Options Recommendation Platform Features:**
-    *   Start with Core Technical Analysis Engine (Backend & UI), focusing on implementing technical indicators (Bollinger Bands, RSI, MACD, etc.).
-    *   (Refer to `TODO.md` for the detailed breakdown of Phase 2 tasks).
-
+3.  **Continue with Phase 2: Options Recommendation Platform Features:**
+    *   Implement other technical indicators (RSI, MACD, etc.) as per `TODO.md`.
+    *   (Refer to `TODO.md` for the detailed breakdown of all Phase 2 tasks).

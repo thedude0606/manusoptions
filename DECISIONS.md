@@ -292,3 +292,21 @@ This addition is crucial for providing user control over the streaming process, 
 
 - **Decision:** Update the main execution block in `dashboard_app.py` to use `app.run(...)` instead of the deprecated `app.run_server(...)`.
   - **Rationale:** The user encountered an `ObsoleteAttributeException` after updating Dash or its dependencies, as `app.run_server` has been replaced by `app.run` in Dash v2.0 and later. This change is necessary for the application to launch correctly with current versions of the Dash library.
+
+
+## Git Workflow: Feature Branching (May 15, 2025)
+
+- **Decision:** Adopt a feature branching strategy for all new development, enhancements, and bug fixes.
+  - **Rationale:** 
+    - **Isolation:** Keeps the `main` branch stable and deployable by isolating development work in separate branches. This prevents unstable code from being merged prematurely.
+    - **Collaboration and Review:** Facilitates code reviews through Pull Requests (PRs) before merging into the main branch, improving code quality and knowledge sharing (though direct PRs are not used in this automated workflow, the principle of isolated changes remains beneficial).
+    - **Parallel Development:** Allows for multiple features or fixes to be worked on concurrently without interference.
+    - **Risk Management:** Simplifies the process of managing and rolling back changes if a feature introduces issues. A problematic branch can be abandoned or reverted without impacting the `main` codebase directly.
+    - **Clarity:** Provides a clear history of changes, with each branch representing a specific unit of work.
+  - **Process:**
+    1. For each new task (feature, bug fix, significant refactor), a new branch will be created from the latest `main` branch.
+    2. All commits related to that task will be made on this feature branch.
+    3. Documentation files (`TODO.md`, `PROGRESS.md`, `DECISIONS.md`) will be updated within the feature branch as work progresses.
+    4. The feature branch will be pushed to the remote GitHub repository.
+    5. Once the task is completed and verified, the feature branch will be merged back into the `main` branch (though in this automated context, I will push the branch and the user can decide on the merge strategy, or I can merge if instructed).
+
