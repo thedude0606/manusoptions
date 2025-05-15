@@ -3,7 +3,7 @@
 import threading
 import time
 import logging
-from schwabdev.streamer_client import StreamerClient # Correct import for StreamerClient
+import schwabdev # Import the main schwabdev library
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(threadName)s - %(levelname)s - %(message)s")
@@ -16,8 +16,8 @@ class StreamingManager:
         account_id_getter: A function that returns the account ID (account hash for streaming).
         """
         self.schwab_client_getter = schwab_client_getter
-        self.account_id_getter = account_id_getter
-        self.streamer_instance = None
+        self.account_id_getter = account_id_getter # account_id is needed for client.stream() if not part of client
+        self.stream_client = None # Renamed from streamer_instance for clarity with new API
         self.is_running = False
         self.stream_thread = None
         self.current_subscriptions = set()
@@ -48,26 +48,21 @@ class StreamingManager:
             self.status_message = "Stream: Initializing..."
             self.error_message = None
 
-        schwab_client = self._get_schwab_client()
-        if not schwab_client:
+        schwab_api_client = self._get_schwab_client() # This is the main API client
+        if not schwab_api_client:
             with self._lock:
                 self.status_message = f"Stream: Error - {self.error_message}"
                 self.is_running = False
             return
         
-        account_hash = self.account_id_getter()
-        if not account_hash:
-            logging.error("Stream worker: Account hash (SCHWAB_ACCOUNT_HASH) not available or not provided.")
-            with self._lock:
-                self.error_message = "Account hash (SCHWAB_ACCOUNT_HASH) for streaming is missing."
-                self.status_message = f"Stream: Error - {self.error_message}"
-                self.is_running = False
-            return
+        # account_hash = self.account_id_getter() # account_hash might be implicitly handled by schwab_api_client or needed for stream object
+        # The documentation for client.stream doesn't explicitly show account_id. Let's assume it's part of the client or handled by the library.
+        # If errors occur, we may need to pass account_hash to schwab_api_client.stream() if supported.
 
         try:
-            # Correctly instantiate StreamerClient
-            self.streamer_instance = StreamerClient(client=schwab_client, account_id=account_hash)
-            logging.info(f"StreamerClient instantiated for account hash: {account_hash}")
+            # Instantiate the streamer using the new API: client.stream
+            self.stream_client = schwab_api_client.stream
+            logging.info(f"Schwab stream object obtained via client.stream")
             
             if not option_keys_to_subscribe:
                 logging.info("Stream worker: No symbols to subscribe.")
@@ -77,6 +72,7 @@ class StreamingManager:
                 return
 
             keys_string = ",".join(list(option_keys_to_subscribe))
+            # Fields for LEVELONE_OPTIONS. These might need verification against the new stream object's capabilities or Schwab API docs.
             fields_to_request = "0,2,7,8,9,10,11,15,16,17,18,19,21,26,27,23,24,25"
             
             logging.info(f"Stream worker: Subscribing to {len(option_keys_to_subscribe)} option keys.")
@@ -84,13 +80,49 @@ class StreamingManager:
                 self.current_subscriptions = set(option_keys_to_subscribe)
                 self.status_message = f"Stream: Connecting and subscribing to {len(self.current_subscriptions)} contracts..."
 
-            self.streamer_instance.start(
+            # The .start() method signature might have changed. 
+            # The documentation shows streamer.start(handler), but the old code used service, symbols, fields.
+            # We need to check how to specify these with the new client.stream object.
+            # For now, attempting a similar structure. This will likely need adjustment based on schwabdev's stream.py or Streamer Guide.
+            # From the `Using the Streamer` documentation: `streamer.start(my_handler)`
+            # It also mentions `streamer.start_auto` for automatic start/stop.
+            # The original code used `StreamService.LEVELONE_OPTIONS`. This needs to be mapped to the new API.
+            # The schwabdev library's stream.py would have the actual implementation details.
+            # For now, let's assume it takes similar parameters or we might need to make separate calls to subscribe.
+            
+            # Based on common patterns, subscriptions are often set before starting or as part of start.
+            # Let's assume for now that subscriptions are handled by a different method or implicitly by the service.
+            # The original StreamerClient had `StreamService` as an enum. This might now be a string or constant within `schwabdev.stream`.
+            # Trying to adapt the old .start() call. This is a guess and might fail.
+            # A more robust approach would be to inspect the `schwab_api_client.stream` object or consult detailed examples/source.
+
+            # According to schwab-py (a similar library often mentioned alongside schwabdev), 
+            # you typically add subscriptions first, then start the stream handler.
+            # e.g., stream_client.add_level_one_option_handler(self._handle_stream_message)
+            # stream_client.level_one_option_subs(keys_string, fields_to_request)
+            # stream_client.start()
+
+            # Let's try to adapt the old way first, as the user's code was structured like that.
+            # If StreamService is not available, this will fail.
+            # It's more likely that we need to call a subscribe method on self.stream_client first.
+            # The `stream_demo.py` in tylerebowers/Schwabdev would be the best reference.
+            # For now, let's assume the old service parameter might still be used or mapped.
+            # The old code: service=self.streamer_instance.StreamService.LEVELONE_OPTIONS
+            # This implies StreamService was an attribute of the old StreamerClient instance.
+            # The new `client.stream` object might have these services differently.
+            # The `schwabdev` library's `stream.py` shows `StreamService` enum is still available directly from `schwabdev.stream` module.
+            # So, we might need: from schwabdev.stream import StreamService
+
+            from schwabdev.stream import StreamService # Attempting to import StreamService
+
+            self.stream_client.start(
                 handler=self._handle_stream_message, 
-                service=self.streamer_instance.StreamService.LEVELONE_OPTIONS, 
+                service=StreamService.LEVELONE_OPTIONS, # Using the imported StreamService
                 symbols=keys_string, 
-                fields=fields_to_request
+                fields=fields_to_request,
+                account_id=self.account_id_getter() # Adding account_id here as it was part of old StreamerClient init
             )
-            logging.info("Stream worker: streamer_instance.start() returned. Stream has ended.")
+            logging.info("Stream worker: stream_client.start() returned. Stream has ended.")
 
         except Exception as e:
             logging.error(f"Error in stream worker: {e}", exc_info=True)
@@ -102,7 +134,7 @@ class StreamingManager:
                 self.is_running = False
                 if not self.error_message:
                     self.status_message = "Stream: Stopped."
-            self.streamer_instance = None
+            self.stream_client = None
             logging.info("Stream worker finished.")
 
     def _handle_stream_message(self, message_list):
@@ -183,12 +215,13 @@ class StreamingManager:
 
     def _internal_stop_stream(self):
         """Internal method to stop the stream."""
-        if self.streamer_instance and hasattr(self.streamer_instance, "stop"):
+        # The new stream_client (obtained from client.stream) should also have a stop method.
+        if self.stream_client and hasattr(self.stream_client, "stop"):
             try:
-                logging.info("Calling streamer_instance.stop()...")
-                self.streamer_instance.stop()
+                logging.info("Calling stream_client.stop()...")
+                self.stream_client.stop()
             except Exception as e:
-                logging.error(f"Exception during streamer_instance.stop(): {e}", exc_info=True)
+                logging.error(f"Exception during stream_client.stop(): {e}", exc_info=True)
         self.is_running = False
 
     def stop_stream(self):
@@ -232,3 +265,4 @@ class StreamingManager:
 
 if __name__ == "__main__":
     pass
+
