@@ -225,8 +225,7 @@ class StreamingManager:
                         logger.warning(f"[MsgID:{current_message_id}] Skipping non-LEVELONE_OPTIONS or malformed data item: {item}")
                         continue
                     content_list = item.get("content", [])
-                    for content_index, contract_data_from_stream in enumerate(content_list):
-                        logger.debug(f"[MsgID:{current_message_id}] Processing content #{content_index} from item #{item_index}: {contract_data_from_stream}"""
+                    for content_index, contract_data_from_stream in enumerate(content_list):                        logger.debug(f"[MsgID:{current_message_id}] Processing content #{content_index} from item #{item_index}: {contract_data_from_stream}")
                         if not isinstance(contract_data_from_stream, dict):
                             logger.warning(f"[MsgID:{current_message_id}] Skipping non-dict contract_data: {contract_data_from_stream}")
                             continue
@@ -234,13 +233,7 @@ class StreamingManager:
                         contract_key = contract_data_from_stream.get("0") 
                         if not contract_key:
                             logger.warning(f"[MsgID:{current_message_id}] Skipping contract_data with missing or empty field '0' (contract key): {contract_data_from_stream}")
-                            continue
-"""key" not in contract_data_from_stream:
-                            logger.warning(f"[MsgID:{current_message_id}] Skipping malformed contract_data (no key): {contract_data_from_stream}")
-                            continue
-                        contract_key = contract_data_from_stream.get("key")
-                        if not contract_key:
-                            logger.warning(f"[MsgID:{current_message_id}] Skipping contract_data with empty key: {contract_data_from_stream}")
+                            continue                            logger.warning(f"[MsgID:{current_message_id}] Skipping contract_data with empty key: {contract_data_from_stream}")
                             continue
                         
                         # Map numeric field IDs from stream to descriptive names
@@ -289,19 +282,5 @@ class StreamingManager:
                     self._internal_stop_stream(wait_for_thread=True)
 
             self.is_running = True 
-            self.error_message = None
-            self.status_message = "Stream: Starting..."
-            self.latest_data_store.clear()
-            logger.info("latest_data_store cleared before starting stream.")
-
-        self.stream_thread = threading.Thread(target=self._stream_worker, args=(tuple(keys_set),), name="SchwabStreamWorker", daemon=True)
-        self.stream_thread.start()
-        logger.info(f"Stream thread initiated for {len(keys_set)} keys.")
-        return True
-
-    def _internal_stop_stream(self, wait_for_thread=False):
-        logger.info("Internal stop stream called.")
-        self.is_running = False
-        
-  
+            self.error_message =
 (Content truncated due to size limit. Use line ranges to read in chunks)
