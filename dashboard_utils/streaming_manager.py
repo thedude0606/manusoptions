@@ -55,9 +55,6 @@ class StreamingManager:
                 self.is_running = False
             return
 
-        # SCHWAB_ACCOUNT_HASH is not strictly required for LEVELONE_OPTIONS streaming.
-        # It would be required for account-specific streams like ACCT_ACTIVITY.
-        # For now, we will log if it's present but not make it a blocking requirement for this options stream.
         account_hash = self.account_id_getter()
         if account_hash:
             logging.info(f"Account hash provided (first 4 chars for log): {str(account_hash)[:4]}...")
@@ -75,16 +72,23 @@ class StreamingManager:
                     self.is_running = False
                 return
 
-            keys_list = list(option_keys_to_subscribe)
-            fields_to_request_list = "0,2,7,8,9,10,11,15,16,17,18,19,21,26,27,23,24,25".split(",")
-
-            logging.info(f"Stream worker: Adding LEVELONE_OPTIONS subscription for {len(keys_list)} keys.")
-            self.stream_client.add_levelone_option_subscription(keys=keys_list, fields=fields_to_request_list)
+            keys_str = ",".join(list(option_keys_to_subscribe))
+            # Fields for LEVELONE_OPTIONS: 0=Symbol, 1=Description, 2=Last Price, 3=Open Price, 4=High Price, 5=Low Price, 
+            # 6=Close Price, 7=Ask Price, 8=Bid Price, 9=Ask Size, 10=Bid Size, 11=Total Volume, 12=Last Trade Size, 
+            # 13=Last Trade Time, 14=Quote Time, 15=Volatility, 16=Delta, 17=Gamma, 18=Theta, 19=Vega, 20=Rho, 
+            # 21=Open Interest, 22=Money Intrinsic Value, 23=Expiration Day, 24=Expiration Month, 25=Expiration Year, 
+            # 26=Strike Price, 27=Contract Type (CALL/PUT)
+            fields_str = "0,2,7,8,9,10,11,15,16,17,18,19,21,26,27,23,24,25" # Key fields for options
+            
+            logging.info(f"Stream worker: Sending LEVELONE_OPTIONS subscription for keys: {keys_str}")
+            # Correct way to subscribe using the send method and the specific service request
+            self.stream_client.send(self.stream_client.level_one_options(keys_str, fields_str, command="ADD"))
 
             with self._lock:
                 self.current_subscriptions = set(option_keys_to_subscribe)
-                self.status_message = f"Stream: Connecting and subscribing to {len(self.current_subscriptions)} contracts..."
+                self.status_message = f"Stream: Subscribed to {len(self.current_subscriptions)} contracts. Starting listener..."
 
+            # Start the stream listener. The handler function will be called with received messages.
             self.stream_client.start(handler=self._handle_stream_message)
             logging.info("Stream worker: stream_client.start() returned. Stream has ended or was stopped.")
 
@@ -154,7 +158,7 @@ class StreamingManager:
 
                     with self._lock:
                         self.latest_data_store[contract_key] = processed_data
-                        if "Connecting" in self.status_message or "Subscribing" in self.status_message or "Initializing" in self.status_message:
+                        if "Connecting" in self.status_message or "Subscribing" in self.status_message or "Initializing" in self.status_message or "Starting listener" in self.status_message:
                             self.status_message = f"Stream: Actively receiving data for {len(self.current_subscriptions)} contracts."
         except Exception as e:
             logging.error(f"Error processing stream message: {e} - Message: {message_list}", exc_info=True)
@@ -186,19 +190,19 @@ class StreamingManager:
 
     def _internal_stop_stream(self, wait_for_thread=False):
         """Internal method to stop the stream. Optionally waits for thread to join."""
-        stream_client_to_stop = self.stream_client # Capture current client
+        stream_client_to_stop = self.stream_client
         if stream_client_to_stop and hasattr(stream_client_to_stop, "stop"):
             try:
                 logging.info("Calling stream_client.stop()...")
-                stream_client_to_stop.stop() # This should signal the async loop in stream.py to break
+                stream_client_to_stop.stop()
             except Exception as e:
                 logging.error(f"Exception during stream_client.stop(): {e}", exc_info=True)
         
-        self.is_running = False # Set running to false immediately
+        self.is_running = False
 
         if wait_for_thread and self.stream_thread and self.stream_thread.is_alive():
             logging.info("Waiting for stream thread to join after stop signal...")
-            self.stream_thread.join(timeout=10) # Wait for the thread to finish
+            self.stream_thread.join(timeout=10)
             if self.stream_thread.is_alive():
                 logging.warning("Stream thread did not terminate gracefully after stop request and join timeout.")
             else:
@@ -219,11 +223,10 @@ class StreamingManager:
             self._internal_stop_stream(wait_for_thread=True)
         
         with self._lock:
-            # Final status update after attempting to stop
-            if self.status_message == "Stream: Stopping...": # If it was stopping and now done
+            if self.status_message == "Stream: Stopping...":
                  self.status_message = "Stream: Stopped."
             elif not self.is_running and self.status_message != "Stream: Stopped.":
-                 self.status_message = "Idle" # Default to idle if stopped for other reasons
+                 self.status_message = "Idle"
         logging.info("Stream stop process complete.")
 
     def get_latest_data(self):
