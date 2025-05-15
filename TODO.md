@@ -68,3 +68,94 @@
 - [ ] Future/General Tasks
   - [ ] Create `requirements.txt` file
 
+
+
+
+## Phase 2: Options Recommendation Platform Features (Based on Guide)
+
+### I. Core Technical Analysis Engine (Backend & UI)
+
+- **A. Technical Indicators Suite**
+  - [ ] Backend: Implement Bollinger Bands (BB) calculation logic (customizable periods, std dev).
+  - [ ] Backend: Implement Relative Strength Index (RSI) calculation logic (customizable period, overbought/oversold levels).
+  - [ ] Backend: Implement Moving Average Convergence Divergence (MACD) calculation logic (customizable EMAs, signal line).
+  - [ ] Backend: Implement Intraday Momentum Index (IMI) calculation logic (customizable period).
+  - [ ] Backend: Implement Money Flow Index (MFI) calculation logic (customizable period, volume-weighted RSI).
+  - [ ] Backend: Develop a system for users to customize parameters for all indicators.
+  - [ ] Backend: Store/manage calculated indicator values efficiently for different symbols and timeframes.
+
+- **B. Fair Value Gaps (FVG)**
+  - [ ] Backend: Implement logic to identify Fair Value Gaps (3-candle pattern) from price data.
+
+- **C. Candlestick Pattern Recognition**
+  - [ ] Backend: Develop a module to define rules for common candlestick patterns (e.g., Hammer, Engulfing, Doji).
+  - [ ] Backend: Implement a scanning engine to identify defined candlestick patterns in historical and real-time data.
+  - [ ] Backend: Allow users to define custom candlestick patterns (Advanced).
+
+### II. Advanced Charting and Visualization (UI)
+
+- [ ] UI: Implement interactive candlestick charts for displaying price data (OHLCV).
+  - [ ] UI: Integrate a charting library (e.g., Plotly, Lightweight Charts by TradingView, or similar).
+- [ ] UI: Allow overlaying of calculated technical indicators (BB, RSI, MACD, IMI, MFI) on candlestick charts.
+- [ ] UI: Visualize identified Fair Value Gaps (FVGs) on charts (e.g., as shaded boxes).
+- [ ] UI: Highlight identified candlestick patterns on charts.
+- [ ] UI: Implement multi-timeframe chart displays (e.g., linked charts showing 1h, 15m, 5m for the same symbol).
+- [ ] UI: Provide drawing tools on charts (trendlines, support/resistance, Fibonacci, etc.).
+
+### III. Multi-Timeframe Analysis Framework (Backend & UI)
+
+- [ ] Backend: Develop data structures and logic to support coordinated analysis across multiple timeframes (e.g., 1h for trend, 15m for setup, 5m for entry).
+- [ ] UI: Design and implement a view/dashboard that allows users to see indicators and patterns from different timeframes for a selected symbol side-by-side or in a coordinated manner.
+- [ ] UI: Allow users to define and save multi-timeframe analysis templates/layouts.
+
+### IV. Backtesting Engine (Backend & UI)
+
+- [ ] Backend: Design and implement a core backtesting engine.
+  - [ ] Backend: Process historical price data (minute, daily) for selected symbols.
+  - [ ] Backend: Simulate trading strategies based on defined technical indicators, candlestick patterns, and multi-timeframe conditions.
+  - [ ] Backend: Calculate and store performance metrics (e.g., P&L, win rate, Sharpe ratio, max drawdown).
+- [ ] UI: Create an interface for users to define backtesting parameters (symbol, date range, strategy rules, indicator settings).
+- [ ] UI: Display backtesting results clearly (summary statistics, equity curve, trade log).
+- [ ] UI: Allow users to save and compare backtest results.
+
+### V. Real-Time Scanning & Alerting System (Backend & UI)
+
+- [ ] Backend: Develop a real-time scanning module that processes live streaming data (price and/or indicator values).
+  - [ ] Backend: Allow users to define scan criteria based on technical indicators (e.g., RSI < 30, MACD crossover), candlestick patterns, and FVG formations.
+  - [ ] Backend: Implement multi-timeframe conditions in real-time scans.
+- [ ] Backend: Implement an alerting mechanism when scan criteria are met.
+- [ ] UI: Create an interface for users to build and manage their scan/alert conditions.
+- [ ] UI: Display real-time scan results/hits.
+- [ ] UI: Provide user notifications for alerts (e.g., in-app pop-up, sound, email/SMS if integrated later).
+
+### VI. Options Recommendation Logic (Backend & UI)
+
+- [ ] Backend: Develop logic to suggest specific option contracts (strike, expiration, type C/P) based on:
+  - [ ] Backend: Signals from technical indicators, patterns, and multi-timeframe analysis.
+  - [ ] Backend: User-defined risk parameters (e.g., delta range, max premium, days to expiration preferences).
+  - [ ] Backend: Volatility considerations (e.g., IV rank/percentile - requires IV data).
+- [ ] UI: Design a section/tab to display generated option recommendations.
+  - [ ] UI: Show rationale for each recommendation (e.g., "Bullish MACD crossover on 15m, RSI confirming").
+- [ ] UI: Allow users to filter or sort recommendations.
+- [ ] UI: Provide an interface for users to set their preferences for option selection criteria.
+
+### VII. AI-Powered Enhancements (Long-Term - Backend & UI)
+
+- [ ] Backend: Research and identify suitable ML models for options trading signals (e.g., prediction, signal confirmation).
+- [ ] Backend: Develop a pipeline for feature engineering using technical indicators, patterns, and market data.
+- [ ] Backend: Train and evaluate ML models.
+- [ ] Backend: Integrate validated ML models to provide supplementary insights or confirm signals.
+- [ ] UI: Design a way to present AI-driven insights or confidence scores alongside traditional technical analysis.
+
+### VIII. General Backend & Infrastructure
+
+- [ ] Backend: Ensure historical data storage and retrieval is robust and efficient for indicators and backtesting.
+- [ ] Backend: Design APIs to serve calculated indicator data, pattern signals, backtest results, and recommendations to the UI.
+- [ ] Backend: Consider task queuing for computationally intensive tasks (backtesting, complex scans).
+
+### IX. UI/UX Enhancements for Recommendation Platform
+
+- [ ] UI: Develop a dedicated dashboard for the options recommendation platform, integrating charts, scanners, and recommendation displays.
+- [ ] UI: Ensure intuitive navigation and user experience for configuring strategies, scans, and viewing results.
+- [ ] UI: Implement user accounts and preferences if personalized strategies/alerts are to be saved.
+
