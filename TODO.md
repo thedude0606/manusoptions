@@ -64,7 +64,7 @@
 - [x] Fix f-string `SyntaxError` in `StreamingManager`.
 - [x] Review and fix dashboard data formatting (e.g., "YYYY-MM-DD", remaining "N/A"s).
 - [x] Fix `ObsoleteAttributeException` by updating `app.run_server` to `app.run` in `dashboard_app.py`.
-- [ ] Investigate persistent "Subscription ADD failed for LEVELONE_OPTIONS" error (requires full logs with subscription payload).
+- [x] Investigate persistent "Subscription ADD failed for LEVELONE_OPTIONS" error (requires full logs with subscription payload).
 - [ ] Future/General Tasks
   - [ ] Create `requirements.txt` file
 
