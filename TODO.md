@@ -76,7 +76,7 @@
 ### I. Core Technical Analysis Engine (Backend & UI)
 
 - **A. Technical Indicators Suite**
-  - [ ] Backend: Implement Bollinger Bands (BB) calculation logic (customizable periods, std dev).
+  - [x] Backend: Implement Bollinger Bands (BB) calculation logic (customizable periods, std dev).
   - [ ] Backend: Implement Relative Strength Index (RSI) calculation logic (customizable period, overbought/oversold levels).
   - [ ] Backend: Implement Moving Average Convergence Divergence (MACD) calculation logic (customizable EMAs, signal line).
   - [ ] Backend: Implement Intraday Momentum Index (IMI) calculation logic (customizable period).
