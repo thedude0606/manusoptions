@@ -326,3 +326,25 @@ This addition is crucial for providing user control over the streaming process, 
     6.  **API Call Structure:** The `api_demo.py` provides clear examples of various API calls (e.g., `client.account_linked()`, `client.quotes()`, `client.option_chains()`), which serve as a good reference for structuring future API integrations within `manusoptions`.
 
   - **Implication:** The `manusoptions` project will continue to adhere to these patterns. The `Schwabdev` example repository will be kept as a reference for implementing new API features or troubleshooting integration issues. This analysis provides increased confidence in the robustness and maintainability of the chosen architectural approaches for interacting with the Schwab API.
+
+
+
+## Technical Analysis Indicator Implementation (IMI, MFI) and Workflow Refinement (2025-05-15)
+
+- **Decision:** Implement Intraday Momentum Index (IMI) and Money Flow Index (MFI) calculation logic in `technical_analysis.py`.
+  - **Rationale:** To expand the suite of available technical indicators for the options analysis platform, as per the project roadmap outlined in `TODO.md` (Phase 2, Section I.A).
+
+- **Decision:** Create a new Python script (`fetch_and_format_yfinance_data.py`) to fetch historical stock data using the `YahooFinance/get_stock_chart` data API and format it into the JSON structure expected by `technical_analysis.py`.
+  - **Rationale:** The `technical_analysis.py` script requires local JSON data files (e.g., `AAPL_minute_data_last_90_days.json`) for its operation. These files were not present in the repository, and a reproducible method to generate them was needed for testing and development. Using a data API ensures access to up-to-date historical data.
+
+- **Decision:** Refactor `technical_analysis.py` to correct multiple syntax errors, parameter naming inconsistencies, and function definition order.
+  - **Rationale:** During the integration of IMI and MFI, and subsequent testing, several issues were identified:
+    1.  **Syntax Errors:** Incorrect escape sequences (e.g., `\"` instead of `"` or `'` for string literals and dictionary keys), misplaced characters from previous edits, and multiple statements on a single line.
+    2.  **Parameter Naming:** Inconsistent use of `period` vs. `window` as parameter names within functions and their calls (e.g., in `calculate_bollinger_bands`).
+    3.  **Function Definition Order:** `NameError` exceptions occurred because some TA calculation functions (specifically `calculate_imi`) were defined *after* the `main()` function or after their first call, or were inadvertently removed/commented out during previous refactoring. Python requires functions to be defined before they are called.
+    4.  **Incorrect Logic in `calculate_bollinger_bands`:** The function initially contained logic for IMI instead of Bollinger Bands. This was corrected to implement the standard Bollinger Bands calculation.
+  - These corrections were essential to make the `technical_analysis.py` script runnable, ensure all indicators are calculated correctly, and establish a stable base for further TA feature development.
+
+- **Decision:** Standardize the structure of TA calculation functions to include checks for necessary columns and sufficient data length, returning the DataFrame with NaN columns for the indicator if prerequisites are not met.
+  - **Rationale:** To make the TA functions more robust and prevent crashes when input data is incomplete or insufficient for a given calculation period. This also ensures that the output DataFrame always contains the expected indicator columns, even if they are populated with NaNs.
+

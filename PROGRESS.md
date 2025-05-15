@@ -27,23 +27,26 @@ This document tracks the progress of the Manus Options project.
 *   **Implemented Bollinger Bands (BB) calculation logic in `technical_analysis.py`.**
 *   **Verified existing Relative Strength Index (RSI) calculation logic in `technical_analysis.py` as complete and functional.**
 *   **Verified existing Moving Average Convergence Divergence (MACD) calculation logic in `technical_analysis.py` as complete and functional (supports customizable EMAs and signal line).**
-*   **Implemented Intraday Momentum Index (IMI) calculation logic in `technical_analysis.py` (supports customizable period).**
+*   **Implemented and validated Intraday Momentum Index (IMI) calculation logic in `technical_analysis.py` (supports customizable period).**
+*   **Implemented and validated Money Flow Index (MFI) calculation logic in `technical_analysis.py` (customizable period, volume-weighted RSI).**
+*   **Refactored `technical_analysis.py` to ensure correct function definitions, order, and parameter usage for all TA indicators.**
+*   **Generated sample data files (minute, hourly, daily for AAPL) using YahooFinance API to enable local testing of `technical_analysis.py`.**
 
 *(For a detailed list of all completed sub-tasks, please refer to the `TODO.md` file.)*
 
 ## Current Work In Progress
 
-*   **Documentation Update:** Finalizing updates to `PROGRESS.md` and `TODO.md` after recent development and verification.
-*   **Preparation for Next Development Cycle:** Planning implementation of Money Flow Index (MFI).
+*   **Documentation Update:** Finalizing updates to `PROGRESS.md`, `TODO.md`, and `DECISIONS.md` after recent TA feature completion.
+*   **Preparation for Next Development Cycle:** Planning implementation of user customization for TA parameters and Fair Value Gaps (FVG).
 
 ## Known Issues or Challenges
 
-*   **Historical Data Truncation (Previously Encountered):** While resolved with workarounds for specific files, vigilance is needed if similar issues arise with large log files or source code files during debugging.
+*   **Pandas FutureWarning:** The `technical_analysis.py` script currently shows `FutureWarning` messages from pandas related to dtype compatibility when setting boolean values for FVG. This does not currently block functionality but should be addressed in the future for cleaner execution and to prevent potential issues with future pandas versions.
 *   **RSI Customization:** The existing RSI function in `technical_analysis.py` does not currently support customizable overbought/oversold levels directly as parameters. This can be considered for future enhancement.
 
 ## Next Steps
 
-1.  **Push all updated documentation files (`PROGRESS.md`, `TODO.md`) and new code (updated `technical_analysis.py`) to the GitHub repository.**
-2.  **Notify user of the progress, including the implementation of IMI, and the push of these updates.**
-3.  **Continue with Phase 2: Options Recommendation Platform Features** as outlined in `TODO.md`, starting with the implementation of Money Flow Index (MFI) calculation logic.
+1.  **Push all updated documentation files (`PROGRESS.md`, `TODO.md`, `DECISIONS.md`) to the GitHub repository.**
+2.  **Notify user of the progress, including the successful implementation and testing of IMI and MFI, and the push of these updates.**
+3.  **Continue with Phase 2: Options Recommendation Platform Features** as outlined in `TODO.md`, starting with developing a system for users to customize parameters for all indicators and then implementing Fair Value Gaps (FVG) logic.
 
