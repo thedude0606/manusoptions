@@ -53,6 +53,10 @@
 - [x] Address `AttributeError: 'StreamingManager' object has no attribute 'get_status'`.
   - [x] Implemented `get_status()` method in `dashboard_utils/streaming_manager.py`.
   - [x] Verified syntax of the updated file.
+- [x] Address `AttributeError: 'StreamingManager' object has no attribute 'get_latest_data'`.
+  - [x] Reviewed user-provided reference files and Schwabdev documentation.
+  - [x] Implemented `get_latest_data()` method in `dashboard_utils/streaming_manager.py`.
+  - [x] Verified syntax of the updated file.
   - [ ] Update `DECISIONS.md` regarding field mapping fix.
   - [ ] Request user to test application and confirm data accuracy.
   - [ ] If fixed, proceed to final documentation and `requirements.txt`.

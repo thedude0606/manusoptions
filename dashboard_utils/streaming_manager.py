@@ -296,3 +296,14 @@ class StreamingManager:
         logger.debug(f"get_status() called. Returning status: 	'{status}	', error: 	'{error}	'")
         return status, error
 
+
+
+    def get_latest_data(self):
+        """Returns a copy of the latest data store containing streamed option contract data."""
+        with self._lock:
+            # Return a shallow copy of the dictionary to prevent external modification of the internal store
+            # and to provide a snapshot of the data at the time of the call.
+            data_copy = dict(self.latest_data_store)
+        logger.debug(f"get_latest_data() called. Returning data store with {len(data_copy)} items.")
+        return data_copy
+

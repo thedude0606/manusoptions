@@ -172,3 +172,24 @@ This decision to use the user-provided content as a workaround allowed progress 
     - Debug logging was added to the method to trace its calls and return values.
 
 This addition is essential for the `dashboard_app.py` to correctly report the streaming status and any errors to the user via the web interface.
+
+
+
+## Addition of `get_latest_data()` Method to StreamingManager (May 15, 2025 - Late Evening)
+
+- **Decision:** Implement a `get_latest_data()` method in the `StreamingManager` class (`dashboard_utils/streaming_manager.py`).
+  - **Rationale:**
+    - The `dashboard_app.py` file, specifically in the `update_options_chain_stream_data` callback (around line 309), attempts to call `STREAMING_MANAGER.get_latest_data()` to retrieve the latest streamed market data for display in the UI.
+    - This call was failing with an `AttributeError: 'StreamingManager' object has no attribute 'get_latest_data'` because the method did not exist.
+    - To resolve this error and enable the UI to access the streamed data, the `get_latest_data()` method was added.
+    - The implementation was guided by user-provided reference files (`processing_streaming_data.py`, `stream_demo.py`) and Schwabdev documentation, which suggest using a shared data structure (like `self.latest_data_store`) that is populated by the stream handler and accessed by other parts of the application.
+  - **Implementation Details:**
+    - The `get_latest_data(self)` method was added to the `StreamingManager` class.
+    - It accesses `self.latest_data_store` to retrieve the dictionary containing the most recent data for each subscribed contract key.
+    - A `threading.Lock` (`self._lock`) is used when accessing `self.latest_data_store` to ensure thread safety, as this dictionary is written to by the streaming worker thread and read by the Dash app's callback thread.
+    - The method returns a shallow copy of the `self.latest_data_store` dictionary (i.e., `dict(self.latest_data_store)`). This is crucial to:
+        - Provide a snapshot of the data at the time of the call.
+        - Prevent the calling code (in `dashboard_app.py`) from directly modifying the internal data store of the `StreamingManager`, which could lead to race conditions or inconsistent state.
+    - Debug logging was added to the method to trace its calls and the number of items being returned.
+
+This addition is essential for `dashboard_app.py` to retrieve and display the latest options contract data received from the stream.
