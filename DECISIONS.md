@@ -328,3 +328,27 @@ This addition is crucial for providing user control over the streaming process, 
     - Lower band = SMA - (num_std_dev * std_dev)
     - Includes basic example usage within an `if __name__ == "__main__":` block for direct testing of the module.
 
+
+
+## Phase 2: Bollinger Bands - UI Integration (May 15, 2025)
+
+- **Decision:** Integrate Bollinger Bands visualization into the existing `dashboard_app.py` under the "Technical Indicators" tab.
+  - **Rationale:**
+    - **Leverage Existing Structure:** The Dash application already has a tab dedicated to technical indicators. Integrating BB visualization here maintains consistency and utilizes the existing layout and symbol selection mechanisms.
+    - **Charting Library:** Use Plotly (specifically `plotly.graph_objects`) for rendering the chart, as it's already a dependency of Dash and well-suited for financial visualizations.
+    - **Data Flow:** The `update_tech_indicators_tab` callback will be modified to:
+        1. Fetch historical price data (e.g., minute data for the selected symbol) using the existing `get_minute_data` utility.
+        2. Calculate Bollinger Bands using the `calculate_bollinger_bands` function from `analysis_utils.technical_indicators.py`.
+        3. Construct a Plotly figure containing a Candlestick chart for the price data and overlay Scatter traces for the Upper, Middle (SMA), and Lower Bollinger Bands.
+  - **Implementation Details:**
+    - Modified the "Technical Indicators" tab in `app.layout` to use `dcc.Graph(id="tech-indicators-chart")` instead of a `dash_table.DataTable`.
+    - Updated the `@app.callback` for `Output("tech-indicators-chart", "figure")`:
+        - Fetches minute data for the selected symbol.
+        - Ensures necessary columns (Timestamp, Open, High, Low, Close) are present.
+        - Converts Timestamps to datetime objects and sorts the data.
+        - Calls `calculate_bollinger_bands` with the close prices.
+        - Creates a `go.Candlestick` trace for price.
+        - Creates `go.Scatter` traces for upper, middle, and lower bands.
+        - Handles cases where no symbol is selected or data fetching fails by returning an empty figure or an error message within the chart.
+    - Added `plotly.graph_objects` and `analysis_utils.technical_indicators.calculate_bollinger_bands` imports to `dashboard_app.py`.
+    - Ensured all necessary dependencies (`dash`, `plotly`, `schwabdev`, `python-dotenv`) are installed and added to `requirements.txt`.

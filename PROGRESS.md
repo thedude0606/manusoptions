@@ -17,6 +17,7 @@
 *   Addressed dashboard data formatting issues (partial).
 *   Fixed `ObsoleteAttributeException` by updating `app.run_server` to `app.run` in `dashboard_app.py`.
 *   **Phase 2: Implemented backend logic for Bollinger Bands (BB) in `analysis_utils/technical_indicators.py`.**
+*   **Phase 2: Integrated Bollinger Bands (BB) visualization into the Dash application UI (`dashboard_app.py`) on the 'Technical Indicators' tab.**
 
 *(For a detailed list of all completed sub-tasks, please refer to the `TODO.md` file.)*
 
@@ -24,7 +25,7 @@
 
 *   **Phase 2: Options Recommendation Platform - Core Technical Analysis Engine**
     *   Status: In Progress
-    *   Details: Continuing with implementation of other backend technical indicators (RSI, MACD, etc.).
+    *   Details: Completed Bollinger Bands (Backend & UI). Preparing for the next indicator (e.g., RSI).
 
 ## Known Issues or Challenges
 
@@ -32,8 +33,8 @@
 
 ## Next Steps
 
-1.  **Implement Relative Strength Index (RSI) calculation logic (backend).** (High Priority - Phase 2)
-2.  **Create `requirements.txt` file:** Document all Python dependencies for the project.
+1.  **Implement Relative Strength Index (RSI) calculation logic (backend & UI).** (High Priority - Phase 2)
+2.  **Create `requirements.txt` file (if not already fully up-to-date):** Ensure all Python dependencies for the project are documented.
 3.  **Continue with Phase 2: Options Recommendation Platform Features:**
     *   Implement other technical indicators (MACD, IMI, MFI etc.) as per `TODO.md`.
     *   (Refer to `TODO.md` for the detailed breakdown of all Phase 2 tasks).

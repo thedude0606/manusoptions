@@ -9,10 +9,12 @@ import os # For account ID
 import logging # For app-level logging
 import json # For pretty printing dicts in logs
 import re # For parsing option key
+import plotly.graph_objects as go # Added for charting
 
 # Import utility functions
 from dashboard_utils.data_fetchers import get_schwab_client, get_minute_data, get_options_chain_data, get_option_contract_keys
 from dashboard_utils.streaming_manager import StreamingManager
+from analysis_utils.technical_indicators import calculate_bollinger_bands # Added for BB
 
 # Configure basic logging for the app
 app_logger = logging.getLogger(__name__)
@@ -75,13 +77,7 @@ app.layout = html.Div([
         dcc.Tab(label="Technical Indicators", value="tab-tech-indicators", children=[
             html.Div(id="tech-indicators-content", children=[
                 html.H4(id="tech-indicators-header"),
-                dash_table.DataTable(
-                    id="tech-indicators-table", 
-                    columns=[], 
-                    data=[],
-                    page_size=10,
-                    style_table={"overflowX": "auto"}
-                )
+                dcc.Graph(id="tech-indicators-chart") # Changed from DataTable to Graph
             ])
         ]),
         dcc.Tab(label="Options Chain (Stream)", value="tab-options-chain", children=[
@@ -204,21 +200,85 @@ def update_minute_data_tab(selected_symbol, current_errors):
     return cols, data, new_errors
 
 @app.callback(
-    Output("tech-indicators-table", "columns"),
-    Output("tech-indicators-table", "data"),
+    Output("tech-indicators-chart", "figure"), # Changed Output
+    Output("error-message-store", "data", allow_duplicate=True), # Added error output
     Input("selected-symbol-store", "data"),
+    State("error-message-store", "data"), # Added error state
     prevent_initial_call=True
 )
-def update_tech_indicators_tab(selected_symbol):
+def update_tech_indicators_tab(selected_symbol, current_errors):
     if not selected_symbol:
-        return [], []
-    dummy_cols = [{"name": i, "id": i} for i in ["Indicator", "1min", "15min", "1hour", "Daily"]]
-    dummy_data = pd.DataFrame({
-        "Indicator": ["SMA(20)", "RSI(14)"], 
-        "1min": [f"{selected_symbol}-val1", f"{selected_symbol}-val2"], 
-        "15min": [151.0, 48.0], "1hour": [155.0, 55.0], "Daily": [160.0, 60.0]
-    }).to_dict("records")
-    return dummy_cols, dummy_data
+        return go.Figure(), current_errors # Return empty figure if no symbol
+
+    global SCHWAB_CLIENT
+    new_errors = list(current_errors)
+    client_to_use = SCHWAB_CLIENT
+    fig = go.Figure()
+    timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if not client_to_use:
+        client_to_use, client_err = get_schwab_client()
+        if client_err:
+            error_msg = f"{timestamp_str}: TechInd: {client_err}"
+            new_errors.insert(0, error_msg)
+            fig.add_annotation(text=f"Error: {client_err}", showarrow=False)
+            return fig, new_errors[:10]
+        SCHWAB_CLIENT = client_to_use
+
+    # Fetch, for example, 60 days of minute data for indicators
+    # Using 'Close' for BB calculation, but OHLC for candlestick
+    price_df, error = get_minute_data(client_to_use, selected_symbol, days_history=60) 
+
+    if error:
+        error_msg = f"{timestamp_str}: TechInd Data for {selected_symbol}: {error}"
+        new_errors.insert(0, error_msg)
+        fig.add_annotation(text=f"Error fetching data: {error}", showarrow=False)
+        return fig, new_errors[:10]
+    
+    if price_df.empty:
+        fig.add_annotation(text="No price data available to calculate indicators.", showarrow=False)
+        return fig, new_errors
+
+    # Ensure required columns are present
+    required_cols = ["Timestamp", "Open", "High", "Low", "Close"]
+    if not all(col in price_df.columns for col in required_cols):
+        error_msg = f"{timestamp_str}: TechInd Data for {selected_symbol}: Missing one or more required columns (Timestamp, Open, High, Low, Close) in fetched data."
+        new_errors.insert(0, error_msg)
+        fig.add_annotation(text="Error: Data missing required columns.", showarrow=False)
+        return fig, new_errors[:10]
+        
+    # Convert Timestamp to datetime objects if they are not already (get_minute_data should handle this)
+    price_df["Timestamp"] = pd.to_datetime(price_df["Timestamp"])
+    price_df = price_df.sort_values(by="Timestamp")
+
+    # Calculate Bollinger Bands
+    close_prices = price_df["Close"].tolist()
+    # Using default window=20, num_std_dev=2 from calculate_bollinger_bands function
+    upper_bands, middle_bands, lower_bands = calculate_bollinger_bands(close_prices)
+
+    # Create Candlestick chart
+    fig.add_trace(go.Candlestick(x=price_df["Timestamp"],
+                               open=price_df["Open"],
+                               high=price_df["High"],
+                               low=price_df["Low"],
+                               close=price_df["Close"],
+                               name=f"{selected_symbol} Price"))
+
+    # Add Bollinger Bands traces
+    # Ensure bands align with the price_df timestamps; BB function returns lists matching input price list length
+    fig.add_trace(go.Scatter(x=price_df["Timestamp"], y=upper_bands, mode="lines", name="Upper Band", line=dict(color="blue")))
+    fig.add_trace(go.Scatter(x=price_df["Timestamp"], y=middle_bands, mode="lines", name="Middle Band (SMA 20)", line=dict(color="orange")))
+    fig.add_trace(go.Scatter(x=price_df["Timestamp"], y=lower_bands, mode="lines", name="Lower Band", line=dict(color="blue")))
+
+    fig.update_layout(
+        title=f"Bollinger Bands for {selected_symbol}",
+        xaxis_title="Timestamp",
+        yaxis_title="Price",
+        xaxis_rangeslider_visible=False # Optional: hide range slider for cleaner look
+    )
+    
+    return fig, new_errors
+
 
 @app.callback(
     Output("current-option-keys-store", "data"),
@@ -353,35 +413,25 @@ def update_options_chain_stream_data(n_intervals, selected_symbol, current_error
 
         # Fallback to parsing from contract key if dedicated fields are missing/invalid or type is unknown
         if parsed_expiration_date == "N/A" or parsed_strike_price == "N/A" or (not is_call and not is_put):
-            key_match = OPTION_KEY_REGEX.match(contract_key_str.replace(" ", "")) # Remove spaces for regex
+            key_match = OPTION_KEY_REGEX.match(contract_key_str)
             if key_match:
-                if parsed_expiration_date == "N/A":
-                    year, month, day = key_match.group(2), key_match.group(3), key_match.group(4)
-                    parsed_expiration_date = f"20{year}-{month}-{day}"
-                
-                if parsed_strike_price == "N/A":
-                    try:
-                        parsed_strike_price = float(key_match.group(6)) / 1000.0
-                    except ValueError:
-                        app_logger.warning(f"Could not parse strike from key {contract_key_str}")
-                
-                if not is_call and not is_put:
-                    type_char = key_match.group(5)
+                # _underlying, year_str, month_str, day_str, type_char, strike_str = key_match.groups()
+                _raw_symbol, year_str, month_str, day_str, type_char, strike_raw = key_match.groups()
+                try:
+                    parsed_expiration_date = f"20{year_str}-{month_str}-{day_str}"
+                    parsed_strike_price = float(strike_raw) / 1000.0
                     if type_char == "C":
                         is_call = True
                     elif type_char == "P":
                         is_put = True
+                except ValueError as e:
+                    app_logger.warning(f"Error parsing contract key {contract_key_str}: {e}")
+                    # Keep N/A for date/strike if parsing fails
             else:
-                if n_intervals % 10 == 1: # Log periodically
-                    app_logger.warning(f"Could not parse option key {contract_key_str} with regex. Date/Strike/Type might be N/A.")
+                app_logger.warning(f"Could not parse OCC option key: {contract_key_str}")
 
-        if not is_call and not is_put:
-            # If still unknown, log and skip (or assign to a default list if necessary)
-            if n_intervals % 10 == 1: # Log periodically
-                app_logger.warning(f"Final check: Could not determine contract type for key: {contract_key_str}. Skipping.")
-            continue
-
-        record = {
+        # Construct the row for the table
+        row = {
             "Expiration Date": parsed_expiration_date,
             "Strike": parsed_strike_price,
             "Last": data_dict.get("lastPrice", "N/A"),
@@ -389,23 +439,31 @@ def update_options_chain_stream_data(n_intervals, selected_symbol, current_error
             "Ask": data_dict.get("askPrice", "N/A"),
             "Volume": data_dict.get("totalVolume", "N/A"),
             "Open Interest": data_dict.get("openInterest", "N/A"),
-            "Implied Volatility": data_dict.get("volatility", "N/A"),
-            "Delta": data_dict.get("delta", "N/A"),
-            "Gamma": data_dict.get("gamma", "N/A"),
-            "Theta": data_dict.get("theta", "N/A"),
-            "Vega": data_dict.get("vega", "N/A"),
+            "Implied Volatility": data_dict.get("volatility", "N/A"), # Field 24 is volatility
+            "Delta": data_dict.get("delta", "N/A"), # Field 25
+            "Gamma": data_dict.get("gamma", "N/A"), # Field 26
+            "Theta": data_dict.get("theta", "N/A"), # Field 18
+            "Vega": data_dict.get("vega", "N/A"),   # Field 19
             "Contract Key": contract_key_str
         }
 
         if is_call:
-            calls_list.append(record)
+            calls_list.append(row)
         elif is_put:
-            puts_list.append(record)
+            puts_list.append(row)
+        # else: # Log if neither call nor put, though should be covered by parsing
+            # app_logger.debug(f"Contract {contract_key_str} is neither Call nor Put based on type: {contract_type_val}")
 
-    app_logger.info(f"Processed {len(calls_list)} calls and {len(puts_list)} puts for UI update.")
-    return option_cols, calls_list, option_cols, puts_list, status_display, new_errors[:10]
+    app_logger.info(f"Processed into {len(calls_list)} calls and {len(puts_list)} puts.")
+    calls_df = pd.DataFrame(calls_list)
+    puts_df = pd.DataFrame(puts_list)
 
-# --- Main Execution --- 
+    return option_cols, calls_df.to_dict("records"), option_cols, puts_df.to_dict("records"), status_display, new_errors[:10]
+
+
 if __name__ == "__main__":
+    # For local development, you might need to load .env if you use it for SCHWAB_ACCOUNT_HASH
+    # from dotenv import load_dotenv
+    # load_dotenv()
     app.run(debug=True, host="0.0.0.0", port=8050)
 
