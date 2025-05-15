@@ -73,3 +73,42 @@ Following the previous updates, the user reported that streaming data was not ap
 - Reviewed `Schwabdev` library for best practices in stream handling.
 - Implemented fixes in `dashboard_utils/streaming_manager.py` to ensure the worker thread remains active and to correctly handle stream confirmation messages.
 
+
+
+
+## Diagnosing Empty Options Tables (May 15, 2025)
+
+Following the previous fixes, the user reported that while the stream status in the UI correctly indicated "Stream: Actively receiving data for N contracts", the options chain tables (Calls and Puts) remained empty. User-provided terminal output and a screenshot confirmed this state.
+
+**Investigation and Next Diagnostic Steps:**
+
+- **Hypothesis:** The `StreamingManager` appears to be receiving data (as per its internal status and logs shown to the user), but this data might not be correctly stored in `latest_data_store`, or it might not be correctly retrieved by the `dashboard_app.py` when the UI updates.
+
+- **Action Taken (Verbose Logging):** To pinpoint where the data flow is breaking down, verbose logging has been added to `dashboard_utils/streaming_manager.py`:
+    - In `_handle_stream_message()`: More detailed logging was added to show incoming raw messages (first 500 characters), the parsed data, which specific contract keys are being updated, and the size and sample keys of `latest_data_store` after each batch of messages.
+    - In `get_latest_data()`: Logging was added to show when this method is called by the Dash app, the current size of `latest_data_store` at that moment, and a sample of keys (and optionally data for one key) being returned. This will help verify what data the Dash app is actually receiving from the manager.
+    - In `start_stream()` and `stop_stream()`: Logging was added to confirm when `latest_data_store` is cleared.
+
+- **Rationale for Verbose Logging:** This enhanced logging aims to provide a clear trace of:
+    1.  If and what data is being received by `_handle_stream_message`.
+    2.  If this data is being successfully processed and stored into `self.latest_data_store`.
+    3.  What the content and size of `self.latest_data_store` is when `get_latest_data()` is called by the Dash UI callback.
+    This will help determine if the issue lies in data reception/storage within `StreamingManager` or in the data retrieval/display logic within `dashboard_app.py`.
+
+**Updated Completed Tasks:**
+
+- Added verbose logging to `dashboard_utils/streaming_manager.py` to diagnose the empty options table issue.
+- Pushed logging changes to GitHub.
+
+**Current Known Issues or Challenges:**
+
+- Options chain tables in the Dash UI are empty despite the stream status indicating active data reception.
+- A `requirements.txt` file is still needed for the project.
+
+**Next Steps:**
+
+- Update `TODO.md` and `DECISIONS.md`.
+- Request the user to run the application with the new logging and provide the complete terminal output.
+- Analyze the new verbose logs to identify the point of failure in data propagation.
+- Implement a fix based on the log analysis.
+

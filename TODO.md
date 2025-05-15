@@ -1,20 +1,30 @@
-# TODO
+- [x] Clone and set up the repository
+- [x] Initial investigation of streaming data issue (premature worker termination & confirmation messages)
+  - [x] Review `streaming_design.md`
+  - [x] Review `dashboard_utils/streaming_manager.py`
+  - [x] Review `fetch_options_chain.py`
+  - [x] Review `dashboard_app.py` (for integration understanding)
+  - [x] Analyze terminal output and log errors for initial issue
+  - [x] Review and compare with `Schwabdev` example for initial fix
+  - [x] Implement fix for premature worker termination & confirmation message handling
+  - [x] Commit and push initial fix to GitHub
+  - [x] Update `PROGRESS.md`, `TODO.md`, `DECISIONS.md` for initial fix
+  - [x] Report initial fix status to user
 
-## Initial `ModuleNotFoundError` Resolution (Completed)
-- [x] Analyze `ModuleNotFoundError` for `schwabdev.streamer_client`.
-- [x] Research and integrate `schwabdev` dependency.
-- [x] Validate import and `StreamingManager` functionality (including refactor to new API).
-- [x] Update and commit `PROGRESS.md` and `TODO.md` files for initial fixes.
-- [x] Update and commit `DECISIONS.md` file for initial fixes.
-- [x] Push code and documentation to GitHub for initial fixes.
+- [ ] Diagnose issue: Options tables empty despite active stream status
+  - [x] Analyze new user-provided terminal output and screenshot (May 15, 2025)
+  - [x] Add verbose logging to `StreamingManager` (in `_handle_stream_message` and `get_latest_data`)
+  - [x] Commit and push verbose logging changes to GitHub
+  - [x] Update `PROGRESS.md` with verbose logging details
+  - [ ] Update `TODO.md` with verbose logging details (this item)
+  - [ ] Update `DECISIONS.md` regarding diagnostic logging strategy
+  - [ ] Request user to run app and provide new verbose logs
+  - [ ] Analyze new verbose logs to identify data propagation failure point
+  - [ ] Implement fix for empty options tables based on new logs
+  - [ ] Iteratively commit and push fix to GitHub
+  - [ ] Update `PROGRESS.md`, `TODO.md`, `DECISIONS.md` for this fix
+  - [ ] Report final fix status to user
 
-## Addressing Runtime Errors (SCHWAB_ACCOUNT_HASH & StreamService) (Completed)
-- [x] Investigate `SCHWAB_ACCOUNT_HASH not set in .env` error.
-- [x] Investigate `ImportError: cannot import name 'StreamService'` error.
-- [x] Update `streaming_manager.py` to use service-specific subscriptions and handle `.env` requirements.
-- [x] Validate fixes for environment variable and `StreamService` import.
-- [x] Update `PROGRESS.md` with details of these new fixes.
-- [x] Revise `DECISIONS.md` to accurately reflect `StreamService` resolution and `.env` handling.
-- [x] Update and commit `TODO.md` for these new fixes.
-- [ ] Push all new fixes and updated documentation to GitHub.
-- [ ] Report resolution of new issues to the user.
+- [ ] Future/General Tasks
+  - [ ] Create `requirements.txt` file
+

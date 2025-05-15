@@ -15,6 +15,9 @@ if not logger.hasHandlers(): # Avoid adding multiple handlers if already configu
     logger.addHandler(handler)
 logger.setLevel(logging.INFO) # Set to INFO for general, DEBUG for verbose
 
+# To get more detailed logs from schwabdev library itself, uncomment the following line:
+# logging.getLogger('schwabdev').setLevel(logging.DEBUG)
+
 class StreamingManager:
     def __init__(self, schwab_client_getter, account_id_getter):
         self.schwab_client_getter = schwab_client_getter
@@ -27,6 +30,7 @@ class StreamingManager:
         self.error_message = None
         self.status_message = "Idle"
         self._lock = threading.Lock()
+        self.message_counter = 0 # For uniquely identifying messages
         logger.info("StreamingManager initialized.")
 
     def _get_schwab_client(self):
@@ -76,18 +80,21 @@ class StreamingManager:
                 return
 
             logger.info("Stream worker: Starting schwabdev's stream listener (which runs in its own thread)...")
-            # Ensure the logger level for schwabdev is also appropriate if its logs are needed
-            # For example: logging.getLogger('schwabdev').setLevel(logging.DEBUG)
             self.stream_client.start(self._handle_stream_message)
             logger.info("Stream worker: schwabdev's stream_client.start() called. Listener should be active in its own thread.")
 
             time.sleep(2) 
 
             keys_str = ",".join(list(option_keys_to_subscribe))
-            fields_str = "0,2,7,8,9,10,11,15,16,17,18,19,21,26,27,23,24,25"
+            # Fields for LEVELONE_OPTIONS: 0=Symbol, 2=Last Price, 7=Ask Price, 8=Bid Price, 9=Ask Size, 10=Bid Size, 11=Total Volume,
+            # 15=Volatility, 16=Delta, 17=Gamma, 18=Theta, 19=Vega, 21=Open Interest,
+            # 26=Strike Price, 27=Contract Type (CALL/PUT), 23=Expiration Day, 24=Expiration Month, 25=Expiration Year
+            fields_str = "0,2,7,8,9,10,11,15,16,17,18,19,21,23,24,25,26,27"
             
-            logger.info(f"Stream worker: Sending LEVELONE_OPTIONS subscription for keys: {keys_str}")
-            self.stream_client.send(self.stream_client.level_one_options(keys_str, fields_str, command="ADD"))
+            subscription_payload = self.stream_client.level_one_options(keys_str, fields_str, command="ADD")
+            logger.info(f"Stream worker: Preparing to send LEVELONE_OPTIONS subscription. Keys: {keys_str}. Fields: {fields_str}.")
+            logger.info(f"Stream worker: Full subscription payload being sent: {json.dumps(subscription_payload)}")
+            self.stream_client.send(subscription_payload)
 
             with self._lock:
                 self.current_subscriptions = set(option_keys_to_subscribe)
@@ -147,43 +154,44 @@ class StreamingManager:
             logger.info("Stream worker finished.")
 
     def _handle_stream_message(self, raw_message):
-        # Set logger to DEBUG for this handler if very verbose logs are needed
-        # logger.setLevel(logging.DEBUG) 
-        logger.info(f"_handle_stream_message received raw_message (type: {type(raw_message)}): {raw_message[:500]}...") # Log first 500 chars
+        self.message_counter += 1
+        current_message_id = self.message_counter
+        logger.info(f"[MsgID:{current_message_id}] _handle_stream_message received raw_message (type: {type(raw_message)}). Full message: {raw_message}")
+        
         try:
             message_dict = None
             if isinstance(raw_message, str):
                 try:
                     message_dict = json.loads(raw_message)
-                    logger.debug(f"_handle_stream_message: Parsed JSON: {message_dict}")
+                    logger.debug(f"[MsgID:{current_message_id}] Parsed JSON: {message_dict}")
                 except json.JSONDecodeError as jde:
-                    logger.error(f"Failed to decode JSON message: {jde} - Raw Message: {raw_message}")
+                    logger.error(f"[MsgID:{current_message_id}] Failed to decode JSON message: {jde} - Raw Message: {raw_message}")
                     return
             elif isinstance(raw_message, dict): 
                 message_dict = raw_message
-                logger.debug(f"_handle_stream_message: Received dict directly: {message_dict}")
+                logger.debug(f"[MsgID:{current_message_id}] Received dict directly: {message_dict}")
             else:
-                logger.warning(f"Unexpected message type received by handler: {type(raw_message)}. Raw Message: {raw_message}")
+                logger.warning(f"[MsgID:{current_message_id}] Unexpected message type received by handler: {type(raw_message)}. Raw Message: {raw_message}")
                 return
 
             if "data" in message_dict:
                 data_items = message_dict.get("data", [])
-                logger.info(f"_handle_stream_message: Processing {len(data_items)} data items.")
+                logger.info(f"[MsgID:{current_message_id}] Processing {len(data_items)} data items.")
                 updated_keys_in_batch = []
                 for item_index, item in enumerate(data_items):
-                    logger.debug(f"_handle_stream_message: Processing data item #{item_index}: {item}")
+                    logger.debug(f"[MsgID:{current_message_id}] Processing data item #{item_index}: {item}")
                     if not isinstance(item, dict) or item.get("service") != "LEVELONE_OPTIONS" or "content" not in item:
-                        logger.warning(f"_handle_stream_message: Skipping non-LEVELONE_OPTIONS or malformed data item: {item}")
+                        logger.warning(f"[MsgID:{current_message_id}] Skipping non-LEVELONE_OPTIONS or malformed data item: {item}")
                         continue
                     content_list = item.get("content", [])
                     for content_index, contract_data in enumerate(content_list):
-                        logger.debug(f"_handle_stream_message: Processing content #{content_index} from item #{item_index}: {contract_data}")
+                        logger.debug(f"[MsgID:{current_message_id}] Processing content #{content_index} from item #{item_index}: {contract_data}")
                         if not isinstance(contract_data, dict) or "key" not in contract_data:
-                            logger.warning(f"_handle_stream_message: Skipping malformed contract_data (no key): {contract_data}")
+                            logger.warning(f"[MsgID:{current_message_id}] Skipping malformed contract_data (no key): {contract_data}")
                             continue
                         contract_key = contract_data.get("key")
                         if not contract_key:
-                            logger.warning(f"_handle_stream_message: Skipping contract_data with empty key: {contract_data}")
+                            logger.warning(f"[MsgID:{current_message_id}] Skipping contract_data with empty key: {contract_data}")
                             continue
                         
                         processed_data = {
@@ -194,11 +202,12 @@ class StreamingManager:
                             "volatility": contract_data.get("15"), "delta": contract_data.get("16"),
                             "gamma": contract_data.get("17"), "theta": contract_data.get("18"),
                             "vega": contract_data.get("19"), "openInterest": contract_data.get("21"),
-                            "strikePrice": contract_data.get("26"), "contractType": contract_data.get("27"),
                             "expirationDay": contract_data.get("23"), "expirationMonth": contract_data.get("24"),
-                            "expirationYear": contract_data.get("25"), "lastUpdated": time.time()
+                            "expirationYear": contract_data.get("25"),
+                            "strikePrice": contract_data.get("26"), "contractType": contract_data.get("27"),
+                             "lastUpdated": time.time()
                         }
-                        logger.info(f"_handle_stream_message: Storing data for key {contract_key}: {processed_data}")
+                        logger.info(f"[MsgID:{current_message_id}] Storing data for key {contract_key}: {processed_data}")
                         updated_keys_in_batch.append(contract_key)
                         with self._lock:
                             self.latest_data_store[contract_key] = processed_data
@@ -206,17 +215,16 @@ class StreamingManager:
                                 if "Connecting" in self.status_message or "Subscribing" in self.status_message or "Initializing" in self.status_message or "Starting listener" in self.status_message or "Subscriptions sent" in self.status_message:
                                     self.status_message = f"Stream: Actively receiving data for {len(self.current_subscriptions)} contracts."
                 with self._lock:
-                    logger.info(f"_handle_stream_message: Batch processed. Updated keys: {updated_keys_in_batch}. Current data store size: {len(self.latest_data_store)}. Sample keys in store: {list(self.latest_data_store.keys())[:5]}")
+                    logger.info(f"[MsgID:{current_message_id}] Batch processed. Updated keys: {updated_keys_in_batch}. Current data store size: {len(self.latest_data_store)}. Sample keys in store: {list(self.latest_data_store.keys())[:5]}")
             elif "response" in message_dict or "responses" in message_dict or "notify" in message_dict:
-                logger.info(f"Stream admin/response/notify: {message_dict}")
+                logger.info(f"[MsgID:{current_message_id}] Stream admin/response/notify: {message_dict}")
             else:
-                logger.warning(f"Unhandled message structure: {message_dict}")
+                logger.warning(f"[MsgID:{current_message_id}] Unhandled message structure: {message_dict}")
 
         except Exception as e:
-            logger.error(f"Error processing stream message: {e} - Original Raw Message: {raw_message}", exc_info=True)
+            logger.error(f"[MsgID:{current_message_id}] Error processing stream message: {e} - Original Raw Message: {raw_message}", exc_info=True)
             with self._lock:
                 self.error_message = f"Processing error: {e}"
-        # logger.setLevel(logging.INFO) # Reset logger level if changed above
 
     def start_stream(self, option_keys_to_subscribe):
         keys_set = set(option_keys_to_subscribe)
@@ -247,7 +255,7 @@ class StreamingManager:
         
         active_stream_client_local = self.stream_client
 
-        if active_stream_client_local and hasattr(active_stream_client_local, "stop") and active_stream_client_local.active:
+        if active_stream_client_local and hasattr(active_stream_client_local, 'stop') and active_stream_client_local.active:
             try:
                 logger.info("Calling schwabdev's stream_client.stop()...")
                 active_stream_client_local.stop()
@@ -292,14 +300,10 @@ class StreamingManager:
     def get_latest_data(self):
         with self._lock:
             store_size = len(self.latest_data_store)
-            # Log a small sample of keys or data if the store is not empty
             sample_data_log = ""
             if store_size > 0:
-                sample_keys = list(self.latest_data_store.keys())[:3] # Get first 3 keys as sample
+                sample_keys = list(self.latest_data_store.keys())[:3] 
                 sample_data_log = f" Sample keys: {sample_keys}."
-                # Optionally, log one full item:
-                # if sample_keys:
-                #     sample_data_log += f" Data for {sample_keys[0]}: {self.latest_data_store[sample_keys[0]]}"
             
             logger.info(f"get_latest_data called. Store size: {store_size}.{sample_data_log}")
             return dict(self.latest_data_store) # Return a copy

@@ -46,3 +46,18 @@ This document records key architectural choices, technology selections, design p
     - The fix involved updating the condition to `elif "response" in message_dict or "responses" in message_dict or "notify" in message_dict:`. This ensures that singular `"response"` messages, which are common for command acknowledgments from the Schwab API, are logged appropriately as administrative messages rather than being treated as unhandled data, thus preventing the warning and improving the clarity of stream operations.
 
 These changes are crucial for the stability and correctness of the streaming functionality. The worker thread now correctly reflects the intended operational state of the stream, and administrative messages are handled gracefully, leading to a more robust and debuggable streaming implementation.
+
+
+## Diagnostic Logging for Empty Options Tables (May 15, 2025)
+
+- **Decision:** Implement verbose logging within `dashboard_utils/streaming_manager.py`, specifically in the `_handle_stream_message` and `get_latest_data` methods, as well as in `start_stream` and `stop_stream` concerning the `latest_data_store`.
+  - **Rationale:** 
+    - After previous fixes, the user reported that the options chain tables in the Dash UI remained empty, even though the stream status indicated active data reception (e.g., "Stream: Actively receiving data for 1126 contracts"). This suggested a breakdown in the data propagation from the `StreamingManager` to the Dash UI, or an issue with how data was being stored or retrieved within the `StreamingManager` itself.
+    - To diagnose this, a more detailed trace of the data flow was required. The added logging aims to:
+        1.  Confirm exactly what raw data is being received by `_handle_stream_message`.
+        2.  Verify that this data is being correctly parsed and processed into the expected format.
+        3.  Track whether and how `self.latest_data_store` is being populated with this processed data, including logging its size and sample content after updates.
+        4.  Record the state and content of `self.latest_data_store` when `get_latest_data()` is called by the Dash application, to see what data is being passed to the UI update callbacks.
+        5.  Confirm when `latest_data_store` is cleared during stream start/stop operations.
+    - This targeted logging will help isolate whether the problem lies in the `StreamingManager`'s internal data handling (e.g., data not being stored correctly, or being cleared prematurely) or in the interaction between the `StreamingManager` and the `dashboard_app.py` (e.g., `get_latest_data` returning an empty or incorrect dataset to the UI).
+    - The insights from these verbose logs are essential for the next phase of debugging the empty table issue.
