@@ -229,3 +229,34 @@ Following the deployment of the UI data propagation fix, the user reported a `Na
 
 - The application should now start without the `NameError` and is ready for testing of the options data streaming and display functionality.
 
+
+
+
+## Correcting Schwab Stream Field Mapping for Accurate Data Display (May 15, 2025)
+
+Following the previous fixes, the user confirmed that options data was appearing in the dashboard tables. However, a new issue was identified: the data in several columns, most notably "Expiration Date", was incorrect. Other numeric fields also appeared jumbled.
+
+**Investigation and Diagnosis:**
+
+- **Cause:** The user provided a screenshot clearly showing malformed "Expiration Date" values (e.g., "0.17-100 AAPL-05") and other potentially incorrect numeric data. This strongly indicated a mismatch between the numeric field IDs requested from the Schwab stream and how those IDs were being mapped to human-readable field names (like `expirationYear`, `expirationMonth`, `strikePrice`, etc.) within the `StreamingManager`'s data parsing logic.
+- **User-Provided Field Map:** The user then supplied a detailed list mapping Schwab streamer field numbers to their corresponding descriptions (e.g., `12-Expiration Year`, `20-Strike Price`, `21-Contract Type`, `23-Expiration Month`, `26-Expiration Day`). This was a critical piece of information.
+
+**Solution Implemented:**
+
+- **Updated `dashboard_utils/streaming_manager.py`:**
+    1.  **Corrected `SCHWAB_FIELD_IDS_TO_REQUEST`:** The static class variable `SCHWAB_FIELD_IDS_TO_REQUEST` was updated to include the correct numeric field IDs based on the user-provided list and the fields required by the dashboard (e.g., `"0,2,3,4,8,9,10,12,16,17,18,20,21,23,26,28,29,30,31"`).
+    2.  **Revised `SCHWAB_FIELD_MAP`:** The static class variable `SCHWAB_FIELD_MAP` (which maps the string representation of numeric field IDs to internal descriptive keys like `"expirationYear"`) was completely overhauled to accurately reflect the user-provided mapping. For example, `"12"` is now mapped to `"expirationYear"`, `"23"` to `"expirationMonth"`, `"26"` to `"expirationDay"`, and `"21"` to `"contractType"`.
+    3.  **Updated Data Parsing in `_handle_stream_message`:** The logic within `_handle_stream_message` that processes incoming stream data now iterates through the `contract_data_from_stream` dictionary (which contains numeric field IDs as keys) and uses the corrected `SCHWAB_FIELD_MAP` to populate the `processed_data` dictionary with descriptive keys. This ensures that, for example, the value associated with field ID `"12"` from the stream is stored under the key `"expirationYear"` in `latest_data_store`.
+
+**Updated Completed Tasks:**
+
+- Diagnosed incorrect data display in dashboard tables (e.g., Expiration Date) due to field mapping errors.
+- Received and incorporated the correct Schwab streamer field ID mapping provided by the user.
+- Updated `SCHWAB_FIELD_IDS_TO_REQUEST` and `SCHWAB_FIELD_MAP` in `StreamingManager`.
+- Revised data parsing logic in `_handle_stream_message` to use the corrected field map.
+- Pushed the corrected field mapping and parsing logic to GitHub.
+
+**Current Status:**
+
+- The application should now correctly parse and display all options contract data from the Schwab stream. Ready for final user testing and confirmation.
+

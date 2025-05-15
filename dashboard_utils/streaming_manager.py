@@ -100,7 +100,7 @@ class StreamingManager:
         schwab_api_client = self._get_schwab_client()
         if not schwab_api_client:
             with self._lock:
-                self.status_message = f"Stream: Error - {self.error_message or "Failed to get Schwab client"}"
+                self.status_message = f"Stream: Error - {self.error_message or 'Failed to get Schwab client'}"
                 self.is_running = False
             logger.error("Stream worker: Failed to get Schwab client. Worker terminating.")
             return
@@ -123,9 +123,9 @@ class StreamingManager:
                     self.is_running = False
                 return
 
-            logger.info("Stream worker: Starting schwabdev"s stream listener (which runs in its own thread)...")
+            logger.info("Stream worker: Starting schwabdev\'s stream listener (which runs in its own thread)...")
             self.stream_client.start(self._handle_stream_message)
-            logger.info("Stream worker: schwabdev"s stream_client.start() called. Listener should be active in its own thread.")
+            logger.info("Stream worker: schwabdev\'s stream_client.start() called. Listener should be active in its own thread.")
 
             time.sleep(2) 
 
@@ -158,7 +158,7 @@ class StreamingManager:
             logger.info("Stream worker: Exited monitoring loop.")
 
         except Exception as e:
-            logger.error(f"Error in stream worker"s main try block: {e}", exc_info=True)
+            logger.error(f"Error in stream worker\'s main try block: {e}", exc_info=True)
             with self._lock:
                 self.error_message = f"Stream error: {e}"
                 self.status_message = f"Stream: Error - {self.error_message}"
@@ -185,10 +185,10 @@ class StreamingManager:
 
             if active_schwab_client and hasattr(active_schwab_client, "stop") and active_schwab_client.active:
                 try:
-                    logger.info("Stream worker"s finally block: Attempting to stop schwabdev stream client.")
+                    logger.info("Stream worker\'s finally block: Attempting to stop schwabdev stream client.")
                     active_schwab_client.stop()
                 except Exception as e_stop:
-                    logger.error(f"Stream worker"s finally block: Error stopping schwabdev stream client: {e_stop}")
+                    logger.error(f"Stream worker\'s finally block: Error stopping schwabdev stream client: {e_stop}")
             
             with self._lock:
                 self.stream_client = None
@@ -299,7 +299,7 @@ class StreamingManager:
 
         if active_stream_client_local and hasattr(active_stream_client_local, "stop") and active_stream_client_local.active:
             try:
-                logger.info("Calling schwabdev"s stream_client.stop()...")
+                logger.info("Calling schwabdev\'s stream_client.stop()...")
                 active_stream_client_local.stop()
             except Exception as e:
                 logger.error(f"Exception during stream_client.stop(): {e}", exc_info=True)

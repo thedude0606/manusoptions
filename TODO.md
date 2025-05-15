@@ -11,7 +11,7 @@
   - [x] Update `PROGRESS.md`, `TODO.md`, `DECISIONS.md` for initial fix
   - [x] Report initial fix status to user
 
-- [ ] Diagnose issue: Options tables empty despite active stream status
+- [x] Diagnose issue: Options tables empty despite active stream status
   - [x] Analyze new user-provided terminal output and screenshot (May 15, 2025)
   - [x] Add verbose logging to `StreamingManager` (in `_handle_stream_message` and `get_latest_data`)
   - [x] Commit and push verbose logging changes to GitHub
@@ -37,9 +37,16 @@
   - [x] Hotfix: Resolve `NameError: name 'app' is not defined` in `dashboard_app.py`.
   - [x] Commit and push hotfix to GitHub.
   - [x] Update `PROGRESS.md` with hotfix details.
-  - [ ] Update `TODO.md` with hotfix details (this item).
-  - [ ] Update `DECISIONS.md` regarding hotfix.
-  - [ ] Request user to test application and confirm fix.
+  - [x] Update `TODO.md` with hotfix details.
+  - [x] Update `DECISIONS.md` regarding hotfix.
+  - [x] Request user to test application and confirm hotfix.
+  - [x] Diagnose incorrect data in dashboard columns (e.g., Expiration Date) based on user screenshot.
+  - [x] Correct Schwab stream field mapping (`SCHWAB_FIELD_IDS_TO_REQUEST`, `SCHWAB_FIELD_MAP`) and data parsing in `StreamingManager` based on user-provided mapping.
+  - [x] Commit and push field mapping fix to GitHub.
+  - [x] Update `PROGRESS.md` with field mapping fix details.
+  - [ ] Update `TODO.md` with field mapping fix details (this item).
+  - [ ] Update `DECISIONS.md` regarding field mapping fix.
+  - [ ] Request user to test application and confirm data accuracy.
   - [ ] If fixed, proceed to final documentation and `requirements.txt`.
   - [ ] If not fixed, analyze new logs and iterate.
 

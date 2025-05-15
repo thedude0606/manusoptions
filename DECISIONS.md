@@ -111,3 +111,26 @@ These changes are crucial for the stability and correctness of the streaming fun
     - The error was caused by the Dash application instance (`app`) being referenced (e.g., `app.layout = ...`) before it was initialized with `app = dash.Dash(__name__, ...)`. This was likely an inadvertent code reordering during previous edits.
     - The fix involved moving the lines `app = dash.Dash(__name__, suppress_callback_exceptions=True)` and `app.title = "Trading Dashboard"` to an earlier position in the script, specifically before the `app.layout` definition and any callback decorators. This ensures the `app` object exists when it's first used, resolving the `NameError`.
 
+
+
+
+## Correcting Schwab Stream Field Mapping for Accurate Data Display (May 15, 2025)
+
+- **Decision:** Implement the correct Schwab `LEVELONE_OPTIONS` stream field ID mapping in `dashboard_utils/streaming_manager.py` based on the authoritative list provided by the user. This involves updating the `SCHWAB_FIELD_IDS_TO_REQUEST` string and the `SCHWAB_FIELD_MAP` dictionary, and ensuring the `_handle_stream_message` method correctly uses this map to parse incoming data.
+  - **Rationale:** 
+    - After previous fixes enabled data to appear in the dashboard, the user reported that the data in several columns (most critically "Expiration Date", but also likely others like "Strike", "Volume", "Open Interest", "Implied Volatility", and Greeks) was incorrect or jumbled. A screenshot confirmed this, showing, for example, "Expiration Date" as "0.17-100 AAPL-05".
+    - This indicated a fundamental mismatch between the numeric field IDs being requested from the Schwab stream and/or how those numeric IDs were being translated into human-readable field names (e.g., `expirationYear`, `strikePrice`) within the `StreamingManager` for storage and subsequent use by the dashboard.
+    - The user provided a comprehensive list mapping Schwab streamer field numbers to their semantic meanings (e.g., `0-Symbol`, `12-Expiration Year`, `20-Strike Price`, `21-Contract Type`, `23-Expiration Month`, `26-Expiration Day`, `28-Delta`, etc.). This list was crucial for the fix.
+  - **Implementation Details:**
+    1.  **`SCHWAB_FIELD_IDS_TO_REQUEST` Updated:** This class variable in `StreamingManager` was changed from the previous, possibly incorrect or incomplete list (e.g., `"0,2,7,8,9,10,11,15,16,17,18,19,21,23,24,25,26,27"`) to a new string composed of the correct numeric IDs for the fields required by the dashboard, based on the user-provided map. The new string is `"0,2,3,4,8,9,10,12,16,17,18,20,21,23,26,28,29,30,31"`.
+    2.  **`SCHWAB_FIELD_MAP` Overhauled:** This dictionary, which maps the string representation of the numeric field IDs from the stream to the internal descriptive keys used by the application (e.g., `"bidPrice"`, `"expirationYear"`), was completely revised. Each key-value pair now accurately reflects the user-provided mapping. For instance:
+        - `"0"` maps to `"key"` (Symbol/Contract Key)
+        - `"12"` maps to `"expirationYear"`
+        - `"20"` maps to `"strikePrice"`
+        - `"21"` maps to `"contractType"` (for C/P)
+        - `"23"` maps to `"expirationMonth"`
+        - `"26"` maps to `"expirationDay"`
+        - And similarly for bid/ask prices, volume, open interest, volatility, and greeks.
+    3.  **Data Parsing in `_handle_stream_message`:** The logic in `_handle_stream_message` that iterates through the `contract_data_from_stream` (which contains numeric field IDs as keys from the Schwab stream) was updated to use the revised `SCHWAB_FIELD_MAP`. This ensures that when, for example, field `"12"` comes from the stream, its value is stored in the `processed_data` dictionary under the key `"expirationYear"`.
+  - **Expected Impact:** This correction is fundamental. It ensures that the raw numeric data from the Schwab stream is correctly interpreted and stored with meaningful, consistent field names. This, in turn, allows `dashboard_app.py` to access the correct data points when constructing the "Expiration Date" string (from `expirationYear`, `expirationMonth`, `expirationDay`) and when populating all other columns in the options tables. The data displayed in the dashboard should now be accurate and match the intended columns.
+
