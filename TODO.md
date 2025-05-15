@@ -80,7 +80,7 @@
   - [x] Backend: Implement Relative Strength Index (RSI) calculation logic (customizable period, overbought/oversold levels).
   - [x] Backend: Implement Moving Average Convergence Divergence (MACD) calculation logic (customizable EMAs, signal line).
   - [x] Backend: Implement Intraday Momentum Index (IMI) calculation logic (customizable period).
-  - [ ] Backend: Implement Money Flow Index (MFI) calculation logic (customizable period, volume-weighted RSI).
+  - [ ] Backend: Implement Money Flow Index (MFI) calculation logic (customizable period, volume-weighted RSI). (Code implemented, pending testing with data)
   - [ ] Backend: Develop a system for users to customize parameters for all indicators.
   - [ ] Backend: Store/manage calculated indicator values efficiently for different symbols and timeframes.
 

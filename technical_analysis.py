@@ -28,25 +28,30 @@ def load_candles(file_path):
         # Ensure correct data types
         for col in ["open", "high", "low", "close", "volume"]:
             if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors=\'coerce
-olumns or len(df) < period:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+    except Exception as e:
+        print(f"Error loading or processing {file_path}: {e}")
+        return pd.DataFrame() 
+    return df
+
+def calculate_bollinger_bands(df, window=20, num_std_dev=2):
+    if 'close' not in df.columns or len(df) < window:
+        print(f"DataFrame length {len(df)} is less than window {window} or 'close' column missing for Bollinger Bands.")
+        df[f'bb_middle_{window}'] = np.nan
+        df[f'bb_upper_{window}'] = np.nan
+        df[f'bb_lower_{window}'] = np.nan
         return df
-    # Gains (close > open)
-    gains = df["close"] - df["open"]
-    gains[df["close"] <= df["open"]] = 0
-    sum_gains = gains.rolling(window=period).sum()
+    
+    rolling_mean = df['close'].rolling(window=window).mean()
+    rolling_std = df['close'].rolling(window=window).std()
 
-    # Losses (close < open)
-    losses = df["open"] - df["close"]
-    losses[df["close"] >= df["open"]] = 0
-    sum_losses = losses.rolling(window=period).sum()
-
-    imi = (sum_gains / (sum_gains + sum_losses)) * 100
-    df[f"imi_{period}"] = imi
+    df[f'bb_middle_{window}'] = rolling_mean
+    df[f'bb_upper_{window}'] = rolling_mean + (rolling_std * num_std_dev)
+    df[f'bb_lower_{window}'] = rolling_mean - (rolling_std * num_std_dev)
     return df
 
 def calculate_rsi(df, period=14):
-    if \'close\' not in df.columns or len(df) < period:
+    if 'close' not in df.columns or len(df) < period:
         return df
     delta = df["close"].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
@@ -56,13 +61,69 @@ def calculate_rsi(df, period=14):
     return df
 
 def calculate_macd(df, short_window=12, long_window=26, signal_window=9):
-    if \'close\' not in df.columns or len(df) < long_window:
+    if 'close' not in df.columns or len(df) < long_window:
         return df
     short_ema = df["close"].ewm(span=short_window, adjust=False).mean()
     long_ema = df["close"].ewm(span=long_window, adjust=False).mean()
     df["macd"] = short_ema - long_ema
     df["macd_signal"] = df["macd"].ewm(span=signal_window, adjust=False).mean()
     df["macd_hist"] = df["macd"] - df["macd_signal"]
+    return df
+
+def calculate_imi(df, period=14):
+    if not all(col in df.columns for col in ["open", "close"]):
+        print("IMI calculation requires 'open' and 'close' columns.")
+        df[f"imi_{period}"] = np.nan
+        return df
+    if len(df) < period:
+        print(f"Not enough data to calculate IMI for period {period}. Need {period} rows, got {len(df)}.")
+        df[f"imi_{period}"] = np.nan
+        return df
+
+    gains = df["close"] - df["open"]
+    gains[df["close"] <= df["open"]] = 0
+    sum_gains = gains.rolling(window=period, min_periods=1).sum()
+
+    losses = df["open"] - df["close"]
+    losses[df["close"] >= df["open"]] = 0
+    sum_losses = losses.rolling(window=period, min_periods=1).sum()
+
+    denominator = sum_gains + sum_losses
+    imi = np.where(denominator == 0, 50.0, (sum_gains / denominator) * 100)
+    
+    df[f"imi_{period}"] = imi
+    return df
+
+def calculate_mfi(df, period=14):
+    if not all(col in df.columns for col in ["high", "low", "close", "volume"]):
+        print("MFI calculation requires 'high', 'low', 'close', and 'volume' columns.")
+        df[f"mfi_{period}"] = np.nan
+        return df
+    if len(df) < period + 1:
+        print(f"Not enough data to calculate MFI for period {period}. Need {period+1} rows, got {len(df)}.")
+        df[f"mfi_{period}"] = np.nan
+        return df
+
+    typical_price = (df["high"] + df["low"] + df["close"]) / 3
+    raw_money_flow = typical_price * df["volume"]
+    money_flow_direction = typical_price.diff()
+
+    positive_money_flow = raw_money_flow.copy()
+    positive_money_flow[money_flow_direction <= 0] = 0
+
+    negative_money_flow = raw_money_flow.copy()
+    negative_money_flow[money_flow_direction > 0] = 0
+
+    sum_positive_money_flow = positive_money_flow.rolling(window=period, min_periods=1).sum()
+    sum_negative_money_flow = negative_money_flow.rolling(window=period, min_periods=1).sum()
+
+    money_flow_ratio = np.where(sum_negative_money_flow == 0, np.inf, sum_positive_money_flow / sum_negative_money_flow)
+    money_flow_ratio = np.where((sum_positive_money_flow == 0) & (sum_negative_money_flow == 0), 1, money_flow_ratio)
+
+    mfi = 100 - (100 / (1 + money_flow_ratio))
+    mfi = np.where(money_flow_ratio == np.inf, 100, mfi)
+    
+    df[f"mfi_{period}"] = mfi
     return df
 
 def identify_fair_value_gaps(df):
@@ -105,13 +166,13 @@ def aggregate_to_15_min(minute_df):
     if minute_df.empty:
         return pd.DataFrame()
     agg_funcs = {
-        \'open\': \'first\',
-        \'high\': \'max\',
-        \'low\': \'min\',
-        \'close\': \'last\',
-        \'volume\': \'sum\'
+        'open': 'first',
+        'high': 'max',
+        'low': 'min',
+        'close': 'last',
+        'volume': 'sum'
     }
-    fifteen_min_df = minute_df.resample(\'15min\').agg(agg_funcs)
+    fifteen_min_df = minute_df.resample("15min").agg(agg_funcs)
     fifteen_min_df = fifteen_min_df.dropna()
     return fifteen_min_df
 
@@ -153,6 +214,7 @@ def main():
         df = calculate_rsi(df.copy())
         df = calculate_macd(df.copy())
         df = calculate_imi(df.copy()) # Added IMI calculation
+        df = calculate_mfi(df.copy()) # Added MFI calculation
         df = identify_fair_value_gaps(df.copy())
         df["candle_pattern_bullish"] = False
         df["candle_pattern_bearish"] = False
@@ -164,5 +226,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
