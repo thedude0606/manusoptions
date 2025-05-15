@@ -7,8 +7,6 @@ import json # Added for JSON parsing
 import schwabdev # Import the main schwabdev library
 
 # Configure basic logging
-# Ensure the root logger is configured, or configure a specific logger for this module
-# logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(threadName)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 if not logger.hasHandlers(): # Avoid adding multiple handlers if already configured
     handler = logging.StreamHandler()
@@ -19,11 +17,6 @@ logger.setLevel(logging.INFO)
 
 class StreamingManager:
     def __init__(self, schwab_client_getter, account_id_getter):
-        """
-        Initializes the StreamingManager.
-        schwab_client_getter: A function that returns an authenticated Schwab client instance.
-        account_id_getter: A function that returns the account ID (account hash for streaming), if available and needed.
-        """
         self.schwab_client_getter = schwab_client_getter
         self.account_id_getter = account_id_getter
         self.stream_client = None
@@ -37,7 +30,6 @@ class StreamingManager:
         logger.info("StreamingManager initialized.")
 
     def _get_schwab_client(self):
-        """Helper to get client, handling potential errors."""
         try:
             client = self.schwab_client_getter()
             if not client:
@@ -51,18 +43,19 @@ class StreamingManager:
             return None
 
     def _stream_worker(self, option_keys_to_subscribe_tuple):
-        """The actual worker function that runs in a separate thread."""
         option_keys_to_subscribe = set(option_keys_to_subscribe_tuple)
         logger.info(f"Stream worker started for {len(option_keys_to_subscribe)} keys.")
         with self._lock:
             self.status_message = "Stream: Initializing..."
             self.error_message = None
+            # self.is_running is already True, set by start_stream
 
         schwab_api_client = self._get_schwab_client()
         if not schwab_api_client:
             with self._lock:
-                self.status_message = f"Stream: Error - {self.error_message}"
-                self.is_running = False
+                self.status_message = f"Stream: Error - {self.error_message or 'Failed to get Schwab client'}"
+                self.is_running = False # Critical failure, stop
+            logger.error("Stream worker: Failed to get Schwab client. Worker terminating.")
             return
 
         account_hash = self.account_id_getter()
@@ -72,21 +65,23 @@ class StreamingManager:
             logger.info("No account hash provided; not strictly required for LEVELONE_OPTIONS.")
 
         try:
-            self.stream_client = schwab_api_client.stream
-            logger.info(f"Schwab stream object obtained via client.stream")
+            # Assign to self.stream_client under lock for thread-safety if accessed elsewhere, though primarily used in this thread
+            with self._lock:
+                self.stream_client = schwab_api_client.stream
+            logger.info("Schwab stream object obtained via client.stream")
 
             if not option_keys_to_subscribe:
                 logger.info("Stream worker: No symbols to subscribe.")
                 with self._lock:
                     self.status_message = "Stream: No symbols to subscribe."
-                    self.is_running = False
+                    self.is_running = False # Nothing to do, stop
                 return
 
-            logger.info("Stream worker: Starting stream listener...")
-            self.stream_client.start(self._handle_stream_message) 
-            logger.info("Stream worker: stream_client.start() called. Listener should be active or activating.")
+            logger.info("Stream worker: Starting schwabdev's stream listener (which runs in its own thread)...")
+            self.stream_client.start(self._handle_stream_message)
+            logger.info("Stream worker: schwabdev's stream_client.start() called. Listener should be active in its own thread.")
 
-            time.sleep(2) 
+            time.sleep(2) # Give a moment for the connection to establish before sending subscriptions
 
             keys_str = ",".join(list(option_keys_to_subscribe))
             fields_str = "0,2,7,8,9,10,11,15,16,17,18,19,21,26,27,23,24,25"
@@ -98,24 +93,60 @@ class StreamingManager:
                 self.current_subscriptions = set(option_keys_to_subscribe)
                 self.status_message = f"Stream: Subscriptions sent for {len(self.current_subscriptions)} contracts. Monitoring..."
             
-            logger.info("Stream worker: Listener started and subscriptions sent. Worker will now effectively wait for stream to end or be stopped.")
+            logger.info("Stream worker: Subscriptions sent. Now entering main monitoring loop to keep this worker alive.")
+
+            while True:
+                should_break = False
+                with self._lock:
+                    if not self.is_running:
+                        should_break = True
+                
+                if should_break:
+                    logger.info("Stream worker: self.is_running is False. Exiting monitoring loop.")
+                    break
+                
+                time.sleep(0.5) # Keep the loop from busy-waiting, check stop flag periodically
+
+            logger.info("Stream worker: Exited monitoring loop.")
 
         except Exception as e:
-            logger.error(f"Error in stream worker: {e}", exc_info=True)
+            logger.error(f"Error in stream worker's main try block: {e}", exc_info=True)
             with self._lock:
                 self.error_message = f"Stream error: {e}"
                 self.status_message = f"Stream: Error - {self.error_message}"
+                self.is_running = False # Critical error, ensure manager knows to stop
         finally:
+            logger.info("Stream worker: Reached finally block.")
             with self._lock:
-                self.is_running = False 
-                if not self.error_message and self.status_message not in ["Stream: Stopped.", "Stream: No symbols to subscribe."] :
+                if self.is_running: 
+                    logger.warning("Stream worker in finally, but self.is_running is still true. Forcing to False.")
+                    self.is_running = False
+
+                if self.error_message:
+                    pass # Status already reflects an error
+                elif self.status_message == "Stream: Stopping...":
+                    self.status_message = "Stream: Stopped."
+                elif self.status_message not in ["Stream: Stopped.", "Stream: No symbols to subscribe."]:
                     self.status_message = "Stream: Stopped unexpectedly."
-                elif not self.error_message and self.status_message == "Stream: Initializing...": 
+                elif self.status_message in ["Stream: Initializing...", "Stream: Starting..."] and not self.error_message:
                     self.status_message = "Stream: Failed to start or connect."
+            
+            active_schwab_client = None
+            with self._lock:
+                active_schwab_client = self.stream_client
+
+            if active_schwab_client and hasattr(active_schwab_client, 'stop') and active_schwab_client.active:
+                try:
+                    logger.info("Stream worker's finally block: Attempting to stop schwabdev stream client.")
+                    active_schwab_client.stop()
+                except Exception as e_stop:
+                    logger.error(f"Stream worker's finally block: Error stopping schwabdev stream client: {e_stop}")
+            
+            with self._lock:
+                self.stream_client = None # Clear the client reference
             logger.info("Stream worker finished.")
 
     def _handle_stream_message(self, raw_message):
-        """Handles incoming messages from the WebSocket stream."""
         logger.debug(f"_handle_stream_message received raw_message (type: {type(raw_message)}): {raw_message}")
         try:
             message_dict = None
@@ -167,10 +198,11 @@ class StreamingManager:
                         logger.debug(f"_handle_stream_message: Processed data for key {contract_key}: {processed_data}")
                         with self._lock:
                             self.latest_data_store[contract_key] = processed_data
-                            if "Connecting" in self.status_message or "Subscribing" in self.status_message or "Initializing" in self.status_message or "Starting listener" in self.status_message or "Subscriptions sent" in self.status_message:
-                                self.status_message = f"Stream: Actively receiving data for {len(self.current_subscriptions)} contracts."
+                            if self.status_message not in ["Stream: Actively receiving data..."]:
+                                if "Connecting" in self.status_message or "Subscribing" in self.status_message or "Initializing" in self.status_message or "Starting listener" in self.status_message or "Subscriptions sent" in self.status_message:
+                                    self.status_message = f"Stream: Actively receiving data for {len(self.current_subscriptions)} contracts."
                 logger.debug(f"_handle_stream_message: Data store size: {len(self.latest_data_store)}")
-            elif "responses" in message_dict or "notify" in message_dict:
+            elif "response" in message_dict or "responses" in message_dict or "notify" in message_dict:
                 logger.info(f"Stream admin/response/notify: {message_dict}")
             else:
                 logger.warning(f"Unhandled message structure: {message_dict}")
@@ -181,7 +213,6 @@ class StreamingManager:
                 self.error_message = f"Processing error: {e}"
 
     def start_stream(self, option_keys_to_subscribe):
-        """Starts the WebSocket stream in a new thread."""
         keys_set = set(option_keys_to_subscribe)
         with self._lock:
             if self.is_running:
@@ -204,32 +235,39 @@ class StreamingManager:
         return True
 
     def _internal_stop_stream(self, wait_for_thread=False):
-        """Internal method to stop the stream. Optionally waits for thread to join."""
-        self.is_running = False 
-        active_stream_client = None
-        with self._lock:
-            active_stream_client = self.stream_client
+        # This method is called with self._lock already held by stop_stream or start_stream (for restart)
+        # or it's called without lock from _stream_worker's finally (which is not ideal, but for cleanup)
+        # For safety, let's assume it might be called without lock and acquire it if needed.
+        # However, the original design implies it's an internal helper. Let's stick to that.
+        # It's primarily called from stop_stream which holds the lock.
+        
+        logger.info("Internal stop stream called.")
+        self.is_running = False # Signal the worker thread to stop its loop
+        
+        active_stream_client_local = self.stream_client # Read under lock if possible, but self.stream_client is mostly managed by worker
 
-        if active_stream_client and hasattr(active_stream_client, "stop"):
+        if active_stream_client_local and hasattr(active_stream_client_local, "stop") and active_stream_client_local.active:
             try:
-                logger.info("Calling stream_client.stop() to signal schwabdev stream to terminate...")
-                active_stream_client.stop()
+                logger.info("Calling schwabdev's stream_client.stop()...")
+                active_stream_client_local.stop()
             except Exception as e:
                 logger.error(f"Exception during stream_client.stop(): {e}", exc_info=True)
         else:
-            logger.info("No active stream_client to stop, or it does not have a stop method.")
+            logger.info("No active schwabdev stream_client to stop, or it does not have a stop method, or not active.")
 
-        if wait_for_thread and self.stream_thread and self.stream_thread.is_alive():
+        thread_to_join = self.stream_thread
+        if wait_for_thread and thread_to_join and thread_to_join.is_alive():
             logger.info("Waiting for stream worker thread to join after stop signal...")
-            self.stream_thread.join(timeout=10) 
-            if self.stream_thread.is_alive():
+            thread_to_join.join(timeout=10) 
+            if thread_to_join.is_alive():
                 logger.warning("Stream worker thread did not terminate gracefully after stop request and join timeout.")
             else:
                 logger.info("Stream worker thread joined successfully.")
         self.stream_thread = None
+        # self.stream_client = None # Clearing this here might be too soon if worker's finally needs it.
+                                  # Worker's finally block will clear its own view of self.stream_client.
 
     def stop_stream(self):
-        """Public method to stop the WebSocket stream."""
         with self._lock:
             if not self.is_running and (self.stream_thread is None or not self.stream_thread.is_alive()):
                 logger.info("Stream stop requested, but not running or thread already stopped.")
@@ -241,12 +279,16 @@ class StreamingManager:
             self.status_message = "Stream: Stopping..."
             self._internal_stop_stream(wait_for_thread=True)
         
+        # Final status update after lock released, or within lock if preferred
         with self._lock:
-            self.stream_client = None 
+            # self.stream_client = None # Moved to worker's finally for safer cleanup
             if self.status_message == "Stream: Stopping...": 
                  self.status_message = "Stream: Stopped."
             elif not self.is_running and self.status_message != "Stream: Stopped.": 
-                 self.status_message = "Idle"
+                 # If it was stopped by an error, status would reflect that.
+                 # If simply not running and not explicitly stopped, set to Idle.
+                 if not self.error_message: # Avoid overwriting error status
+                    self.status_message = "Idle"
         logger.info("Stream stop process complete.")
 
     def get_latest_data(self):
@@ -256,10 +298,12 @@ class StreamingManager:
 
     def get_status(self):
         with self._lock:
-            if self.is_running and (self.stream_thread is None or not self.stream_thread.is_alive()) and self.status_message not in ["Stream: Starting..."]:
+            # Check if the worker thread died unexpectedly
+            if self.is_running and (self.stream_thread is None or not self.stream_thread.is_alive()) \
+               and self.status_message not in ["Stream: Starting...", "Stream: Initializing..."]:
                 if not self.error_message:
                     self.error_message = "Worker thread died unexpectedly."
-                self.status_message = f"Stream: Error - {self.error_message}"
+                self.status_message = f"Stream: Error - {self.error_message or 'Worker thread died'}"
                 self.is_running = False 
             return self.status_message, self.error_message
 

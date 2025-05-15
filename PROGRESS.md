@@ -41,3 +41,35 @@ Further investigation into the `SCHWAB_ACCOUNT_HASH` requirement, prompted by us
 
 The immediate next steps involve comprehensively updating the `DECISIONS.md` and `TODO.md` files to document the latest architectural changes related to `SCHWAB_ACCOUNT_HASH` handling. Following this, all updated code and documentation files (`streaming_manager.py`, `dashboard_app.py`, `TODO.md`, `PROGRESS.md`, `DECISIONS.md`) will be committed to the local Git repository. These changes will then be pushed to the user\'s GitHub repository. Finally, a status report will be provided to the user, summarizing the actions taken and the current state of the project. Future work will include generating a `requirements.txt` file and addressing any further enhancements or issues as requested by the user.
 
+
+
+
+## Addressing Streaming Data Issues (May 15, 2025)
+
+Following the previous updates, the user reported that streaming data was not appearing in the options tab, and provided terminal output indicating issues with the streaming process.
+
+**Investigation and Diagnosis:**
+
+- The provided terminal logs were analyzed: 
+  - `2025-05-14 21:52:34,408 - SchwabStreamWorker - INFO - Stream worker: Listener started and subscriptions sent. Worker will now effectively wait for stream to end or be stopped.`
+  - `2025-05-14 21:52:34,408 - SchwabStreamWorker - INFO - Stream worker finished.`
+  - `2025-05-14 21:52:34,469 - Thread-23 (_start_async) - WARNING - Unhandled message structure: {"response": [{"service": "LEVELONE_OPTIONS", "command": "ADD", ...}]}`
+- Two primary issues were identified from these logs:
+    1.  **Premature Stream Worker Termination:** The `SchwabStreamWorker` thread was exiting immediately after sending subscriptions, as indicated by the "Stream worker finished" log appearing right after the "subscriptions sent" log. This meant it wasn't staying alive to process incoming data messages.
+    2.  **Mishandling of Confirmation Messages:** The warning about an "Unhandled message structure" for a message containing `{"response": ...}` indicated that the system was not correctly recognizing or processing administrative/confirmation messages from the Schwab stream, such as subscription acknowledgments.
+
+**Solution Implemented:**
+
+- **Review of `Schwabdev` Example:** The `Schwabdev` library's `stream.py` and documentation were reviewed to understand the correct lifecycle management for streaming threads and message handling. This confirmed that the `schwabdev` library's `stream.start()` method itself launches a daemon thread to handle the WebSocket connection and message reception, and the custom handler (our `_handle_stream_message`) is called by that internal thread. Our `_stream_worker` thread's role is to initiate this process and then keep itself alive as long as streaming is desired, rather than managing the WebSocket directly.
+
+- **Modifications to `dashboard_utils/streaming_manager.py`:**
+    1.  **Ensuring Worker Thread Longevity:** The `_stream_worker` method was modified. After calling `self.stream_client.start(self._handle_stream_message)` (which starts `schwabdev`'s internal streaming loop) and sending subscriptions, a `while self.is_running:` loop was added. This loop keeps our `_stream_worker` thread alive, periodically checking the `self.is_running` flag. This allows the `schwabdev` internal thread to continue receiving messages and calling our `_handle_stream_message` callback. The `finally` block in `_stream_worker` was also updated to ensure proper cleanup and to call `self.stream_client.stop()` if the `schwabdev` stream was active.
+    2.  **Handling Confirmation Messages:** The `_handle_stream_message` method was updated. The condition `elif "responses" in message_dict or "notify" in message_dict:` was changed to `elif "response" in message_dict or "responses" in message_dict or "notify" in message_dict:`. This ensures that messages containing the key `"response"` (as seen in the user's log) are correctly identified as administrative/notification messages and logged, rather than being flagged as unhandled.
+
+**Updated Completed Tasks:**
+
+- Analyzed user-provided terminal output to diagnose streaming issues.
+- Identified premature stream worker termination and mishandling of confirmation messages as root causes.
+- Reviewed `Schwabdev` library for best practices in stream handling.
+- Implemented fixes in `dashboard_utils/streaming_manager.py` to ensure the worker thread remains active and to correctly handle stream confirmation messages.
+

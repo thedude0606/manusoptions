@@ -29,3 +29,20 @@ This document records key architectural choices, technology selections, design p
 
   These architectural adjustments ensure compatibility with the latest version of the `schwabdev` library, resolve critical runtime errors, allow the application to correctly initialize and manage streaming data, and promote better configuration management practices. Adherence to the library\'s current API and standard configuration patterns is essential for long-term maintainability and security.
 
+
+
+## Streaming Worker Lifecycle and Message Handling (May 15, 2025)
+
+- **Decision:** Modify `dashboard_utils/streaming_manager.py` to ensure the `_stream_worker` thread remains active after initiating the `schwabdev` stream and to correctly handle administrative/confirmation messages from the Schwab API.
+  - **Rationale for Worker Thread Longevity:**
+    - The user-provided logs (`2025-05-14 21:52:34,408 - SchwabStreamWorker - INFO - Stream worker finished.` appearing immediately after subscriptions were sent) indicated that the custom `_stream_worker` thread in `StreamingManager` was exiting prematurely. 
+    - The `schwabdev` library's `stream.start(handler)` method internally manages its own thread (typically a daemon thread) for the WebSocket connection and message reception. This internal thread calls the provided `handler` (our `_handle_stream_message`) when new data arrives.
+    - The `_stream_worker`'s responsibility is to set up this `schwabdev` stream and then *remain alive* as long as the application requires the stream to be active. If `_stream_worker` exits, the `StreamingManager` might incorrectly assume the stream is stopped, or resources might be cleaned up prematurely even if `schwabdev`'s internal thread is technically still running (though this is less likely if `daemon=True` was used for our worker thread, as it would exit if the main program ends).
+    - To fix this, after `self.stream_client.start(self._handle_stream_message)` is called and subscriptions are sent, a `while self.is_running:` loop was added within the `_stream_worker`. This loop keeps the `_stream_worker` thread active, allowing it to monitor the `self.is_running` flag (which is controlled by `start_stream` and `stop_stream` methods) and ensuring that the `StreamingManager`'s state accurately reflects the desired streaming activity. The `finally` block of `_stream_worker` was also enhanced to ensure `self.stream_client.stop()` is called to properly terminate the `schwabdev` stream when our worker is signaled to stop.
+
+  - **Rationale for Handling Confirmation Messages:**
+    - The log `WARNING - Unhandled message structure: {"response": [{"service": "LEVELONE_OPTIONS", "command": "ADD", ...}]}` showed that messages confirming subscription additions (which have a top-level key `"response"`) were not being correctly identified by the `_handle_stream_message` method.
+    - The existing logic checked for `"responses"` (plural) and `"notify"`. 
+    - The fix involved updating the condition to `elif "response" in message_dict or "responses" in message_dict or "notify" in message_dict:`. This ensures that singular `"response"` messages, which are common for command acknowledgments from the Schwab API, are logged appropriately as administrative messages rather than being treated as unhandled data, thus preventing the warning and improving the clarity of stream operations.
+
+These changes are crucial for the stability and correctness of the streaming functionality. The worker thread now correctly reflects the intended operational state of the stream, and administrative messages are handled gracefully, leading to a more robust and debuggable streaming implementation.
