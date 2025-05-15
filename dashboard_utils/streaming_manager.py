@@ -225,15 +225,15 @@ class StreamingManager:
                         logger.warning(f"[MsgID:{current_message_id}] Skipping non-LEVELONE_OPTIONS or malformed data item: {item}")
                         continue
                     content_list = item.get("content", [])
-                    for content_index, contract_data_from_stream in enumerate(content_list):                        logger.debug(f"[MsgID:{current_message_id}] Processing content #{content_index} from item #{item_index}: {contract_data_from_stream}")
+                    for content_index, contract_data_from_stream in enumerate(content_list):
+                        logger.debug(f"[MsgID:{current_message_id}] Processing content #{content_index} from item #{item_index}: {contract_data_from_stream}")
                         if not isinstance(contract_data_from_stream, dict):
                             logger.warning(f"[MsgID:{current_message_id}] Skipping non-dict contract_data: {contract_data_from_stream}")
                             continue
                         # Get the contract key using its numeric field ID "0" (Symbol/Contract Key)
-                        contract_key = contract_data_from_stream.get("0") 
+                        contract_key = contract_data_from_stream.get("0")
                         if not contract_key:
                             logger.warning(f"[MsgID:{current_message_id}] Skipping contract_data with missing or empty field '0' (contract key): {contract_data_from_stream}")
-                            continue                            logger.warning(f"[MsgID:{current_message_id}] Skipping contract_data with empty key: {contract_data_from_stream}")
                             continue
                         
                         # Map numeric field IDs from stream to descriptive names
