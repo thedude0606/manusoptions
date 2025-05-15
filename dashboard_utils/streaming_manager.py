@@ -16,8 +16,8 @@ class StreamingManager:
         account_id_getter: A function that returns the account ID (account hash for streaming), if available and needed.
         """
         self.schwab_client_getter = schwab_client_getter
-        self.account_id_getter = account_id_getter 
-        self.stream_client = None 
+        self.account_id_getter = account_id_getter
+        self.stream_client = None
         self.is_running = False
         self.stream_thread = None
         self.current_subscriptions = set()
@@ -54,7 +54,7 @@ class StreamingManager:
                 self.status_message = f"Stream: Error - {self.error_message}"
                 self.is_running = False
             return
-        
+
         # SCHWAB_ACCOUNT_HASH is not strictly required for LEVELONE_OPTIONS streaming.
         # It would be required for account-specific streams like ACCT_ACTIVITY.
         # For now, we will log if it's present but not make it a blocking requirement for this options stream.
@@ -67,7 +67,7 @@ class StreamingManager:
         try:
             self.stream_client = schwab_api_client.stream
             logging.info(f"Schwab stream object obtained via client.stream")
-            
+
             if not option_keys_to_subscribe:
                 logging.info("Stream worker: No symbols to subscribe.")
                 with self._lock:
@@ -77,7 +77,7 @@ class StreamingManager:
 
             keys_list = list(option_keys_to_subscribe)
             fields_to_request_list = "0,2,7,8,9,10,11,15,16,17,18,19,21,26,27,23,24,25".split(",")
-            
+
             logging.info(f"Stream worker: Adding LEVELONE_OPTIONS subscription for {len(keys_list)} keys.")
             self.stream_client.add_levelone_option_subscription(keys=keys_list, fields=fields_to_request_list)
 
@@ -85,7 +85,7 @@ class StreamingManager:
                 self.current_subscriptions = set(option_keys_to_subscribe)
                 self.status_message = f"Stream: Connecting and subscribing to {len(self.current_subscriptions)} contracts..."
 
-            self.stream_client.start(handler=self._handle_stream_message) 
+            self.stream_client.start(handler=self._handle_stream_message)
             logging.info("Stream worker: stream_client.start() returned. Stream has ended or was stopped.")
 
         except Exception as e:
@@ -108,8 +108,8 @@ class StreamingManager:
         try:
             if not isinstance(message_list, list):
                 if isinstance(message_list, dict) and (
-                    message_list.get("service") == "ADMIN" or 
-                    message_list.get("responses") or 
+                    message_list.get("service") == "ADMIN" or
+                    message_list.get("responses") or
                     message_list.get("notify")
                 ):
                     logging.info(f"Stream admin/response/notify: {message_list}")
@@ -120,12 +120,12 @@ class StreamingManager:
             for item in message_list:
                 if not isinstance(item, dict) or item.get("service") != "LEVELONE_OPTIONS" or "content" not in item:
                     continue
-                
+
                 content_list = item.get("content", [])
                 for contract_data in content_list:
                     if not isinstance(contract_data, dict) or "key" not in contract_data:
                         continue
-                    
+
                     contract_key = contract_data.get("key")
                     if not contract_key:
                         continue
@@ -173,7 +173,7 @@ class StreamingManager:
                 else:
                     logging.info("New subscriptions requested or stream not live. Restarting stream...")
                     self._internal_stop_stream(wait_for_thread=True)
-            
+
             self.is_running = True
             self.error_message = None
             self.status_message = "Stream: Starting..."
@@ -186,19 +186,19 @@ class StreamingManager:
 
     def _internal_stop_stream(self, wait_for_thread=False):
         """Internal method to stop the stream. Optionally waits for thread to join."""
-        stream_client_to_stop = self.stream_client
+        stream_client_to_stop = self.stream_client # Capture current client
         if stream_client_to_stop and hasattr(stream_client_to_stop, "stop"):
             try:
                 logging.info("Calling stream_client.stop()...")
-                stream_client_to_stop.stop()
+                stream_client_to_stop.stop() # This should signal the async loop in stream.py to break
             except Exception as e:
                 logging.error(f"Exception during stream_client.stop(): {e}", exc_info=True)
         
-        self.is_running = False
+        self.is_running = False # Set running to false immediately
 
         if wait_for_thread and self.stream_thread and self.stream_thread.is_alive():
             logging.info("Waiting for stream thread to join after stop signal...")
-            self.stream_thread.join(timeout=10)
+            self.stream_thread.join(timeout=10) # Wait for the thread to finish
             if self.stream_thread.is_alive():
                 logging.warning("Stream thread did not terminate gracefully after stop request and join timeout.")
             else:
@@ -219,15 +219,16 @@ class StreamingManager:
             self._internal_stop_stream(wait_for_thread=True)
         
         with self._lock:
-            if self.status_message == "Stream: Stopping...":
+            # Final status update after attempting to stop
+            if self.status_message == "Stream: Stopping...": # If it was stopping and now done
                  self.status_message = "Stream: Stopped."
             elif not self.is_running and self.status_message != "Stream: Stopped.":
-                 self.status_message = "Idle"
+                 self.status_message = "Idle" # Default to idle if stopped for other reasons
         logging.info("Stream stop process complete.")
 
     def get_latest_data(self):
         with self._lock:
-            return dict(self.latest_data_store) 
+            return dict(self.latest_data_store)
 
     def get_status(self):
         with self._lock:
