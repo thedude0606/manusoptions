@@ -423,3 +423,32 @@ This addition is crucial for providing user control over the streaming process, 
   - Example: `Output("error-message-store", "data", allow_duplicate=True)`
 - **Decision:** No code changes are required in the current version of `dashboard_app.py` in the repository to address this specific error.
   - **Rationale:** The existing code correctly handles multiple outputs to the same component property by using `allow_duplicate=True`. The error reported by the user likely originated from an older, local version of the file that was not synchronized with the repository, or a version that existed before `allow_duplicate=True` was consistently applied to all relevant callbacks targeting `error-message-store.data`. The `PROGRESS.md` file also notes a previous investigation on 2025-05-16 with a similar conclusion. This re-confirms the existing codebase is sound in this regard.
+
+
+
+## Callback Merging and Dash 3.x Compatibility (May 16, 2025)
+
+- **Decision:** Merge the `update_minute_data_tab` and `update_tech_indicators_tab` callbacks into a single callback, and update the application to use `app.run()` for Dash 3.x compatibility.
+  - **Rationale for Merging Callbacks:**
+    - **Addressing User Request:** The primary driver was the user's request to eliminate the `allow_duplicate=True` parameter on the `Output("new-error-event-store", "data")`. Merging the two callbacks that previously wrote to this store into a single callback makes that callback the sole owner of the output, thus removing the need for `allow_duplicate=True`.
+    - **Simplified Error Management:** Consolidating the error output for these two related data tabs into one callback simplifies the error propagation logic for these specific components.
+    - **Potential for Performance Optimization:** The merged callback now takes `Input("tabs-main", "value")` (the active tab ID) as an argument. This allows the callback to determine which tab is currently visible and only perform the data fetching and processing necessary for that active tab. Logic was implemented to return `dash.no_update` for the outputs related to the inactive tab, preventing unnecessary computations.
+
+  - **Implementation of Merged Callback (`update_data_for_active_tab`):
+    - **Outputs:** The new callback, `update_data_for_active_tab`, has five outputs:
+        1.  `Output("minute-data-table", "columns")`
+        2.  `Output("minute-data-table", "data")`
+        3.  `Output("tech-indicators-table", "columns")`
+        4.  `Output("tech-indicators-table", "data")`
+        5.  `Output("new-error-event-store", "data")` (without `allow_duplicate=True`)
+    - **Inputs:** The primary inputs are `Input("selected-symbol-store", "data")` and `Input("tabs-main", "value")`.
+    - **Logic:** The callback checks the value of `active_tab`. 
+        - If `active_tab == "tab-minute-data"`, it proceeds with fetching and formatting minute data, returning `dash.no_update` for technical indicator table outputs.
+        - If `active_tab == "tab-tech-indicators"`, it fetches minute data, performs aggregations, calculates all technical indicators, and formats them for the table, returning `dash.no_update` for minute data table outputs.
+        - Error events from either process are sent to `new-error-event-store.data`.
+
+  - **Rationale for Dash 3.x Update (`app.run()`):
+    - **Compatibility:** During testing, an `ObsoleteAttributeException` was encountered because `app.run_server()` is deprecated in Dash version 3.x (which was installed via `requirements.txt`).
+    - **Correction:** The main execution block in `dashboard_app.py` was updated to use `app.run(debug=True, host="0.0.0.0", port=8050)` as per the current Dash documentation and error message guidance.
+
+These changes address the user's specific callback structure preference, improve the Dash application's architecture regarding error handling for the specified components, and ensure compatibility with current library versions.

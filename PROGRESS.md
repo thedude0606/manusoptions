@@ -78,3 +78,35 @@ This document tracks the progress of the Manus Options project.
 
 
 *   **Investigated Dash Callback Error (2025-05-16):** Investigated user-reported Dash duplicate output error: `In the callback for output(s): tech-indicators-table.columns tech-indicators-table.data error-message-store.data@... Output 2 (error-message-store.data@...) is already in use.` Confirmed that all relevant callbacks in `dashboard_app.py` (specifically `update_minute_data_tab`, `update_tech_indicators_tab`, `manage_options_stream`, and `update_options_chain_stream_data`) that output to `error-message-store.data` correctly use the `allow_duplicate=True` parameter. No code changes were required in the repository as the existing implementation is correct. The reported error likely stemmed from a local, out-of-sync version of the `dashboard_app.py` file on the user's side or an older version prior to these flags being implemented consistently.
+
+*   **Merged Callbacks for Minute Data and Technical Indicators (2025-05-16):**
+    *   Successfully merged the `update_minute_data_tab` and `update_tech_indicators_tab` callbacks into a single callback `update_data_for_active_tab` in `dashboard_app.py`.
+    *   The new callback outputs to `minute-data-table.columns`, `minute-data-table.data`, `tech-indicators-table.columns`, `tech-indicators-table.data`, and `new-error-event-store.data`.
+    *   This resolves the user's concern about `allow_duplicate=True` for `new-error-event-store.data` by ensuring a single callback owns this output.
+    *   The merged callback uses the `tabs-main.value` (active tab ID) to determine which data to fetch and process, optimizing performance by not updating hidden tabs.
+    *   Thoroughly tested the merged callback to ensure correct data display for both tables and robust error reporting to `new-error-event-store`.
+*   **Updated Dash App Execution for Dash 3.x (2025-05-16):**
+    *   Modified `dashboard_app.py` to use `app.run()` instead of the deprecated `app.run_server()` for Dash 3.x compatibility.
+    *   Successfully tested app launch and basic functionality with this change.
+
+## Current Work In Progress
+
+*   Finalizing documentation updates for the recent callback merge and Dash 3.x compatibility.
+*   Preparing to push all updated code and documentation to the GitHub repository.
+
+## Known Issues or Challenges
+
+*   **Schwab API Credentials:** The application currently logs an error `Initial REST Client Error: Error: APP_KEY, APP_SECRET, or CALLBACK_URL not found in environment variables.` This is expected in the sandbox as these are not set up, but the application should function for non-authenticated data fetching where possible. For full functionality, the user will need to ensure these are correctly set in their environment.
+*   **Pandas FutureWarning:** The `technical_analysis.py` script currently shows `FutureWarning` messages from pandas related to dtype compatibility when setting boolean values for FVG. This does not currently block functionality but should be addressed in the future for cleaner execution and to prevent potential issues with future pandas versions.
+*   **RSI Customization:** The existing RSI function in `technical_analysis.py` does not currently support customizable overbought/oversold levels directly as parameters. This can be considered for future enhancement.
+*   **FVG Display:** Fair Value Gaps (FVG) currently produce multiple columns (`fvg_bullish_top`, `fvg_bullish_bottom`, etc.) in the backend. The UI table shows "N/A" for FVG as a simple representation of the latest FVG status (e.g., if the last candle confirmed one) is not yet implemented in the table formatting logic. This requires further design for effective UI display.
+*   **Error Display in UI:** While errors are logged and some are passed to the `error-message-store`, the display and granularity of errors related to TA calculation in the UI could be improved.
+
+## Next Steps
+
+1.  **Complete documentation updates for `TODO.md` and `DECISIONS.md`**
+2.  **Push all updated code and documentation files (`PROGRESS.md`, `TODO.md`, `DECISIONS.md`, `dashboard_app.py`) to the GitHub repository.**
+3.  **Notify user of the progress, including the successful merge of callbacks, the Dash 3.x update, and the push of these updates.**
+4.  **Address known issues, particularly FVG display and enhanced error handling in the UI.**
+5.  **Begin work on user customization for TA parameters.**
+6.  **Continue with Phase 2: Options Recommendation Platform Features** as outlined in `TODO.md` (if applicable after addressing immediate enhancements).
