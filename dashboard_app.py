@@ -330,7 +330,7 @@ def update_data_for_active_tab(selected_symbol, active_tab):
                     for period, df_agg in aggregated_dfs.items():
                         if not df_agg.empty:
                             # Pass symbol and period for context if needed by TA functions
-                            ta_results[period] = calculate_all_technical_indicators(df_agg.copy(), selected_symbol, period_name=period) 
+                            ta_results[period] = calculate_all_technical_indicators(df_agg.copy(), symbol=f"{selected_symbol}_{period}") 
                         else:
                             ta_results[period] = {} # Empty dict if no agg data
                     app_logger.info(f"UpdateDataTabs (TechInd): Calculated TA for {selected_symbol}.")
