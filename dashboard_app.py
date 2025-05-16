@@ -227,7 +227,6 @@ def update_minute_data_tab(selected_symbol, current_errors):
     data = df_display.to_dict("records")
     return cols, data, new_errors
 
-print("DEBUG: Defining callback for update_tech_indicators_tab")
 @app.callback(
     Output("tech-indicators-table", "columns"),
     Output("tech-indicators-table", "data"),
@@ -539,4 +538,4 @@ if __name__ == "__main__":
     # For development, you might need to set SCHWAB_ACCOUNT_HASH as an env var
     # or ensure your .env file is loaded if you use python-dotenv in a wrapper script.
     # Example: os.environ["SCHWAB_ACCOUNT_HASH"] = "YOUR_ACCOUNT_HASH_FOR_STREAMING"
-    app.run(debug=True, host="0.0.0.0", port=8050)
+    app.run(debug=True, host="0.0.0.0", port=8050, use_reloader=False)
