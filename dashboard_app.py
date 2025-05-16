@@ -207,7 +207,7 @@ def update_error_log(error_messages):
 @app.callback(
     Output("minute-data-table", "columns"),
     Output("minute-data-table", "data"),
-    Output("new-error-event-store", "data"), # Changed output for errors
+    Output("new-error-event-store", "data", allow_duplicate=True), # Changed output for errors
     Input("selected-symbol-store", "data"),
     prevent_initial_call=True
 )
@@ -266,7 +266,7 @@ def update_minute_data_tab(selected_symbol):
 @app.callback(
     Output("tech-indicators-table", "columns"),
     Output("tech-indicators-table", "data"),
-    Output("new-error-event-store", "data"), # Changed output for errors
+    Output("new-error-event-store", "data", allow_duplicate=True), # Changed output for errors
     Input("selected-symbol-store", "data"),
     prevent_initial_call=True
 )
@@ -364,7 +364,7 @@ def update_tech_indicators_tab(selected_symbol):
 
 @app.callback(
     Output("current-option-keys-store", "data"),
-    Output("new-error-event-store", "data"), # Changed output for errors
+    Output("new-error-event-store", "data", allow_duplicate=True), # Changed output for errors
     Input("selected-symbol-store", "data"),
     Input("tabs-main", "value"),
     prevent_initial_call=True
@@ -420,7 +420,7 @@ OPTION_KEY_REGEX = re.compile(r"^([A-Z ]+)(\d{2})(\d{2})(\d{2})([CP])(\d{8})$")
     Output("options-puts-table", "columns"),
     Output("options-puts-table", "data"),
     Output("options-chain-stream-status", "children"),
-    Output("new-error-event-store", "data"), # Changed output for errors
+    Output("new-error-event-store", "data", allow_duplicate=True), # Changed output for errors
     Input("options-chain-interval", "n_intervals"),
     State("selected-symbol-store", "data"),
     prevent_initial_call=True
