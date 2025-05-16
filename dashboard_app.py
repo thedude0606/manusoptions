@@ -25,10 +25,12 @@ if not app_logger.hasHandlers():
     app_handler.setFormatter(app_formatter)
     app_logger.addHandler(app_handler)
 app_logger.setLevel(logging.INFO)
+app_logger.info("App logger initialized")
 
 # Initialize the Dash app BEFORE defining layout or callbacks
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
 app.title = "Trading Dashboard"
+app_logger.info("Dash app initialized")
 
 # --- Schwab Client and Account ID Setup ---
 def schwab_client_provider():
@@ -38,16 +40,18 @@ def schwab_client_provider():
 
 def account_id_provider():
     """Provides the account ID (account hash for streaming), if available."""
-    return os.getenv("SCHWAB_ACCOUNT_HASH") 
+    return os.getenv("SCHWAB_ACCOUNT_HASH")
 
 # --- Global Instances --- 
 SCHWAB_CLIENT, client_init_error = get_schwab_client()
 STREAMING_MANAGER = StreamingManager(schwab_client_provider, account_id_provider)
+app_logger.info("Global instances (Schwab client, StreamingManager) created.")
 
 initial_errors = []
 if client_init_error:
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    initial_errors.append(f"{timestamp}: REST Client: {client_init_error}")
+    initial_errors.append(f"{timestamp}: REST Client Init: {client_init_error}")
+    app_logger.error(f"Initial REST Client Error: {client_init_error}")
 
 if not account_id_provider():
     app_logger.info("SCHWAB_ACCOUNT_HASH is not set in .env. This is only required for account-specific data streams.")
@@ -102,11 +106,13 @@ app.layout = html.Div([
     
     dcc.Store(id="processed-symbols-store"),
     dcc.Store(id="selected-symbol-store"),
-    dcc.Store(id="error-message-store", data=initial_errors), 
+    dcc.Store(id="error-message-store", data=initial_errors), # Main store for all errors, populated by a single callback
+    dcc.Store(id="new-error-event-store"), # Intermediate store for individual error events
     dcc.Store(id="current-option-keys-store", data=[]),
 
     html.Div(id="error-log-display", children="No errors yet." if not initial_errors else [html.P(err) for err in initial_errors], style={"marginTop": "20px", "border": "1px solid #ccc", "padding": "10px", "height": "100px", "overflowY": "scroll", "whiteSpace": "pre-wrap"})
 ])
+app_logger.info("App layout defined.")
 
 # --- Callbacks --- 
 
@@ -119,6 +125,7 @@ app.layout = html.Div([
     State("symbol-input", "value")
 )
 def process_symbols(n_clicks, input_value):
+    app_logger.debug(f"CB_process_symbols: n_clicks={n_clicks}, input_value=\"{input_value}\"")
     if n_clicks > 0 and input_value:
         symbols = sorted(list(set([s.strip().upper() for s in input_value.split(",") if s.strip()])))
         if not symbols:
@@ -126,17 +133,22 @@ def process_symbols(n_clicks, input_value):
         
         options = [{"label": sym, "value": sym} for sym in symbols]
         default_selected_symbol = symbols[0] if len(symbols) == 1 else None
+        app_logger.info(f"CB_process_symbols: Processed symbols: {symbols}")
         return symbols, options, {"width": "30%", "display": "inline-block", "marginLeft": "10px"}, default_selected_symbol
+    
     ctx = dash.callback_context
-    if not ctx.triggered or ctx.triggered[0]["prop_id"] == ".":
+    if not ctx.triggered or ctx.triggered[0]["prop_id"] == ".": # Initial call or no trigger
+        app_logger.debug("CB_process_symbols: Initial call or no trigger, no update.")
         return dash.no_update, [], {"width": "30%", "display": "none"}, None
-    return [], [], {"width": "30%", "display": "none"}, None
+    app_logger.debug("CB_process_symbols: No valid conditions met, returning no update for symbols.")
+    return [], [], {"width": "30%", "display": "none"}, None # Reset if button not clicked but triggered
 
 @app.callback(
     Output("selected-symbol-store", "data"),
     Input("symbol-filter-dropdown", "value")
 )
 def update_selected_symbol(selected_symbol):
+    app_logger.debug(f"CB_update_selected_symbol: Selected symbol from dropdown: {selected_symbol}")
     if selected_symbol:
         return selected_symbol
     return dash.no_update
@@ -148,6 +160,7 @@ def update_selected_symbol(selected_symbol):
     Input("selected-symbol-store", "data")
 )
 def update_tab_headers(selected_symbol):
+    app_logger.debug(f"CB_update_tab_headers: Selected symbol: {selected_symbol}")
     if selected_symbol:
         minute_header = f"Minute Data for {selected_symbol} (up to 90 days)"
         tech_header = f"Technical Indicators for {selected_symbol}"
@@ -155,128 +168,147 @@ def update_tab_headers(selected_symbol):
         return minute_header, tech_header, options_header
     return "Select a symbol to view data", "Select a symbol to view data", "Select a symbol to view data (Streaming)"
 
+# New callback to consolidate errors from various sources into the main error-message-store
+@app.callback(
+    Output("error-message-store", "data"),
+    Input("new-error-event-store", "data"),
+    State("error-message-store", "data"),
+    prevent_initial_call=True
+)
+def consolidate_errors(new_error_event, current_error_list):
+    app_logger.debug(f"CB_consolidate_errors: New event: {new_error_event}, Current errors count: {len(current_error_list if current_error_list else [])}")
+    if not new_error_event or not isinstance(new_error_event, dict):
+        app_logger.debug("CB_consolidate_errors: No new valid error event.")
+        return dash.no_update
+
+    updated_error_list = list(current_error_list) if current_error_list else []
+    
+    source = new_error_event.get("source", "UnknownSource")
+    message = new_error_event.get("message", "An unspecified error occurred.")
+    timestamp = new_error_event.get("timestamp", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    
+    formatted_error_message = f"{timestamp}: {source}: {message}"
+    app_logger.info(f"CB_consolidate_errors: Adding error: {formatted_error_message}")
+    
+    updated_error_list.insert(0, formatted_error_message)
+    return updated_error_list[:20] # Keep last 20 errors
+
 @app.callback(
     Output("error-log-display", "children"),
     Input("error-message-store", "data")
 )
 def update_error_log(error_messages):
+    app_logger.debug(f"CB_update_error_log: Updating display with {len(error_messages if error_messages else [])} errors.")
     if error_messages:
-        log_content = [html.P(f"{msg}") for msg in reversed(error_messages)]
+        log_content = [html.P(f"{msg}") for msg in reversed(error_messages)] # Show newest first in display
         return log_content
     return "No new errors."
 
 @app.callback(
     Output("minute-data-table", "columns"),
     Output("minute-data-table", "data"),
-    Output("error-message-store", "data", allow_duplicate=True),
+    Output("new-error-event-store", "data"), # Changed output for errors
     Input("selected-symbol-store", "data"),
-    State("error-message-store", "data"),
     prevent_initial_call=True
 )
-def update_minute_data_tab(selected_symbol, current_errors):
+def update_minute_data_tab(selected_symbol):
+    app_logger.debug(f"CB_update_minute_data_tab: Symbol: {selected_symbol}")
+    error_event_to_send = dash.no_update
     if not selected_symbol:
-        return [], [], current_errors 
+        return [], [], error_event_to_send
 
     global SCHWAB_CLIENT
-    new_errors = list(current_errors) 
     client_to_use = SCHWAB_CLIENT
     timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     if not client_to_use:
-        app_logger.info(f"MinuteData: Schwab client not initialized for {selected_symbol}. Attempting to reinitialize.")
+        app_logger.info(f"MinuteData: Schwab client not initialized for {selected_symbol}. Attempting reinit.")
         client_to_use, client_err = get_schwab_client()
         if client_err:
-            error_msg = f"{timestamp_str}: MinData: {client_err}"
-            app_logger.error(error_msg)
-            new_errors.insert(0, error_msg)
-            return [], [], new_errors[:10]
+            error_msg = f"Client re-init failed: {client_err}"
+            app_logger.error(f"MinuteData: {error_msg}")
+            error_event_to_send = {"source": "MinData-Client", "message": error_msg, "timestamp": timestamp_str}
+            return [], [], error_event_to_send
         SCHWAB_CLIENT = client_to_use
         app_logger.info(f"MinuteData: Schwab client reinitialized successfully for {selected_symbol}.")
 
-    app_logger.info(f"Fetching minute data for {selected_symbol}...")
-    df, error = get_minute_data(client_to_use, selected_symbol, days_history=90) # Fetches minute data
+    app_logger.info(f"MinuteData: Fetching minute data for {selected_symbol}...")
+    df, error = get_minute_data(client_to_use, selected_symbol, days_history=90)
 
     if error:
-        error_msg = f"{timestamp_str}: MinData for {selected_symbol}: {error}"
-        app_logger.error(error_msg)
-        new_errors.insert(0, error_msg)
-        return [], [], new_errors[:10]
+        error_msg = f"Data fetch error: {error}"
+        app_logger.error(f"MinuteData for {selected_symbol}: {error_msg}")
+        error_event_to_send = {"source": f"MinData-Fetch-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
+        return [], [], error_event_to_send
     
     if df.empty:
-        app_logger.warning(f"No minute data returned for {selected_symbol}.")
+        app_logger.warning(f"MinuteData: No minute data returned for {selected_symbol}.")
         cols = [{"name": i, "id": i} for i in ["Timestamp", "Open", "High", "Low", "Close", "Volume"]]
-        return cols, [], new_errors
+        # No error event here, just empty table
+        return cols, [], error_event_to_send 
 
-    app_logger.info(f"Successfully fetched {len(df)} rows of minute data for {selected_symbol}.")
-    # Ensure timestamp is the index and is datetime type for resampling
+    app_logger.info(f"MinuteData: Successfully fetched {len(df)} rows for {selected_symbol}.")
     if "timestamp" in df.columns and not isinstance(df.index, pd.DatetimeIndex):
         df["timestamp"] = pd.to_datetime(df["timestamp"])
         df = df.set_index("timestamp")
     elif not isinstance(df.index, pd.DatetimeIndex):
-        app_logger.error(f"Minute data for {selected_symbol} does not have a DatetimeIndex.")
-        # Fallback or error handling if index is not datetime
-        error_msg = f"{timestamp_str}: MinData for {selected_symbol}: Index is not DatetimeIndex."
-        new_errors.insert(0, error_msg)
-        return [], [], new_errors[:10]
+        error_msg = "Index is not DatetimeIndex after fetch."
+        app_logger.error(f"MinuteData for {selected_symbol}: {error_msg}")
+        error_event_to_send = {"source": f"MinData-Format-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
+        return [], [], error_event_to_send
 
-    # Format for DataTable
-    df_display = df.reset_index() # Move timestamp from index to column for display
-    df_display["timestamp"] = df_display["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S") # Format datetime
-    
+    df_display = df.reset_index()
+    df_display["timestamp"] = df_display["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
     cols = [{"name": i, "id": i} for i in df_display.columns]
     data = df_display.to_dict("records")
-    return cols, data, new_errors
+    return cols, data, error_event_to_send
 
 @app.callback(
     Output("tech-indicators-table", "columns"),
     Output("tech-indicators-table", "data"),
-    Output("error-message-store", "data", allow_duplicate=True),
+    Output("new-error-event-store", "data"), # Changed output for errors
     Input("selected-symbol-store", "data"),
-    State("error-message-store", "data"),
     prevent_initial_call=True
 )
-def update_tech_indicators_tab(selected_symbol, current_errors):
+def update_tech_indicators_tab(selected_symbol):
+    app_logger.debug(f"CB_update_tech_indicators_tab: Symbol: {selected_symbol}. This is the callback mentioned in the error.")
+    error_event_to_send = dash.no_update
+    output_cols_def = ["Indicator", "1min", "15min", "Hourly", "Daily"]
+    output_cols = [{"name": i, "id": i} for i in output_cols_def]
+
     if not selected_symbol:
-        return [], [], current_errors
+        return output_cols, [], error_event_to_send
 
     global SCHWAB_CLIENT
-    new_errors = list(current_errors)
     client_to_use = SCHWAB_CLIENT
     timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    output_cols = [{"name": i, "id": i} for i in ["Indicator", "1min", "15min", "Hourly", "Daily"]]
 
     if not client_to_use:
-        app_logger.info(f"TechIndicators: Schwab client not initialized for {selected_symbol}. Attempting to reinitialize.")
+        app_logger.info(f"TechIndicators: Schwab client not initialized for {selected_symbol}. Attempting reinit.")
         client_to_use, client_err = get_schwab_client()
         if client_err:
-            error_msg = f"{timestamp_str}: TechInd: Client init error - {client_err}"
-            app_logger.error(error_msg)
-            new_errors.insert(0, error_msg)
-            return output_cols, [], new_errors[:10]
+            error_msg = f"Client re-init failed: {client_err}"
+            app_logger.error(f"TechInd: {error_msg}")
+            error_event_to_send = {"source": "TechInd-Client", "message": error_msg, "timestamp": timestamp_str}
+            return output_cols, [], error_event_to_send
         SCHWAB_CLIENT = client_to_use
         app_logger.info(f"TechIndicators: Schwab client reinitialized successfully for {selected_symbol}.")
 
-    app_logger.info(f"Fetching minute data for Technical Indicators for {selected_symbol}...")
-    # df_minute_raw has 'open', 'high', 'low', 'close', 'volume' columns and 'timestamp' as DatetimeIndex
-    df_minute_raw, error = get_minute_data(client_to_use, selected_symbol, days_history=90) 
+    app_logger.info(f"TechIndicators: Fetching minute data for TA for {selected_symbol}...")
+    df_minute_raw, error = get_minute_data(client_to_use, selected_symbol, days_history=90)
 
     if error:
-        error_msg = f"{timestamp_str}: TechInd data fetch for {selected_symbol}: {error}"
-        app_logger.error(error_msg)
-        new_errors.insert(0, error_msg)
-        return output_cols, [], new_errors[:10]
+        error_msg = f"Data fetch error: {error}"
+        app_logger.error(f"TechInd data fetch for {selected_symbol}: {error_msg}")
+        error_event_to_send = {"source": f"TechInd-Fetch-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
+        return output_cols, [], error_event_to_send
     
     if df_minute_raw.empty:
-        app_logger.warning(f"No minute data returned for {selected_symbol} to calculate Technical Indicators.")
-        # Return empty table with headers but add a message to errors?
-        # error_msg = f"{timestamp_str}: TechInd: No data for {selected_symbol}."
-        # new_errors.insert(0, error_msg)
-        return output_cols, [], new_errors
+        app_logger.warning(f"TechInd: No minute data for {selected_symbol} to calculate TA.")
+        return output_cols, [], error_event_to_send
     
-    app_logger.info(f"Successfully fetched {len(df_minute_raw)} minute candles for {selected_symbol} for TA.")
+    app_logger.info(f"TechInd: Fetched {len(df_minute_raw)} minute candles for {selected_symbol} for TA.")
 
-    # Ensure df_minute_raw has DatetimeIndex named 'timestamp'
-    # get_minute_data should already handle this by setting 'timestamp' as index.
     if not isinstance(df_minute_raw.index, pd.DatetimeIndex):
         if 'timestamp' in df_minute_raw.columns:
             try:
@@ -284,54 +316,36 @@ def update_tech_indicators_tab(selected_symbol, current_errors):
                 df_minute_raw = df_minute_raw.set_index('timestamp')
                 app_logger.info(f"TechInd: Converted 'timestamp' column to DatetimeIndex for {selected_symbol}.")
             except Exception as e:
-                error_msg = f"{timestamp_str}: TechInd: Failed to convert 'timestamp' to DatetimeIndex for {selected_symbol}: {e}"
-                app_logger.error(error_msg)
-                new_errors.insert(0, error_msg)
-                return output_cols, [], new_errors[:10]
+                error_msg = f"Failed to convert 'timestamp' to DatetimeIndex: {e}"
+                app_logger.error(f"TechInd for {selected_symbol}: {error_msg}")
+                error_event_to_send = {"source": f"TechInd-Format-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
+                return output_cols, [], error_event_to_send
         else:
-            error_msg = f"{timestamp_str}: TechInd: Minute data for {selected_symbol} missing 'timestamp' column or DatetimeIndex."
-            app_logger.error(error_msg)
-            new_errors.insert(0, error_msg)
-            return output_cols, [], new_errors[:10]
+            error_msg = "Minute data missing 'timestamp' column or DatetimeIndex."
+            app_logger.error(f"TechInd for {selected_symbol}: {error_msg}")
+            error_event_to_send = {"source": f"TechInd-Format-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
+            return output_cols, [], error_event_to_send
 
-    # --- Data Aggregation ---
-    app_logger.info(f"Aggregating data for {selected_symbol}...")
+    app_logger.info(f"TechInd: Aggregating data for {selected_symbol}...")
     df_15min_raw = aggregate_candles(df_minute_raw.copy(), rule="15min")
     df_hourly_raw = aggregate_candles(df_minute_raw.copy(), rule="H")
     df_daily_raw = aggregate_candles(df_minute_raw.copy(), rule="D")
-    app_logger.info(f"Aggregation complete for {selected_symbol}. 1min: {len(df_minute_raw)}, 15min: {len(df_15min_raw)}, Hourly: {len(df_hourly_raw)}, Daily: {len(df_daily_raw)} rows.")
+    app_logger.info(f"TechInd: Aggregation complete for {selected_symbol}. Sizes: 1m:{len(df_minute_raw)}, 15m:{len(df_15min_raw)}, H:{len(df_hourly_raw)}, D:{len(df_daily_raw)}.")
 
-    # --- Calculate Technical Indicators for each timeframe ---
-    app_logger.info(f"Calculating TA for {selected_symbol} across timeframes...")
+    app_logger.info(f"TechInd: Calculating TA for {selected_symbol} across timeframes...")
     df_1min_ta = calculate_all_technical_indicators(df_minute_raw.copy(), symbol=f"{selected_symbol}_1min")
     df_15min_ta = calculate_all_technical_indicators(df_15min_raw.copy(), symbol=f"{selected_symbol}_15min")
     df_hourly_ta = calculate_all_technical_indicators(df_hourly_raw.copy(), symbol=f"{selected_symbol}_hourly")
     df_daily_ta = calculate_all_technical_indicators(df_daily_raw.copy(), symbol=f"{selected_symbol}_daily")
-    app_logger.info(f"TA calculation complete for {selected_symbol}.")
+    app_logger.info(f"TechInd: TA calculation complete for {selected_symbol}.")
 
-    # --- Prepare data for the table ---
     indicators_to_display = {
-        "BB Mid (20)": "bb_middle_20",
-        "BB Upper (20)": "bb_upper_20",
-        "BB Lower (20)": "bb_lower_20",
-        "RSI (14)": "rsi_14",
-        "MACD": "macd",
-        "MACD Signal": "macd_signal",
-        "MACD Hist": "macd_hist",
-        "IMI (14)": "imi_14",
-        "MFI (14)": "mfi_14",
-        # Add FVG if simple representation is possible, otherwise might need specific handling
-        # For now, FVG produces multiple columns (top/bottom), not a single value per candle easily shown here.
-        # We can show if the *last* candle confirmed an FVG, for example.
+        "BB Mid (20)": "bb_middle_20", "BB Upper (20)": "bb_upper_20", "BB Lower (20)": "bb_lower_20",
+        "RSI (14)": "rsi_14", "MACD": "macd", "MACD Signal": "macd_signal", "MACD Hist": "macd_hist",
+        "IMI (14)": "imi_14", "MFI (14)": "mfi_14",
     }
-
     table_data = []
-    timeframe_dfs = {
-        "1min": df_1min_ta,
-        "15min": df_15min_ta,
-        "Hourly": df_hourly_ta,
-        "Daily": df_daily_ta
-    }
+    timeframe_dfs = {"1min": df_1min_ta, "15min": df_15min_ta, "Hourly": df_hourly_ta, "Daily": df_daily_ta}
 
     for display_name, col_name in indicators_to_display.items():
         row_data = {"Indicator": display_name}
@@ -344,69 +358,60 @@ def update_tech_indicators_tab(selected_symbol, current_errors):
             row_data[tf_label] = val
         table_data.append(row_data)
     
-    app_logger.info(f"Formatted TA data for {selected_symbol} table: {len(table_data)} indicators.")
-    return output_cols, table_data, new_errors
+    app_logger.info(f"TechInd: Formatted TA data for {selected_symbol} table: {len(table_data)} indicators.")
+    return output_cols, table_data, error_event_to_send
 
 
 @app.callback(
     Output("current-option-keys-store", "data"),
-    Output("error-message-store", "data", allow_duplicate=True),
+    Output("new-error-event-store", "data"), # Changed output for errors
     Input("selected-symbol-store", "data"),
     Input("tabs-main", "value"),
-    State("error-message-store", "data"),
     prevent_initial_call=True
 )
-def manage_options_stream(selected_symbol, active_tab, current_errors):
-    new_errors = list(current_errors)
+def manage_options_stream(selected_symbol, active_tab):
+    app_logger.debug(f"CB_manage_options_stream: Symbol: {selected_symbol}, Active Tab: {active_tab}")
+    error_event_to_send = dash.no_update
     option_keys_for_stream = []
     timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    app_logger.info(f"manage_options_stream triggered. Symbol: {selected_symbol}, Active Tab: {active_tab}")
 
     if active_tab == "tab-options-chain" and selected_symbol:
-        app_logger.info(f"Options tab active for {selected_symbol}. Managing stream.")
+        app_logger.info(f"StreamCtrl: Options tab active for {selected_symbol}. Managing stream.")
         global SCHWAB_CLIENT
         client_to_use = SCHWAB_CLIENT
         if not client_to_use:
             client_to_use, client_err = get_schwab_client()
             if client_err:
-                error_msg = f"{timestamp_str}: StreamCtrl: {client_err}"
-                new_errors.insert(0, error_msg)
+                error_msg = f"Client re-init failed: {client_err}"
+                app_logger.error(f"StreamCtrl: {error_msg}")
                 STREAMING_MANAGER.stop_stream()
-                app_logger.error(f"StreamCtrl: Client error - {client_err}")
-                return [], new_errors[:10]
+                error_event_to_send = {"source": "StreamCtrl-Client", "message": error_msg, "timestamp": timestamp_str}
+                return [], error_event_to_send
             SCHWAB_CLIENT = client_to_use
         
         keys, err = get_option_contract_keys(client_to_use, selected_symbol)
         if err:
-            error_msg = f"{timestamp_str}: StreamCtrl Keys for {selected_symbol}: {err}"
-            new_errors.insert(0, error_msg)
+            error_msg = f"Error getting keys: {err}"
+            app_logger.error(f"StreamCtrl for {selected_symbol}: {error_msg}")
             STREAMING_MANAGER.stop_stream()
-            app_logger.error(f"StreamCtrl: Error getting keys for {selected_symbol} - {err}")
-            return [], new_errors[:10]
+            error_event_to_send = {"source": f"StreamCtrl-Keys-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
+            return [], error_event_to_send
         
         if not keys:
-            app_logger.info(f"No option keys with OI > 0 found for {selected_symbol}. Stopping stream if active.")
+            app_logger.info(f"StreamCtrl: No option keys with OI > 0 for {selected_symbol}. Stopping stream.")
             STREAMING_MANAGER.stop_stream()
-            return [], new_errors
+            return [], error_event_to_send # No error, but keys list is empty
 
         option_keys_for_stream = list(keys)
-        app_logger.info(f"Attempting to start/update stream for {len(option_keys_for_stream)} keys for {selected_symbol}.")
+        app_logger.info(f"StreamCtrl: Attempting to start/update stream for {len(option_keys_for_stream)} keys for {selected_symbol}.")
         STREAMING_MANAGER.start_stream(option_keys_for_stream)
     else:
-        app_logger.info("Options tab not active or no symbol selected. Stopping stream.")
+        app_logger.info("StreamCtrl: Options tab not active or no symbol. Stopping stream.")
         STREAMING_MANAGER.stop_stream()
     
-    app_logger.info(f"manage_options_stream returning keys: {len(option_keys_for_stream)} keys.")
-    return option_keys_for_stream, new_errors
+    app_logger.debug(f"StreamCtrl: Returning keys: {len(option_keys_for_stream)}.")
+    return option_keys_for_stream, error_event_to_send
 
-# Regex to parse OCC option symbol format
-# Example: MSFT  250530C00435000 or SPXW  240520C05300000
-# Group 1: Underlying (e.g., "MSFT  " or "SPXW  ")
-# Group 2: Year (YY)
-# Group 3: Month (MM)
-# Group 4: Day (DD)
-# Group 5: Type (C or P)
-# Group 6: Strike Price (integer, divide by 1000)
 OPTION_KEY_REGEX = re.compile(r"^([A-Z ]+)(\d{2})(\d{2})(\d{2})([CP])(\d{8})$")
 
 @app.callback(
@@ -415,127 +420,108 @@ OPTION_KEY_REGEX = re.compile(r"^([A-Z ]+)(\d{2})(\d{2})(\d{2})([CP])(\d{8})$")
     Output("options-puts-table", "columns"),
     Output("options-puts-table", "data"),
     Output("options-chain-stream-status", "children"),
-    Output("error-message-store", "data", allow_duplicate=True),
+    Output("new-error-event-store", "data"), # Changed output for errors
     Input("options-chain-interval", "n_intervals"),
     State("selected-symbol-store", "data"),
-    State("error-message-store", "data"),
     prevent_initial_call=True
 )
-def update_options_chain_stream_data(n_intervals, selected_symbol, current_errors):
-    app_logger.info(f"update_options_chain_stream_data triggered for {selected_symbol} at interval {n_intervals}.")
-    new_errors = list(current_errors)
-    
+def update_options_chain_stream_data(n_intervals, selected_symbol):
+    app_logger.debug(f"CB_update_options_chain_stream_data: Symbol: {selected_symbol}, Interval: {n_intervals}")
+    error_event_to_send = dash.no_update
+    timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") # For potential errors
+
     stream_status_msg, stream_error_msg = STREAMING_MANAGER.get_status()
     status_display = f"Stream Status: {stream_status_msg}"
-    if stream_error_msg:
+    if stream_error_msg: # This is a stream error, not a callback logic error
         status_display += f" | Last Stream Error: {stream_error_msg}"
-    app_logger.debug(f"Stream status for UI: {status_display}")
+        # Optionally, could also send this to new-error-event-store if critical
+        # error_event_to_send = {"source": "StreamUpdate-Status", "message": stream_error_msg, "timestamp": timestamp_str}
+        app_logger.warning(f"StreamUpdate: Stream reported an error: {stream_error_msg}")
 
     option_cols_def = ["Expiration Date", "Strike", "Last", "Bid", "Ask", "Volume", "Open Interest", "Implied Volatility", "Delta", "Gamma", "Theta", "Vega", "Contract Key"]
     option_cols = [{"name": i, "id": i} for i in option_cols_def]
 
     if not selected_symbol or not STREAMING_MANAGER.is_running:
-        app_logger.info("No selected symbol or stream not running. Returning empty tables.")
-        return option_cols, [], option_cols, [], status_display, new_errors[:10]
+        app_logger.info("StreamUpdate: No selected symbol or stream not running. Empty tables.")
+        return option_cols, [], option_cols, [], status_display, error_event_to_send
 
     latest_stream_data = STREAMING_MANAGER.get_latest_data()
-    app_logger.info(f"Fetched {len(latest_stream_data)} items from STREAMING_MANAGER.get_latest_data().")
-    if latest_stream_data and n_intervals % 5 == 0: # Log a sample periodically
-        if latest_stream_data:
-            sample_key = list(latest_stream_data.keys())[0]
-            app_logger.debug(f"Sample data item (key: {sample_key}) from stream store: {json.dumps(latest_stream_data[sample_key], indent=2)}")
+    app_logger.info(f"StreamUpdate: Fetched {len(latest_stream_data)} items from STREAMING_MANAGER.")
+    if latest_stream_data and n_intervals % 10 == 0: # Log sample less frequently
+        sample_key = list(latest_stream_data.keys())[0]
+        app_logger.debug(f"StreamUpdate: Sample data (key: {sample_key}): {json.dumps(latest_stream_data[sample_key], indent=2)}")
     
     calls_list = []
     puts_list = []
 
     for contract_key_from_store, data_dict in latest_stream_data.items():
         if not isinstance(data_dict, dict):
-            app_logger.warning(f"Skipping non-dict item in latest_stream_data for key {contract_key_from_store}: {type(data_dict)}")
+            app_logger.warning(f"StreamUpdate: Skipping non-dict item for key {contract_key_from_store}: {type(data_dict)}")
             continue
 
         contract_key_str = str(data_dict.get("key", ""))
-        parsed_expiration_date = "N/A"
-        parsed_strike_price = "N/A"
-        is_call = False
-        is_put = False
+        parsed_expiration_date, parsed_strike_price, is_call, is_put = "N/A", "N/A", False, False
 
-        # Try to parse from dedicated fields first
-        exp_year_val = data_dict.get("expirationYear")
-        exp_month_val = data_dict.get("expirationMonth")
-        exp_day_val = data_dict.get("expirationDay")
-        strike_val = data_dict.get("strikePrice")
-        contract_type_val = data_dict.get("contractType") # Should be "CALL" or "PUT"
+        exp_year = data_dict.get("expirationYear")
+        exp_month = data_dict.get("expirationMonth")
+        exp_day = data_dict.get("expirationDay")
+        strike = data_dict.get("strikePrice")
+        contract_type = data_dict.get("contractType")
 
-        if isinstance(exp_year_val, (int, float)) and isinstance(exp_month_val, (int, float)) and isinstance(exp_day_val, (int, float)):
+        if all(isinstance(v, (int, float)) for v in [exp_year, exp_month, exp_day]):
             try:
-                # Schwab API returns year as full year (e.g., 2024) or YY (e.g., 24). Standardize to YYYY.
-                year_prefix = "20" if exp_year_val < 100 else ""
-                parsed_expiration_date = f"{year_prefix}{int(exp_year_val):02d}-{int(exp_month_val):02d}-{int(exp_day_val):02d}"
-            except ValueError:
-                app_logger.warning(f"Could not format date from fields for key {contract_key_str}: Y={exp_year_val}, M={exp_month_val}, D={exp_day_val}")
+                year_prefix = "20" if exp_year < 100 else ""
+                parsed_expiration_date = f"{year_prefix}{int(exp_year):02d}-{int(exp_month):02d}-{int(exp_day):02d}"
+            except ValueError: app_logger.warning(f"StreamUpdate: Date format error for {contract_key_str}")
         
-        if isinstance(strike_val, (int, float)):
-            parsed_strike_price = strike_val
+        if isinstance(strike, (int, float)): parsed_strike_price = strike
         
-        if isinstance(contract_type_val, str):
-            if contract_type_val.upper() == "CALL" or contract_type_val.upper() == "C":
-                is_call = True
-            elif contract_type_val.upper() == "PUT" or contract_type_val.upper() == "P":
-                is_put = True
+        if isinstance(contract_type, str):
+            ct_upper = contract_type.upper()
+            if ct_upper == "CALL" or ct_upper == "C": is_call = True
+            elif ct_upper == "PUT" or ct_upper == "P": is_put = True
 
-        # Fallback to parsing from contract key if dedicated fields are missing/invalid or type is unknown
-        if parsed_expiration_date == "N/A" or parsed_strike_price == "N/A" or (not is_call and not is_put):
-            app_logger.debug(f"Parsing option key {contract_key_str} as fallback or for missing type/strike/exp.")
-            key_match = OPTION_KEY_REGEX.match(contract_key_str.replace(" ", "")) # Remove spaces for regex
+        if parsed_expiration_date == "N/A" or parsed_strike_price == "N/A" or not (is_call or is_put):
+            key_match = OPTION_KEY_REGEX.match(contract_key_str.replace(" ", ""))
             if key_match:
-                underlying, year_str, month_str, day_str, type_char, strike_str = key_match.groups()
-                if parsed_expiration_date == "N/A":
-                    parsed_expiration_date = f"20{year_str}-{month_str}-{day_str}"
-                if parsed_strike_price == "N/A":
-                    try:
-                        parsed_strike_price = float(strike_str) / 1000.0
-                    except ValueError:
-                        app_logger.warning(f"Could not parse strike from key {contract_key_str}")
-                if not is_call and not is_put:
-                    if type_char == "C": is_call = True
-                    if type_char == "P": is_put = True
-            else:
-                app_logger.warning(f"Could not parse option key {contract_key_str} with regex.")
-                # continue # Skip if key cannot be parsed at all for essential info
+                _, year_s, month_s, day_s, type_c, strike_s = key_match.groups()
+                if parsed_expiration_date == "N/A": parsed_expiration_date = f"20{year_s}-{month_s}-{day_s}"
+                if parsed_strike_price == "N/A": 
+                    try: parsed_strike_price = float(strike_s) / 1000.0
+                    except ValueError: app_logger.warning(f"StreamUpdate: Strike parse error from key {contract_key_str}")
+                if not (is_call or is_put):
+                    if type_c == "C": is_call = True
+                    if type_c == "P": is_put = True
+            else: app_logger.warning(f"StreamUpdate: Regex parse failed for key {contract_key_str}")
 
         option_item = {
-            "Expiration Date": parsed_expiration_date,
-            "Strike": parsed_strike_price,
-            "Last": data_dict.get("lastPrice", "N/A"),
-            "Bid": data_dict.get("bidPrice", "N/A"),
-            "Ask": data_dict.get("askPrice", "N/A"),
-            "Volume": data_dict.get("totalVolume", "N/A"),
+            "Expiration Date": parsed_expiration_date, "Strike": parsed_strike_price,
+            "Last": data_dict.get("lastPrice", "N/A"), "Bid": data_dict.get("bidPrice", "N/A"),
+            "Ask": data_dict.get("askPrice", "N/A"), "Volume": data_dict.get("totalVolume", "N/A"),
             "Open Interest": data_dict.get("openInterest", "N/A"),
             "Implied Volatility": f"{data_dict.get('volatility', 0) * 100:.2f}%" if pd.notna(data_dict.get('volatility')) else "N/A",
             "Delta": f"{data_dict.get('delta', 0):.4f}" if pd.notna(data_dict.get('delta')) else "N/A",
             "Gamma": f"{data_dict.get('gamma', 0):.4f}" if pd.notna(data_dict.get('gamma')) else "N/A",
             "Theta": f"{data_dict.get('theta', 0):.4f}" if pd.notna(data_dict.get('theta')) else "N/A",
-            "Vega": f"{data_dict.get('vega', 0):.4f}" if pd.notna(data_dict.get('vega')) else "N/A",        "Contract Key": contract_key_str
+            "Vega": f"{data_dict.get('vega', 0):.4f}" if pd.notna(data_dict.get('vega')) else "N/A",
+            "Contract Key": contract_key_str
         }
+        if is_call: calls_list.append(option_item)
+        elif is_put: puts_list.append(option_item)
 
-        if is_call:
-            calls_list.append(option_item)
-        elif is_put:
-            puts_list.append(option_item)
-        # else: # Log if neither call nor put, though should be rare if parsing works
-            # app_logger.warning(f"Option key {contract_key_str} is neither CALL nor PUT after parsing.")
-
-    # Sort by expiration date (ascending) and then strike price (ascending)
     calls_list.sort(key=lambda x: (x["Expiration Date"], x["Strike"] if isinstance(x["Strike"], (int, float)) else float("inf")))
     puts_list.sort(key=lambda x: (x["Expiration Date"], x["Strike"] if isinstance(x["Strike"], (int, float)) else float("inf")))
     
-    app_logger.info(f"Processed stream data: {len(calls_list)} calls, {len(puts_list)} puts for {selected_symbol}.")
-    return option_cols, calls_list, option_cols, puts_list, status_display, new_errors[:10]
+    app_logger.info(f"StreamUpdate: Processed: {len(calls_list)} calls, {len(puts_list)} puts for {selected_symbol}.")
+    return option_cols, calls_list, option_cols, puts_list, status_display, error_event_to_send
 
 
 if __name__ == "__main__":
-    app_logger.info("Starting Dash development server...")
-    # For development, you might need to set SCHWAB_ACCOUNT_HASH as an env var
-    # or ensure your .env file is loaded if you use python-dotenv in a wrapper script.
-    # Example: os.environ["SCHWAB_ACCOUNT_HASH"] = "YOUR_ACCOUNT_HASH_FOR_STREAMING"
+    app_logger.info("Starting Dash development server (refactored app)...")
+    # Ensure .env is loaded if running directly and it contains SCHWAB_API_KEY etc.
+    # from dotenv import load_dotenv
+    # load_dotenv()
     app.run(debug=True, host="0.0.0.0", port=8050, use_reloader=False)
+
+app_logger.info("Finished defining app structure and callbacks.")
+
