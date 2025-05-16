@@ -511,11 +511,11 @@ def update_options_chain_stream_data(n_intervals, selected_symbol, current_error
             "Ask": data_dict.get("askPrice", "N/A"),
             "Volume": data_dict.get("totalVolume", "N/A"),
             "Open Interest": data_dict.get("openInterest", "N/A"),
-            "Implied Volatility": f"{data_dict.get("volatility", 0) * 100:.2f}%" if pd.notna(data_dict.get("volatility")) else "N/A",
-            "Delta": f"{data_dict.get("delta", 0):.4f}" if pd.notna(data_dict.get("delta")) else "N/A",
-            "Gamma": f"{data_dict.get("gamma", 0):.4f}" if pd.notna(data_dict.get("gamma")) else "N/A",
-            "Theta": f"{data_dict.get("theta", 0):.4f}" if pd.notna(data_dict.get("theta")) else "N/A",
-            "Vega": f"{data_dict.get("vega", 0):.4f}" if pd.notna(data_dict.get("vega")) else "N/A",
+            "Implied Volatility": f"{data_dict.get('volatility', 0) * 100:.2f}%" if pd.notna(data_dict.get('volatility')) else "N/A",
+            "Delta": f"{data_dict.get('delta', 0):.4f}" if pd.notna(data_dict.get('delta')) else "N/A",
+            "Gamma": f"{data_dict.get(\'gamma\', 0):.4f}" if pd.notna(data_dict.get(\'gamma\')) else "N/A",
+            "Theta": f"{data_dict.get(\'theta\', 0):.4f}" if pd.notna(data_dict.get(\'theta\')) else "N/A",
+            "Vega": f"{data_dict.get(\'vega\', 0):.4f}" if pd.notna(data_dict.get(\'vega\')) else "N/A",
             "Contract Key": contract_key_str
         }
 

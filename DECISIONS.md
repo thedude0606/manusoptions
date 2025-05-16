@@ -382,3 +382,17 @@ This addition is crucial for providing user control over the streaming process, 
 - **Decision:** Standardize column names for OHLCV data to lowercase (e.g., 'open', 'high', 'low', 'close', 'volume') within the `technical_analysis.py` module and ensure `dashboard_utils.data_fetchers.py` provides data in this format with a `DatetimeIndex` (named 'timestamp').
   - **Rationale:** Consistency in column naming simplifies the TA calculation logic and reduces the risk of errors due to case sensitivity or different naming conventions. `data_fetchers.py` already provides data with a `timestamp` index and lowercase OHLCV columns, which `technical_analysis.py` now relies on.
 
+
+
+
+## Syntax Error Fix in `dashboard_app.py` (May 16, 2025)
+
+- **Decision:** Correct `SyntaxError: f-string: unmatched '('` in `dashboard_app.py`.
+  - **Rationale:** User reported a `SyntaxError` when running `dashboard_app.py` locally. The error was caused by using double quotes for dictionary keys within an f-string that was itself enclosed in double quotes. This is a common Python syntax issue.
+  - **Implementation Details:**
+    - The error occurred in the `update_options_chain_stream_data` callback when formatting strings for display in the options chain tables.
+    - Specifically, lines for "Implied Volatility", "Delta", "Gamma", "Theta", and "Vega" used `data_dict.get("key_name", ...)` within an f-string like `f"...{data_dict.get("volatility", 0)}..."`.
+    - The fix involved changing the inner double quotes around the key names (e.g., "volatility") to single quotes (e.g., 'volatility') within the `data_dict.get()` calls. For example:
+      `f"{data_dict.get('volatility', 0) * 100:.2f}%"` instead of `f"{data_dict.get("volatility", 0) * 100:.2f}%"`.
+    - This change was applied to all affected f-strings in that section of the code to ensure consistent and correct syntax.
+

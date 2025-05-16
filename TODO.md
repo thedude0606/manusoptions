@@ -19,11 +19,8 @@
   - [X] Structure the calculated TA values (latest values) into a list of dictionaries suitable for `dash_table.DataTable`.
   - [X] Update the `columns` and `data` properties of `tech-indicators-table` to display real data, replacing dummy data.
   - [X] Ensure columns are: "Indicator", "1min", "15min", "Hourly", "Daily".
-- [ ] **Update Documentation Files:** (In Progress)
-  - [ ] `DECISIONS.md`: Document architectural choices for TA integration.
-  - [ ] `PROGRESS.md`: Track completed features, WIP, issues, and next steps.
-  - [ ] `TODO.md`: Maintain this list of tasks.
-- [ ] **Testing:** (Not Started)
+- [X] **Fix `SyntaxError` in `dashboard_app.py` (f-string quotes):** (Completed)
+  - [X] Corrected nested quote usage in f-strings for 'Implied Volatility', 'Delta', 'Gamma', 'Theta', and 'Vega' fields in the `update_options_chain_stream_data` callback.
   - [ ] Test TA calculations for various symbols and timeframes.
   - [ ] Verify UI updates correctly and handles errors gracefully.
 - [ ] **Iterative GitHub Pushes:** (In Progress)
