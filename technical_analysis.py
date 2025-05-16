@@ -40,7 +40,8 @@ def calculate_rsi(df, period=14):
     loss = (-delta.where(delta < 0, 0)).rolling(window=period, min_periods=1).mean()
     
     # Avoid division by zero if loss is 0
-    rs = np.where(loss == 0, np.inf if gain > 0 else 0, gain / loss) # if gain > 0 and loss == 0, RSI is 100. if both 0, RSI is undefined (treat as 0 or 50, here 0 then 100-100/(1+0) = 0)
+    # Handle Series objects properly to avoid ambiguous truth value errors
+    rs = np.where(loss == 0, np.where(gain > 0, np.inf, 0), gain / loss) # if gain > 0 and loss == 0, RSI is 100. if both 0, RSI is undefined (treat as 0 or 50, here 0 then 100-100/(1+0) = 0)
     
     df[f"rsi_{period}"] = 100 - (100 / (1 + rs))
     df.loc[rs == np.inf, f"rsi_{period}"] = 100 # Handle case where loss is zero and gain is positive

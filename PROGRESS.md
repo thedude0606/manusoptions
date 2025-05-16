@@ -10,10 +10,13 @@
 - Investigated new error: `MinData-Format-SPY: Index is not DatetimeIndex after fetch.`
 - Identified the cause of the `DatetimeIndex` error in `dashboard_utils/data_fetchers.py` (timestamp column was converted to string and named 'Timestamp' instead of 'timestamp').
 - Fixed the `DatetimeIndex` error by ensuring the 'timestamp' column in `data_fetchers.py` remains a datetime object and is named 'timestamp' for consistency with `dashboard_app.py`.
+- Investigated new error: `The truth value of a Series is ambiguous` in RSI calculation.
+- Identified the cause of the Series truth value error in `technical_analysis.py` (improper handling of pandas Series in a conditional expression).
+- Fixed the Series truth value error by using nested `np.where` calls to properly handle Series objects in the RSI calculation.
 
 ## Current Work in Progress
 
-- Updating tracking files (PROGRESS.md, TODO.md, DECISIONS.md) with details of the `DatetimeIndex` fix.
+- Updating tracking files (PROGRESS.md, TODO.md, DECISIONS.md) with details of the RSI calculation fix.
 
 ## Known Issues/Challenges
 
@@ -21,6 +24,6 @@
 
 ## Next Steps
 
-- Test the fixes for both the `period_name` and `DatetimeIndex` errors.
+- Test the fixes for all identified errors.
 - Push changes to GitHub.
 - Report status to the user.

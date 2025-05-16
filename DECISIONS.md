@@ -35,3 +35,18 @@
         3. Updated the `columns_to_keep` list to use `"timestamp"`.
         4. Added a comment to emphasize that the `"timestamp"` column should remain a datetime object and string formatting should be handled by the consuming function if needed for display purposes.
     - **Rationale:** This change ensures that `get_minute_data` returns a DataFrame with a `"timestamp"` column containing datetime objects. This aligns with the expectations of `dashboard_app.py`, allowing it to correctly convert this column to a `DatetimeIndex` and perform further time-based operations or technical analysis calculations. Delaying string formatting to the presentation layer (e.g., just before displaying in a Dash table) is a better practice as it keeps the underlying data in its correct type for processing.
+
+
+- **Fix for `The truth value of a Series is ambiguous` Error in RSI Calculation (2025-05-16):**
+    - **Issue:** The application was throwing a `ValueError: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all()` error in the RSI calculation within `technical_analysis.py`. This occurred in the `calculate_rsi` function when attempting to use a pandas Series in a scalar context within a conditional expression.
+    - **Investigation:** The error was occurring at this line:
+      ```python
+      rs = np.where(loss == 0, np.inf if gain > 0 else 0, gain / loss)
+      ```
+      The issue is that `gain` is a pandas Series, but it's being used in a scalar context with the conditional expression `np.inf if gain > 0 else 0`. In pandas, you can't directly use a Series in an if-statement because it's ambiguous whether it should evaluate to True if any value is true, all values are true, etc.
+    - **Decision:** Modified the line to use nested `np.where` calls instead of the scalar conditional:
+      ```python
+      rs = np.where(loss == 0, np.where(gain > 0, np.inf, 0), gain / loss)
+      ```
+      This approach properly handles Series objects by using vectorized operations throughout, avoiding any ambiguous truth value evaluations.
+    - **Rationale:** The fix ensures that all operations on pandas Series objects use proper vectorized methods, avoiding the ambiguous truth value error. Using nested `np.where` calls is a common pattern for handling complex conditional logic with pandas Series objects, as it maintains the vectorized nature of the operations and avoids scalar context evaluations. This approach is more efficient and correctly handles element-wise operations on the Series data.
