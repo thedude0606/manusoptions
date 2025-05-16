@@ -321,19 +321,3 @@ if __name__ == '__main__':
             ta_logger.info("Daily TA Data (last 5 rows):\n%s", df_daily_ta.tail())
     else:
         ta_logger.warning("Daily aggregation resulted in empty data.")
-
-    ta_logger.info("\n--- Testing with insufficient data (RSI example) ---")
-    df_insufficient = df_minute_raw.head(5).copy()
-    df_insufficient_ta = calculate_rsi(df_insufficient, period=14)
-    ta_logger.info("RSI with insufficient data:\n%s", df_insufficient_ta)
-
-    ta_logger.info("\n--- Testing FVG with minimal data ---")
-    df_fvg_minimal = df_minute_raw.head(3).copy()
-    df_fvg_minimal_ta = identify_fair_value_gaps(df_fvg_minimal)
-    ta_logger.info("FVG with minimal data:\n%s", df_fvg_minimal_ta)
-
-    ta_logger.info("\n--- Testing with missing columns (MFI example) ---")
-    df_missing_cols = df_minute_raw[['open', 'close']].copy()
-    df_missing_cols_ta = calculate_mfi(df_missing_cols)
-    ta_logger.info("MFI with missing columns:\n%s", df_missing_cols_ta)
-
