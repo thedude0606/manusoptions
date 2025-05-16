@@ -4,6 +4,7 @@ import dash
 from dash import dcc, html, dash_table
 from dash.dependencies import Input, Output, State, ALL
 import pandas as pd
+import numpy as np # For NaN handling
 import datetime
 import os # For account ID
 import logging # For app-level logging
@@ -13,6 +14,8 @@ import re # For parsing option key
 # Import utility functions
 from dashboard_utils.data_fetchers import get_schwab_client, get_minute_data, get_options_chain_data, get_option_contract_keys
 from dashboard_utils.streaming_manager import StreamingManager
+# Import technical analysis functions
+from technical_analysis import aggregate_candles, calculate_all_technical_indicators
 
 # Configure basic logging for the app
 app_logger = logging.getLogger(__name__)
@@ -177,48 +180,173 @@ def update_minute_data_tab(selected_symbol, current_errors):
     global SCHWAB_CLIENT
     new_errors = list(current_errors) 
     client_to_use = SCHWAB_CLIENT
-
     timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     if not client_to_use:
+        app_logger.info(f"MinuteData: Schwab client not initialized for {selected_symbol}. Attempting to reinitialize.")
         client_to_use, client_err = get_schwab_client()
         if client_err:
             error_msg = f"{timestamp_str}: MinData: {client_err}"
+            app_logger.error(error_msg)
             new_errors.insert(0, error_msg)
             return [], [], new_errors[:10]
         SCHWAB_CLIENT = client_to_use
+        app_logger.info(f"MinuteData: Schwab client reinitialized successfully for {selected_symbol}.")
 
-    # Fetch up to 90 days of minute data
-    df, error = get_minute_data(client_to_use, selected_symbol, days_history=90)
+    app_logger.info(f"Fetching minute data for {selected_symbol}...")
+    df, error = get_minute_data(client_to_use, selected_symbol, days_history=90) # Fetches minute data
 
     if error:
         error_msg = f"{timestamp_str}: MinData for {selected_symbol}: {error}"
+        app_logger.error(error_msg)
         new_errors.insert(0, error_msg)
         return [], [], new_errors[:10]
     
     if df.empty:
+        app_logger.warning(f"No minute data returned for {selected_symbol}.")
         cols = [{"name": i, "id": i} for i in ["Timestamp", "Open", "High", "Low", "Close", "Volume"]]
         return cols, [], new_errors
 
-    cols = [{"name": i, "id": i} for i in df.columns]
-    data = df.to_dict("records")
+    app_logger.info(f"Successfully fetched {len(df)} rows of minute data for {selected_symbol}.")
+    # Ensure timestamp is the index and is datetime type for resampling
+    if "timestamp" in df.columns and not isinstance(df.index, pd.DatetimeIndex):
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        df = df.set_index("timestamp")
+    elif not isinstance(df.index, pd.DatetimeIndex):
+        app_logger.error(f"Minute data for {selected_symbol} does not have a DatetimeIndex.")
+        # Fallback or error handling if index is not datetime
+        error_msg = f"{timestamp_str}: MinData for {selected_symbol}: Index is not DatetimeIndex."
+        new_errors.insert(0, error_msg)
+        return [], [], new_errors[:10]
+
+    # Format for DataTable
+    df_display = df.reset_index() # Move timestamp from index to column for display
+    df_display["timestamp"] = df_display["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S") # Format datetime
+    
+    cols = [{"name": i, "id": i} for i in df_display.columns]
+    data = df_display.to_dict("records")
     return cols, data, new_errors
 
 @app.callback(
     Output("tech-indicators-table", "columns"),
     Output("tech-indicators-table", "data"),
+    Output("error-message-store", "data", allow_duplicate=True),
     Input("selected-symbol-store", "data"),
+    State("error-message-store", "data"),
     prevent_initial_call=True
 )
-def update_tech_indicators_tab(selected_symbol):
+def update_tech_indicators_tab(selected_symbol, current_errors):
     if not selected_symbol:
-        return [], []
-    dummy_cols = [{"name": i, "id": i} for i in ["Indicator", "1min", "15min", "1hour", "Daily"]]
-    dummy_data = pd.DataFrame({
-        "Indicator": ["SMA(20)", "RSI(14)"], 
-        "1min": [f"{selected_symbol}-val1", f"{selected_symbol}-val2"], 
-        "15min": [151.0, 48.0], "1hour": [155.0, 55.0], "Daily": [160.0, 60.0]
-    }).to_dict("records")
-    return dummy_cols, dummy_data
+        return [], [], current_errors
+
+    global SCHWAB_CLIENT
+    new_errors = list(current_errors)
+    client_to_use = SCHWAB_CLIENT
+    timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    output_cols = [{"name": i, "id": i} for i in ["Indicator", "1min", "15min", "Hourly", "Daily"]]
+
+    if not client_to_use:
+        app_logger.info(f"TechIndicators: Schwab client not initialized for {selected_symbol}. Attempting to reinitialize.")
+        client_to_use, client_err = get_schwab_client()
+        if client_err:
+            error_msg = f"{timestamp_str}: TechInd: Client init error - {client_err}"
+            app_logger.error(error_msg)
+            new_errors.insert(0, error_msg)
+            return output_cols, [], new_errors[:10]
+        SCHWAB_CLIENT = client_to_use
+        app_logger.info(f"TechIndicators: Schwab client reinitialized successfully for {selected_symbol}.")
+
+    app_logger.info(f"Fetching minute data for Technical Indicators for {selected_symbol}...")
+    # df_minute_raw has 'open', 'high', 'low', 'close', 'volume' columns and 'timestamp' as DatetimeIndex
+    df_minute_raw, error = get_minute_data(client_to_use, selected_symbol, days_history=90) 
+
+    if error:
+        error_msg = f"{timestamp_str}: TechInd data fetch for {selected_symbol}: {error}"
+        app_logger.error(error_msg)
+        new_errors.insert(0, error_msg)
+        return output_cols, [], new_errors[:10]
+    
+    if df_minute_raw.empty:
+        app_logger.warning(f"No minute data returned for {selected_symbol} to calculate Technical Indicators.")
+        # Return empty table with headers but add a message to errors?
+        # error_msg = f"{timestamp_str}: TechInd: No data for {selected_symbol}."
+        # new_errors.insert(0, error_msg)
+        return output_cols, [], new_errors
+    
+    app_logger.info(f"Successfully fetched {len(df_minute_raw)} minute candles for {selected_symbol} for TA.")
+
+    # Ensure df_minute_raw has DatetimeIndex named 'timestamp'
+    # get_minute_data should already handle this by setting 'timestamp' as index.
+    if not isinstance(df_minute_raw.index, pd.DatetimeIndex):
+        if 'timestamp' in df_minute_raw.columns:
+            try:
+                df_minute_raw['timestamp'] = pd.to_datetime(df_minute_raw['timestamp'])
+                df_minute_raw = df_minute_raw.set_index('timestamp')
+                app_logger.info(f"TechInd: Converted 'timestamp' column to DatetimeIndex for {selected_symbol}.")
+            except Exception as e:
+                error_msg = f"{timestamp_str}: TechInd: Failed to convert 'timestamp' to DatetimeIndex for {selected_symbol}: {e}"
+                app_logger.error(error_msg)
+                new_errors.insert(0, error_msg)
+                return output_cols, [], new_errors[:10]
+        else:
+            error_msg = f"{timestamp_str}: TechInd: Minute data for {selected_symbol} missing 'timestamp' column or DatetimeIndex."
+            app_logger.error(error_msg)
+            new_errors.insert(0, error_msg)
+            return output_cols, [], new_errors[:10]
+
+    # --- Data Aggregation ---
+    app_logger.info(f"Aggregating data for {selected_symbol}...")
+    df_15min_raw = aggregate_candles(df_minute_raw.copy(), rule="15min")
+    df_hourly_raw = aggregate_candles(df_minute_raw.copy(), rule="H")
+    df_daily_raw = aggregate_candles(df_minute_raw.copy(), rule="D")
+    app_logger.info(f"Aggregation complete for {selected_symbol}. 1min: {len(df_minute_raw)}, 15min: {len(df_15min_raw)}, Hourly: {len(df_hourly_raw)}, Daily: {len(df_daily_raw)} rows.")
+
+    # --- Calculate Technical Indicators for each timeframe ---
+    app_logger.info(f"Calculating TA for {selected_symbol} across timeframes...")
+    df_1min_ta = calculate_all_technical_indicators(df_minute_raw.copy(), symbol=f"{selected_symbol}_1min")
+    df_15min_ta = calculate_all_technical_indicators(df_15min_raw.copy(), symbol=f"{selected_symbol}_15min")
+    df_hourly_ta = calculate_all_technical_indicators(df_hourly_raw.copy(), symbol=f"{selected_symbol}_hourly")
+    df_daily_ta = calculate_all_technical_indicators(df_daily_raw.copy(), symbol=f"{selected_symbol}_daily")
+    app_logger.info(f"TA calculation complete for {selected_symbol}.")
+
+    # --- Prepare data for the table ---
+    indicators_to_display = {
+        "BB Mid (20)": "bb_middle_20",
+        "BB Upper (20)": "bb_upper_20",
+        "BB Lower (20)": "bb_lower_20",
+        "RSI (14)": "rsi_14",
+        "MACD": "macd",
+        "MACD Signal": "macd_signal",
+        "MACD Hist": "macd_hist",
+        "IMI (14)": "imi_14",
+        "MFI (14)": "mfi_14",
+        # Add FVG if simple representation is possible, otherwise might need specific handling
+        # For now, FVG produces multiple columns (top/bottom), not a single value per candle easily shown here.
+        # We can show if the *last* candle confirmed an FVG, for example.
+    }
+
+    table_data = []
+    timeframe_dfs = {
+        "1min": df_1min_ta,
+        "15min": df_15min_ta,
+        "Hourly": df_hourly_ta,
+        "Daily": df_daily_ta
+    }
+
+    for display_name, col_name in indicators_to_display.items():
+        row_data = {"Indicator": display_name}
+        for tf_label, df_ta in timeframe_dfs.items():
+            val = "N/A"
+            if not df_ta.empty and col_name in df_ta.columns and not df_ta[col_name].empty:
+                last_val = df_ta[col_name].iloc[-1]
+                if pd.notna(last_val):
+                    val = f"{last_val:.2f}" if isinstance(last_val, (float, np.floating)) else str(last_val)
+            row_data[tf_label] = val
+        table_data.append(row_data)
+    
+    app_logger.info(f"Formatted TA data for {selected_symbol} table: {len(table_data)} indicators.")
+    return output_cols, table_data, new_errors
+
 
 @app.callback(
     Output("current-option-keys-store", "data"),
@@ -313,8 +441,9 @@ def update_options_chain_stream_data(n_intervals, selected_symbol, current_error
     latest_stream_data = STREAMING_MANAGER.get_latest_data()
     app_logger.info(f"Fetched {len(latest_stream_data)} items from STREAMING_MANAGER.get_latest_data().")
     if latest_stream_data and n_intervals % 5 == 0: # Log a sample periodically
-        sample_key = list(latest_stream_data.keys())[0]
-        app_logger.debug(f"Sample data item (key: {sample_key}) from stream store: {json.dumps(latest_stream_data[sample_key], indent=2)}")
+        if latest_stream_data:
+            sample_key = list(latest_stream_data.keys())[0]
+            app_logger.debug(f"Sample data item (key: {sample_key}) from stream store: {json.dumps(latest_stream_data[sample_key], indent=2)}")
     
     calls_list = []
     puts_list = []
@@ -335,53 +464,46 @@ def update_options_chain_stream_data(n_intervals, selected_symbol, current_error
         exp_month_val = data_dict.get("expirationMonth")
         exp_day_val = data_dict.get("expirationDay")
         strike_val = data_dict.get("strikePrice")
-        contract_type_val = data_dict.get("contractType")
+        contract_type_val = data_dict.get("contractType") # Should be "CALL" or "PUT"
 
         if isinstance(exp_year_val, (int, float)) and isinstance(exp_month_val, (int, float)) and isinstance(exp_day_val, (int, float)):
             try:
-                parsed_expiration_date = f"20{int(exp_year_val):02d}-{int(exp_month_val):02d}-{int(exp_day_val):02d}"
+                # Schwab API returns year as full year (e.g., 2024) or YY (e.g., 24). Standardize to YYYY.
+                year_prefix = "20" if exp_year_val < 100 else ""
+                parsed_expiration_date = f"{year_prefix}{int(exp_year_val):02d}-{int(exp_month_val):02d}-{int(exp_day_val):02d}"
             except ValueError:
                 app_logger.warning(f"Could not format date from fields for key {contract_key_str}: Y={exp_year_val}, M={exp_month_val}, D={exp_day_val}")
         
         if isinstance(strike_val, (int, float)):
             parsed_strike_price = strike_val
         
-        if contract_type_val == "CALL" or contract_type_val == "C":
-            is_call = True
-        elif contract_type_val == "PUT" or contract_type_val == "P":
-            is_put = True
+        if isinstance(contract_type_val, str):
+            if contract_type_val.upper() == "CALL" or contract_type_val.upper() == "C":
+                is_call = True
+            elif contract_type_val.upper() == "PUT" or contract_type_val.upper() == "P":
+                is_put = True
 
         # Fallback to parsing from contract key if dedicated fields are missing/invalid or type is unknown
         if parsed_expiration_date == "N/A" or parsed_strike_price == "N/A" or (not is_call and not is_put):
+            app_logger.debug(f"Parsing option key {contract_key_str} as fallback or for missing type/strike/exp.")
             key_match = OPTION_KEY_REGEX.match(contract_key_str.replace(" ", "")) # Remove spaces for regex
             if key_match:
+                underlying, year_str, month_str, day_str, type_char, strike_str = key_match.groups()
                 if parsed_expiration_date == "N/A":
-                    year, month, day = key_match.group(2), key_match.group(3), key_match.group(4)
-                    parsed_expiration_date = f"20{year}-{month}-{day}"
-                
+                    parsed_expiration_date = f"20{year_str}-{month_str}-{day_str}"
                 if parsed_strike_price == "N/A":
                     try:
-                        parsed_strike_price = float(key_match.group(6)) / 1000.0
+                        parsed_strike_price = float(strike_str) / 1000.0
                     except ValueError:
                         app_logger.warning(f"Could not parse strike from key {contract_key_str}")
-                
                 if not is_call and not is_put:
-                    type_char = key_match.group(5)
-                    if type_char == "C":
-                        is_call = True
-                    elif type_char == "P":
-                        is_put = True
+                    if type_char == "C": is_call = True
+                    if type_char == "P": is_put = True
             else:
-                if n_intervals % 10 == 1: # Log periodically
-                    app_logger.warning(f"Could not parse option key {contract_key_str} with regex. Date/Strike/Type might be N/A.")
+                app_logger.warning(f"Could not parse option key {contract_key_str} with regex.")
+                # continue # Skip if key cannot be parsed at all for essential info
 
-        if not is_call and not is_put:
-            # If still unknown, log and skip (or assign to a default list if necessary)
-            if n_intervals % 10 == 1: # Log periodically
-                app_logger.warning(f"Final check: Could not determine contract type for key: {contract_key_str}. Skipping.")
-            continue
-
-        record = {
+        option_item = {
             "Expiration Date": parsed_expiration_date,
             "Strike": parsed_strike_price,
             "Last": data_dict.get("lastPrice", "N/A"),
@@ -389,23 +511,33 @@ def update_options_chain_stream_data(n_intervals, selected_symbol, current_error
             "Ask": data_dict.get("askPrice", "N/A"),
             "Volume": data_dict.get("totalVolume", "N/A"),
             "Open Interest": data_dict.get("openInterest", "N/A"),
-            "Implied Volatility": data_dict.get("volatility", "N/A"),
-            "Delta": data_dict.get("delta", "N/A"),
-            "Gamma": data_dict.get("gamma", "N/A"),
-            "Theta": data_dict.get("theta", "N/A"),
-            "Vega": data_dict.get("vega", "N/A"),
+            "Implied Volatility": f"{data_dict.get("volatility", 0) * 100:.2f}%" if pd.notna(data_dict.get("volatility")) else "N/A",
+            "Delta": f"{data_dict.get("delta", 0):.4f}" if pd.notna(data_dict.get("delta")) else "N/A",
+            "Gamma": f"{data_dict.get("gamma", 0):.4f}" if pd.notna(data_dict.get("gamma")) else "N/A",
+            "Theta": f"{data_dict.get("theta", 0):.4f}" if pd.notna(data_dict.get("theta")) else "N/A",
+            "Vega": f"{data_dict.get("vega", 0):.4f}" if pd.notna(data_dict.get("vega")) else "N/A",
             "Contract Key": contract_key_str
         }
 
         if is_call:
-            calls_list.append(record)
+            calls_list.append(option_item)
         elif is_put:
-            puts_list.append(record)
+            puts_list.append(option_item)
+        # else: # Log if neither call nor put, though should be rare if parsing works
+            # app_logger.warning(f"Option key {contract_key_str} is neither CALL nor PUT after parsing.")
 
-    app_logger.info(f"Processed {len(calls_list)} calls and {len(puts_list)} puts for UI update.")
+    # Sort by expiration date (ascending) and then strike price (ascending)
+    calls_list.sort(key=lambda x: (x["Expiration Date"], x["Strike"] if isinstance(x["Strike"], (int, float)) else float("inf")))
+    puts_list.sort(key=lambda x: (x["Expiration Date"], x["Strike"] if isinstance(x["Strike"], (int, float)) else float("inf")))
+    
+    app_logger.info(f"Processed stream data: {len(calls_list)} calls, {len(puts_list)} puts for {selected_symbol}.")
     return option_cols, calls_list, option_cols, puts_list, status_display, new_errors[:10]
 
-# --- Main Execution --- 
+
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=8050)
+    app_logger.info("Starting Dash development server...")
+    # For development, you might need to set SCHWAB_ACCOUNT_HASH as an env var
+    # or ensure your .env file is loaded if you use python-dotenv in a wrapper script.
+    # Example: os.environ["SCHWAB_ACCOUNT_HASH"] = "YOUR_ACCOUNT_HASH_FOR_STREAMING"
+    app.run_server(debug=True, host="0.0.0.0", port=8050)
 

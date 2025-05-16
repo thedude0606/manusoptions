@@ -348,3 +348,37 @@ This addition is crucial for providing user control over the streaming process, 
 - **Decision:** Standardize the structure of TA calculation functions to include checks for necessary columns and sufficient data length, returning the DataFrame with NaN columns for the indicator if prerequisites are not met.
   - **Rationale:** To make the TA functions more robust and prevent crashes when input data is incomplete or insufficient for a given calculation period. This also ensures that the output DataFrame always contains the expected indicator columns, even if they are populated with NaNs.
 
+
+
+
+## Technical Analysis Integration (May 16, 2025)
+
+- **Decision:** Refactor `technical_analysis.py` to decouple TA calculation logic from file I/O and specific symbols, making it usable as a library module within the dashboard.
+  - **Rationale:** The original `technical_analysis.py` was designed as a standalone script with hardcoded file paths (e.g., for AAPL data) and direct file reading/writing operations. To integrate with `dashboard_app.py`, the TA functions needed to:
+    1. Accept Pandas DataFrames as input (containing OHLCV data).
+    2. Return DataFrames enriched with TA indicator columns.
+    3. Remove all direct file operations (loading from JSON, saving to JSON).
+    4. Be callable by the dashboard application for any selected symbol and timeframe.
+  - **Implementation Details:**
+    - All TA calculation functions (e.g., `calculate_bollinger_bands`, `calculate_rsi`, `calculate_macd`, `calculate_imi`, `calculate_mfi`, `identify_fair_value_gaps`) were modified to take a DataFrame as the primary argument and return the modified DataFrame.
+    - A new helper function `calculate_all_technical_indicators(df, symbol)` was created to apply all standard indicators to a given DataFrame.
+    - A generic `aggregate_candles(df, rule, ohlc_col_names=None)` function was implemented (refining the previous `aggregate_to_15_min`) to resample minute data into any target timeframe (15-min, hourly, daily) required by the dashboard. This function expects a DatetimeIndex.
+    - Logging was added using the `logging` module for better traceability within the TA calculations.
+    - The `main()` function and example usage within `technical_analysis.py` were kept for standalone testing but are not used by the dashboard.
+
+- **Decision:** Integrate real-time technical indicator calculations into the "Technical Indicators" tab of `dashboard_app.py`.
+  - **Rationale:** The existing technical indicators tab displayed static dummy data. The goal was to replace this with dynamically calculated indicators based on the selected stock symbol and various timeframes (1-minute, 15-minute, hourly, daily).
+  - **Implementation Details (`update_tech_indicators_tab` callback):
+    1.  **Data Fetching:** When a symbol is selected, the callback fetches up to 90 days of minute-resolution historical price data using `get_minute_data` from `dashboard_utils.data_fetchers.py`. This raw minute data serves as the base for all timeframes.
+    2.  **Data Aggregation:** The fetched minute data (which should have a DatetimeIndex) is aggregated into 15-minute, hourly, and daily candles using the `aggregate_candles` function from the refactored `technical_analysis.py`.
+    3.  **TA Calculation:** The `calculate_all_technical_indicators` function from `technical_analysis.py` is called for each of the four DataFrames (1-min, 15-min, hourly, daily) to compute all defined indicators (Bollinger Bands, RSI, MACD, IMI, MFI, FVG).
+    4.  **Data Formatting for UI:** The latest calculated value for each indicator and timeframe is extracted. These values are then structured into a list of dictionaries, where each dictionary represents a row in the UI table (e.g., `{"Indicator": "RSI (14)", "1min": "55.20", "15min": "58.10", ...}`). Values are formatted to two decimal places where appropriate. If an indicator cannot be calculated (e.g., due to insufficient data), "N/A" is displayed.
+    5.  **UI Update:** The `columns` and `data` properties of the `tech-indicators-table` (a `dash_table.DataTable`) are updated with the newly formatted real TA data.
+    6.  **Error Handling & Logging:** The callback includes logging for each step (data fetching, aggregation, TA calculation, formatting). It also attempts to reinitialize the Schwab client if not available and passes error messages to the `error-message-store` for display in the UI.
+
+- **Decision:** Display the latest value of each technical indicator for each timeframe in the UI table.
+  - **Rationale:** For a summary table, displaying the most recent indicator value provides an immediate snapshot of the current technical situation across different perspectives. Displaying full historical TA data would require charts or more complex table structures, which can be a future enhancement.
+
+- **Decision:** Standardize column names for OHLCV data to lowercase (e.g., 'open', 'high', 'low', 'close', 'volume') within the `technical_analysis.py` module and ensure `dashboard_utils.data_fetchers.py` provides data in this format with a `DatetimeIndex` (named 'timestamp').
+  - **Rationale:** Consistency in column naming simplifies the TA calculation logic and reduces the risk of errors due to case sensitivity or different naming conventions. `data_fetchers.py` already provides data with a `timestamp` index and lowercase OHLCV columns, which `technical_analysis.py` now relies on.
+

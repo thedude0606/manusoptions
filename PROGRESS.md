@@ -2,7 +2,7 @@
 
 This document tracks the progress of the Manus Options project.
 
-## Completed Features/Tasks (as of 2025-05-15)
+## Completed Features/Tasks (as of 2025-05-16)
 
 *   Initial repository setup and cloning.
 *   Resolved `ModuleNotFoundError: No module named \'schwabdev.streamer_client\'`.
@@ -20,33 +20,51 @@ This document tracks the progress of the Manus Options project.
 *   Fixed f-string `SyntaxError` in `StreamingManager`.
 *   Addressed dashboard data formatting issues (partial).
 *   Fixed `ObsoleteAttributeException` by updating `app.run_server` to `app.run` in `dashboard_app.py`.
-*   **Reviewed existing project codebase and documentation (DECISIONS.md, TODO.md, PROGRESS.md).**
-*   **Analyzed Schwabdev example project and its documentation for API authentication and data streaming best practices.**
-*   **Planned next development steps based on review and analysis.**
-*   **Created `requirements.txt` file, documenting all Python dependencies for the project.**
-*   **Implemented Bollinger Bands (BB) calculation logic in `technical_analysis.py`.**
-*   **Verified existing Relative Strength Index (RSI) calculation logic in `technical_analysis.py` as complete and functional.**
-*   **Verified existing Moving Average Convergence Divergence (MACD) calculation logic in `technical_analysis.py` as complete and functional (supports customizable EMAs and signal line).**
-*   **Implemented and validated Intraday Momentum Index (IMI) calculation logic in `technical_analysis.py` (supports customizable period).**
-*   **Implemented and validated Money Flow Index (MFI) calculation logic in `technical_analysis.py` (customizable period, volume-weighted RSI).**
-*   **Refactored `technical_analysis.py` to ensure correct function definitions, order, and parameter usage for all TA indicators.**
-*   **Generated sample data files (minute, hourly, daily for AAPL) using YahooFinance API to enable local testing of `technical_analysis.py`.**
+*   Reviewed existing project codebase and documentation (DECISIONS.md, TODO.md, PROGRESS.md).
+*   Analyzed Schwabdev example project and its documentation for API authentication and data streaming best practices.
+*   Planned next development steps based on review and analysis.
+*   Created `requirements.txt` file, documenting all Python dependencies for the project.
+*   Implemented Bollinger Bands (BB) calculation logic in `technical_analysis.py`.
+*   Verified existing Relative Strength Index (RSI) calculation logic in `technical_analysis.py` as complete and functional.
+*   Verified existing Moving Average Convergence Divergence (MACD) calculation logic in `technical_analysis.py` as complete and functional (supports customizable EMAs and signal line).
+*   Implemented and validated Intraday Momentum Index (IMI) calculation logic in `technical_analysis.py` (supports customizable period).
+*   Implemented and validated Money Flow Index (MFI) calculation logic in `technical_analysis.py` (customizable period, volume-weighted RSI).
+*   **Refactored `technical_analysis.py`:** (Completed)
+    *   Modified TA calculation functions (BB, RSI, MACD, IMI, MFI, FVG) to accept a Pandas DataFrame and symbol as input.
+    *   Ensured functions return DataFrames with new indicator columns.
+    *   Removed AAPL-specific hardcoding and file I/O dependencies for dashboard integration.
+    *   Created a helper function `calculate_all_technical_indicators` to apply all indicators to a given DataFrame.
+    *   Implemented a generic `aggregate_candles` function for resampling timeframes.
+*   **Integrated Technical Analysis into `dashboard_app.py`:** (Completed)
+    *   In `update_tech_indicators_tab` callback, implemented fetching of minute data for the selected symbol.
+    *   Implemented logic to aggregate minute data into 1-minute, 15-minute, hourly, and daily DataFrames using `aggregate_candles`.
+    *   Called refactored TA functions from `technical_analysis.py` for each aggregated DataFrame.
+    *   Handled cases with insufficient data (TA functions return NaNs, UI displays "N/A").
+    *   Structured calculated TA values (latest values) for display in `dash_table.DataTable`.
+    *   Updated `tech-indicators-table` to display real data, replacing dummy data, with columns: "Indicator", "1min", "15min", "Hourly", "Daily".
+*   **Updated Documentation Files:** (Completed for this phase)
+    *   `DECISIONS.md`: Documented architectural choices for TA integration.
+    *   `PROGRESS.md`: Updated to reflect current status.
+    *   `TODO.md`: Updated task statuses.
 
 *(For a detailed list of all completed sub-tasks, please refer to the `TODO.md` file.)*
 
 ## Current Work In Progress
 
-*   **Documentation Update:** Finalizing updates to `PROGRESS.md`, `TODO.md`, and `DECISIONS.md` after recent TA feature completion.
-*   **Preparation for Next Development Cycle:** Planning implementation of user customization for TA parameters and Fair Value Gaps (FVG).
+*   Preparing for the next phase of development (e.g., user customization of TA parameters, FVG display enhancements).
 
 ## Known Issues or Challenges
 
 *   **Pandas FutureWarning:** The `technical_analysis.py` script currently shows `FutureWarning` messages from pandas related to dtype compatibility when setting boolean values for FVG. This does not currently block functionality but should be addressed in the future for cleaner execution and to prevent potential issues with future pandas versions.
 *   **RSI Customization:** The existing RSI function in `technical_analysis.py` does not currently support customizable overbought/oversold levels directly as parameters. This can be considered for future enhancement.
+*   **FVG Display:** Fair Value Gaps (FVG) currently produce multiple columns (`fvg_bullish_top`, `fvg_bullish_bottom`, etc.) in the backend. The UI table shows "N/A" for FVG as a simple representation of the latest FVG status (e.g., if the last candle confirmed one) is not yet implemented in the table formatting logic. This requires further design for effective UI display.
+*   **Error Display in UI:** While errors are logged and some are passed to the `error-message-store`, the display and granularity of errors related to TA calculation in the UI could be improved.
 
 ## Next Steps
 
-1.  **Push all updated documentation files (`PROGRESS.md`, `TODO.md`, `DECISIONS.md`) to the GitHub repository.**
-2.  **Notify user of the progress, including the successful implementation and testing of IMI and MFI, and the push of these updates.**
-3.  **Continue with Phase 2: Options Recommendation Platform Features** as outlined in `TODO.md`, starting with developing a system for users to customize parameters for all indicators and then implementing Fair Value Gaps (FVG) logic.
+1.  **Push all updated code and documentation files (`PROGRESS.md`, `TODO.md`, `DECISIONS.md`, `technical_analysis.py`, `dashboard_app.py`) to the GitHub repository.**
+2.  **Notify user of the progress, including the successful integration of technical analysis into the dashboard, and the push of these updates.**
+3.  **Address known issues, particularly FVG display and enhanced error handling in the UI.**
+4.  **Begin work on user customization for TA parameters.**
+5.  **Continue with Phase 2: Options Recommendation Platform Features** as outlined in `TODO.md` (if applicable after addressing immediate enhancements).
 

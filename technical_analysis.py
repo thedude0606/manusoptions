@@ -1,49 +1,28 @@
-import json
+# technical_analysis.py
 import pandas as pd
 import numpy as np
+import logging
 
-# Define input file paths (assuming AAPL for now, can be parameterized later)
-MINUTE_DATA_FILE = "AAPL_minute_data_last_90_days.json"
-HOURLY_DATA_FILE = "AAPL_hourly_data_last_90_days.json"
-DAILY_DATA_FILE = "AAPL_daily_data_last_90_days.json"
-
-# Output files for data with TA
-MINUTE_DATA_WITH_TA_FILE = "AAPL_minute_data_with_ta.json"
-HOURLY_DATA_WITH_TA_FILE = "AAPL_hourly_data_with_ta.json"
-DAILY_DATA_WITH_TA_FILE = "AAPL_daily_data_with_ta.json"
-# We also need 15-minute data for TA. We will aggregate this from minute data.
-FIFTEEN_MINUTE_DATA_FILE = "AAPL_15_minute_data_last_90_days.json"
-FIFTEEN_MINUTE_DATA_WITH_TA_FILE = "AAPL_15_minute_data_with_ta.json"
-
-def load_candles(file_path):
-    try:
-        with open(file_path, "r") as f:
-            data = json.load(f)
-        if "candles" not in data or not data["candles"]:
-            print(f"No candles found in {file_path}")
-            return pd.DataFrame()
-        df = pd.DataFrame(data["candles"])
-        df["datetime"] = pd.to_datetime(df["datetime"], unit="ms", utc=True)
-        df = df.set_index("datetime")
-        # Ensure correct data types
-        for col in ["open", "high", "low", "close", "volume"]:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
-    except Exception as e:
-        print(f"Error loading or processing {file_path}: {e}")
-        return pd.DataFrame() 
-    return df
+# Configure basic logging for the module
+ta_logger = logging.getLogger(__name__)
+if not ta_logger.hasHandlers():
+    ta_handler = logging.StreamHandler()
+    ta_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    ta_handler.setFormatter(ta_formatter)
+    ta_logger.addHandler(ta_handler)
+ta_logger.setLevel(logging.INFO)
 
 def calculate_bollinger_bands(df, window=20, num_std_dev=2):
+    """Calculates Bollinger Bands."""
     if 'close' not in df.columns or len(df) < window:
-        print(f"DataFrame length {len(df)} is less than window {window} or 'close' column missing for Bollinger Bands.")
+        ta_logger.warning(f"BBands: DataFrame length {len(df)} is less than window {window} or 'close' column missing.")
         df[f'bb_middle_{window}'] = np.nan
         df[f'bb_upper_{window}'] = np.nan
         df[f'bb_lower_{window}'] = np.nan
         return df
     
-    rolling_mean = df['close'].rolling(window=window).mean()
-    rolling_std = df['close'].rolling(window=window).std()
+    rolling_mean = df['close'].rolling(window=window, min_periods=1).mean()
+    rolling_std = df['close'].rolling(window=window, min_periods=1).std()
 
     df[f'bb_middle_{window}'] = rolling_mean
     df[f'bb_upper_{window}'] = rolling_mean + (rolling_std * num_std_dev)
@@ -51,32 +30,45 @@ def calculate_bollinger_bands(df, window=20, num_std_dev=2):
     return df
 
 def calculate_rsi(df, period=14):
-    if 'close' not in df.columns or len(df) < period:
+    """Calculates Relative Strength Index (RSI)."""
+    if 'close' not in df.columns or len(df) < period + 1: # RSI needs at least period+1 to calculate diff then roll
+        ta_logger.warning(f"RSI: DataFrame length {len(df)} is less than period {period}+1 or 'close' column missing.")
+        df[f"rsi_{period}"] = np.nan
         return df
     delta = df["close"].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    rs = gain / loss
+    gain = (delta.where(delta > 0, 0)).rolling(window=period, min_periods=1).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period, min_periods=1).mean()
+    
+    # Avoid division by zero if loss is 0
+    rs = np.where(loss == 0, np.inf if gain > 0 else 0, gain / loss) # if gain > 0 and loss == 0, RSI is 100. if both 0, RSI is undefined (treat as 0 or 50, here 0 then 100-100/(1+0) = 0)
+    
     df[f"rsi_{period}"] = 100 - (100 / (1 + rs))
+    df.loc[rs == np.inf, f"rsi_{period}"] = 100 # Handle case where loss is zero and gain is positive
     return df
 
 def calculate_macd(df, short_window=12, long_window=26, signal_window=9):
+    """Calculates Moving Average Convergence Divergence (MACD)."""
     if 'close' not in df.columns or len(df) < long_window:
+        ta_logger.warning(f"MACD: DataFrame length {len(df)} is less than long_window {long_window} or 'close' column missing.")
+        df["macd"] = np.nan
+        df["macd_signal"] = np.nan
+        df["macd_hist"] = np.nan
         return df
-    short_ema = df["close"].ewm(span=short_window, adjust=False).mean()
-    long_ema = df["close"].ewm(span=long_window, adjust=False).mean()
+    short_ema = df["close"].ewm(span=short_window, adjust=False, min_periods=1).mean()
+    long_ema = df["close"].ewm(span=long_window, adjust=False, min_periods=1).mean()
     df["macd"] = short_ema - long_ema
-    df["macd_signal"] = df["macd"].ewm(span=signal_window, adjust=False).mean()
+    df["macd_signal"] = df["macd"].ewm(span=signal_window, adjust=False, min_periods=1).mean()
     df["macd_hist"] = df["macd"] - df["macd_signal"]
     return df
 
 def calculate_imi(df, period=14):
+    """Calculates Intraday Momentum Index (IMI)."""
     if not all(col in df.columns for col in ["open", "close"]):
-        print("IMI calculation requires 'open' and 'close' columns.")
+        ta_logger.warning("IMI: Requires 'open' and 'close' columns.")
         df[f"imi_{period}"] = np.nan
         return df
     if len(df) < period:
-        print(f"Not enough data to calculate IMI for period {period}. Need {period} rows, got {len(df)}.")
+        ta_logger.warning(f"IMI: Not enough data for period {period}. Need {period} rows, got {len(df)}.")
         df[f"imi_{period}"] = np.nan
         return df
 
@@ -89,18 +81,19 @@ def calculate_imi(df, period=14):
     sum_losses = losses.rolling(window=period, min_periods=1).sum()
 
     denominator = sum_gains + sum_losses
-    imi = np.where(denominator == 0, 50.0, (sum_gains / denominator) * 100)
+    imi_values = np.where(denominator == 0, 50.0, (sum_gains / denominator) * 100)
     
-    df[f"imi_{period}"] = imi
+    df[f"imi_{period}"] = imi_values
     return df
 
 def calculate_mfi(df, period=14):
+    """Calculates Money Flow Index (MFI)."""
     if not all(col in df.columns for col in ["high", "low", "close", "volume"]):
-        print("MFI calculation requires 'high', 'low', 'close', and 'volume' columns.")
+        ta_logger.warning("MFI: Requires 'high', 'low', 'close', and 'volume' columns.")
         df[f"mfi_{period}"] = np.nan
         return df
-    if len(df) < period + 1:
-        print(f"Not enough data to calculate MFI for period {period}. Need {period+1} rows, got {len(df)}.")
+    if len(df) < period + 1: # MFI uses typical_price.diff(), so needs period+1
+        ta_logger.warning(f"MFI: Not enough data for period {period}. Need {period+1} rows, got {len(df)}.")
         df[f"mfi_{period}"] = np.nan
         return df
 
@@ -109,121 +102,237 @@ def calculate_mfi(df, period=14):
     money_flow_direction = typical_price.diff()
 
     positive_money_flow = raw_money_flow.copy()
-    positive_money_flow[money_flow_direction <= 0] = 0
+    # Shift money_flow_direction to align with raw_money_flow for correct masking
+    positive_money_flow[money_flow_direction.shift(-1) <= 0] = 0 
 
     negative_money_flow = raw_money_flow.copy()
-    negative_money_flow[money_flow_direction > 0] = 0
+    negative_money_flow[money_flow_direction.shift(-1) > 0] = 0
 
     sum_positive_money_flow = positive_money_flow.rolling(window=period, min_periods=1).sum()
     sum_negative_money_flow = negative_money_flow.rolling(window=period, min_periods=1).sum()
 
     money_flow_ratio = np.where(sum_negative_money_flow == 0, np.inf, sum_positive_money_flow / sum_negative_money_flow)
+    # Handle cases where both are zero, MFR should be 1 (leading to MFI of 50)
     money_flow_ratio = np.where((sum_positive_money_flow == 0) & (sum_negative_money_flow == 0), 1, money_flow_ratio)
 
-    mfi = 100 - (100 / (1 + money_flow_ratio))
-    mfi = np.where(money_flow_ratio == np.inf, 100, mfi)
+    mfi_values = 100 - (100 / (1 + money_flow_ratio))
+    mfi_values = np.where(money_flow_ratio == np.inf, 100, mfi_values) # If sum_negative_money_flow is 0 and sum_positive is not, MFI is 100
     
-    df[f"mfi_{period}"] = mfi
+    df[f"mfi_{period}"] = mfi_values
     return df
 
 def identify_fair_value_gaps(df):
+    """Identifies Fair Value Gaps (FVG)."""
     if not all(col in df.columns for col in ["high", "low"]):
+        ta_logger.warning("FVG: Requires 'high' and 'low' columns.")
+        df["fvg_bullish_top"] = np.nan
+        df["fvg_bullish_bottom"] = np.nan
+        df["fvg_bearish_top"] = np.nan
+        df["fvg_bearish_bottom"] = np.nan
         return df
-    df["fvg_bullish"] = np.nan
-    df["fvg_bearish"] = np.nan
+    
+    df["fvg_bullish_top"] = np.nan
+    df["fvg_bullish_bottom"] = np.nan
+    df["fvg_bearish_top"] = np.nan
+    df["fvg_bearish_bottom"] = np.nan
+
+    # Ensure enough data points
+    if len(df) < 3:
+        ta_logger.warning(f"FVG: Not enough data points to identify gaps. Need at least 3, got {len(df)}.")
+        return df
+
+    # Use .values for faster access if df is large, but .iloc is fine for typical candle counts
+    highs = df["high"].values
+    lows = df["low"].values
+
+    fvg_bullish_top_list = [np.nan] * len(df)
+    fvg_bullish_bottom_list = [np.nan] * len(df)
+    fvg_bearish_top_list = [np.nan] * len(df)
+    fvg_bearish_bottom_list = [np.nan] * len(df)
 
     for i in range(1, len(df) - 1):
-        prev_high = df["high"].iloc[i-1]
-        curr_low = df["low"].iloc[i]
-        curr_high = df["high"].iloc[i]
-        next_low = df["low"].iloc[i+1]
+        # Bullish FVG: Current low is above previous high, and next low is above previous high.
+        # The gap is between the high of candle i-1 and the low of candle i+1.
+        # We mark the gap at candle i+1 (the candle that confirms the FVG).
+        if lows[i+1] > highs[i-1]:
+            fvg_bullish_top_list[i+1] = lows[i+1]
+            fvg_bullish_bottom_list[i+1] = highs[i-1]
 
-        if next_low > prev_high:
-            df.loc[df.index[i+1], "fvg_bullish_top"] = next_low
-            df.loc[df.index[i+1], "fvg_bullish_bottom"] = prev_high
-            df.loc[df.index[i+1], "fvg_bullish"] = True
-
-        prev_low = df["low"].iloc[i-1]
-        next_high = df["high"].iloc[i+1]
-        if next_high < prev_low:
-            df.loc[df.index[i+1], "fvg_bearish_top"] = prev_low
-            df.loc[df.index[i+1], "fvg_bearish_bottom"] = next_high
-            df.loc[df.index[i+1], "fvg_bearish"] = True
+        # Bearish FVG: Current high is below previous low, and next high is below previous low.
+        # The gap is between the low of candle i-1 and the high of candle i+1.
+        # We mark the gap at candle i+1.
+        if highs[i+1] < lows[i-1]:
+            fvg_bearish_top_list[i+1] = lows[i-1]
+            fvg_bearish_bottom_list[i+1] = highs[i+1]
+            
+    df["fvg_bullish_top"] = fvg_bullish_top_list
+    df["fvg_bullish_bottom"] = fvg_bullish_bottom_list
+    df["fvg_bearish_top"] = fvg_bearish_top_list
+    df["fvg_bearish_bottom"] = fvg_bearish_bottom_list
     return df
 
-def save_candles_with_ta(df, output_path, symbol="AAPL"):
+def aggregate_candles(df, rule, ohlc_col_names=None):
+    """Aggregates candle data to a new timeframe (e.g., '15min', '1H', '1D')."""
     if df.empty:
-        print(f"DataFrame is empty, not saving to {output_path}")
-        return
-    df_reset = df.reset_index()
-    df_reset["datetime"] = df_reset["datetime"].astype(np.int64) // 10**6
-    candles_list = df_reset.to_dict(orient="records")
-    with open(output_path, "w") as f:
-        json.dump({"symbol": symbol, "candles": candles_list}, f, indent=2)
-    print(f"Data with TA saved to {output_path}")
-
-def aggregate_to_15_min(minute_df):
-    if minute_df.empty:
+        ta_logger.warning(f"Aggregation: Input DataFrame is empty for rule {rule}.")
         return pd.DataFrame()
-    agg_funcs = {
-        'open': 'first',
-        'high': 'max',
-        'low': 'min',
-        'close': 'last',
-        'volume': 'sum'
-    }
-    fifteen_min_df = minute_df.resample("15min").agg(agg_funcs)
-    fifteen_min_df = fifteen_min_df.dropna()
-    return fifteen_min_df
-
-def main():
-    data_files = {
-        "minute": (MINUTE_DATA_FILE, MINUTE_DATA_WITH_TA_FILE),
-        "15_minute": (None, FIFTEEN_MINUTE_DATA_WITH_TA_FILE),
-        "hourly": (HOURLY_DATA_FILE, HOURLY_DATA_WITH_TA_FILE),
-        "daily": (DAILY_DATA_FILE, DAILY_DATA_WITH_TA_FILE),
-    }
-
-    minute_df_raw = load_candles(MINUTE_DATA_FILE)
-    if minute_df_raw.empty:
-        print("Minute data is empty, cannot proceed with 15-minute aggregation or TA.")
-        return
-
-    fifteen_min_df_raw = aggregate_to_15_min(minute_df_raw.copy())
-    if not fifteen_min_df_raw.empty:
-        save_candles_with_ta(fifteen_min_df_raw, FIFTEEN_MINUTE_DATA_FILE)
-        print(f"Aggregated 15-minute data saved to {FIFTEEN_MINUTE_DATA_FILE}")
-    else:
-        print("15-minute aggregation resulted in empty data.")
-
-    for timeframe, (input_file, output_file) in data_files.items():
-        print(f"\nProcessing {timeframe} data...")
-        if timeframe == "15_minute":
-            df = fifteen_min_df_raw.copy()
-        elif input_file:
-            df = load_candles(input_file)
+    
+    if not isinstance(df.index, pd.DatetimeIndex):
+        ta_logger.error("Aggregation: DataFrame index must be a DatetimeIndex.")
+        # Attempt to convert if a 'datetime' column exists
+        if 'datetime' in df.columns:
+            try:
+                df['datetime'] = pd.to_datetime(df['datetime'])
+                df = df.set_index('datetime')
+                ta_logger.info("Aggregation: Converted 'datetime' column to DatetimeIndex.")
+            except Exception as e:
+                ta_logger.error(f"Aggregation: Failed to convert 'datetime' column to DatetimeIndex: {e}")
+                return pd.DataFrame()
         else:
-            print(f"No input file for {timeframe}, skipping.")
-            continue
+             return pd.DataFrame()
 
-        if df.empty:
-            print(f"No data loaded for {timeframe}, skipping TA.")
-            continue
+    # Default column names if not provided
+    if ohlc_col_names is None:
+        ohlc_col_names = {
+            'open': 'open', 
+            'high': 'high', 
+            'low': 'low', 
+            'close': 'close', 
+            'volume': 'volume'
+        }
+
+    agg_funcs = {}
+    if ohlc_col_names['open'] in df.columns: agg_funcs[ohlc_col_names['open']] = 'first'
+    if ohlc_col_names['high'] in df.columns: agg_funcs[ohlc_col_names['high']] = 'max'
+    if ohlc_col_names['low'] in df.columns: agg_funcs[ohlc_col_names['low']] = 'min'
+    if ohlc_col_names['close'] in df.columns: agg_funcs[ohlc_col_names['close']] = 'last'
+    if ohlc_col_names['volume'] in df.columns: agg_funcs[ohlc_col_names['volume']] = 'sum'
+    
+    if not agg_funcs:
+        ta_logger.error("Aggregation: No valid OHLCV columns found for aggregation.")
+        return pd.DataFrame()
+
+    try:
+        aggregated_df = df.resample(rule).agg(agg_funcs)
+        aggregated_df = aggregated_df.dropna(subset=[ohlc_col_names['close']]) # Drop rows where close is NaN after resampling
+    except Exception as e:
+        ta_logger.error(f"Error during resampling with rule '{rule}': {e}")
+        return pd.DataFrame()
         
-        df = calculate_bollinger_bands(df.copy())
-        df = calculate_rsi(df.copy())
-        df = calculate_macd(df.copy())
-        df = calculate_imi(df.copy()) # Added IMI calculation
-        df = calculate_mfi(df.copy()) # Added MFI calculation
-        df = identify_fair_value_gaps(df.copy())
-        df["candle_pattern_bullish"] = False
-        df["candle_pattern_bearish"] = False
+    return aggregated_df
 
-        save_candles_with_ta(df, output_file)
-        if not df.empty:
-            print(f"First 5 rows of {timeframe} data with TA:")
-            print(df.head())
+def calculate_all_technical_indicators(df, symbol="N/A"):
+    """Calculates all defined technical indicators for the given DataFrame."""
+    if df.empty:
+        ta_logger.warning(f"TA All: Input DataFrame for {symbol} is empty. Skipping TA calculations.")
+        return df
 
-if __name__ == "__main__":
-    main()
+    # Ensure DataFrame is a copy to avoid SettingWithCopyWarning on original data from dashboard
+    df_ta = df.copy()
+
+    # Standardize column names to lowercase if they exist, for robustness
+    # Expected columns: 'open', 'high', 'low', 'close', 'volume'
+    # The data_fetchers.py already standardizes to lowercase 'open', 'high', 'low', 'close', 'volume', 'timestamp'
+    # and sets 'timestamp' as datetime index. So, this step might be redundant if data comes from there.
+    # However, it's good practice if this module is used independently.
+    rename_map = {col: col.lower() for col in df_ta.columns if col.lower() in ['open', 'high', 'low', 'close', 'volume']}
+    if rename_map:
+        df_ta.rename(columns=rename_map, inplace=True)
+
+    # Check for required columns after potential rename
+    required_cols_for_ta = ['open', 'high', 'low', 'close', 'volume'] # MFI needs all, others subsets
+    missing_cols = [col for col in required_cols_for_ta if col not in df_ta.columns]
+    if any(col not in df_ta.columns for col in ['open', 'close']): # Minimum for most basic TAs
+        ta_logger.error(f"TA All: DataFrame for {symbol} is missing essential columns (e.g., 'open', 'close'). Missing: {missing_cols}. Cannot calculate TA.")
+        return df # Return original df if essential columns are missing
+
+    ta_logger.info(f"Calculating TA for {symbol} on DataFrame with {len(df_ta)} rows.")
+
+    df_ta = calculate_bollinger_bands(df_ta)
+    df_ta = calculate_rsi(df_ta)
+    df_ta = calculate_macd(df_ta)
+    df_ta = calculate_imi(df_ta)
+    df_ta = calculate_mfi(df_ta)
+    df_ta = identify_fair_value_gaps(df_ta)
+    
+    # Placeholder for candle patterns if needed later
+    # df_ta["candle_pattern_bullish"] = False
+    # df_ta["candle_pattern_bearish"] = False
+
+    ta_logger.info(f"Finished TA for {symbol}. DataFrame now has {len(df_ta.columns)} columns.")
+    return df_ta
+
+# Example usage (can be removed or kept for standalone testing)
+if __name__ == '__main__':
+    # Create a sample DataFrame (mimicking fetched stock data)
+    sample_data = {
+        'datetime': pd.to_datetime([
+            '2023-01-01 09:30:00', '2023-01-01 09:31:00', '2023-01-01 09:32:00',
+            '2023-01-01 09:33:00', '2023-01-01 09:34:00', '2023-01-01 09:35:00',
+            '2023-01-01 09:36:00', '2023-01-01 09:37:00', '2023-01-01 09:38:00',
+            '2023-01-01 09:39:00', '2023-01-01 09:40:00', '2023-01-01 09:41:00',
+            '2023-01-01 09:42:00', '2023-01-01 09:43:00', '2023-01-01 09:44:00',
+            '2023-01-01 09:45:00', '2023-01-01 09:46:00', '2023-01-01 09:47:00',
+            '2023-01-01 09:48:00', '2023-01-01 09:49:00', '2023-01-01 09:50:00'
+        ]),
+        'open': [150.0, 150.2, 150.1, 150.5, 150.6, 150.3, 150.0, 150.2, 150.1, 150.5, 150.6, 150.3, 150.0, 150.2, 150.1, 150.5, 150.6, 150.3, 150.0, 150.2, 150.1],
+        'high': [150.5, 150.6, 150.8, 150.9, 150.8, 150.7, 150.5, 150.6, 150.8, 150.9, 150.8, 150.7, 150.5, 150.6, 150.8, 150.9, 150.8, 150.7, 150.5, 150.6, 150.8],
+        'low':  [149.8, 150.0, 149.9, 150.2, 150.3, 150.1, 149.8, 150.0, 149.9, 150.2, 150.3, 150.1, 149.8, 150.0, 149.9, 150.2, 150.3, 150.1, 149.8, 150.0, 149.9],
+        'close':[150.3, 150.4, 150.6, 150.7, 150.5, 150.6, 150.3, 150.4, 150.6, 150.7, 150.5, 150.6, 150.3, 150.4, 150.6, 150.7, 150.5, 150.6, 150.3, 150.4, 150.6],
+        'volume':[1000, 1200, 1100, 1500, 1300, 1400, 1000, 1200, 1100, 1500, 1300, 1400, 1000, 1200, 1100, 1500, 1300, 1400, 1000, 1200, 1100]
+    }
+    df_minute_raw = pd.DataFrame(sample_data)
+    df_minute_raw = df_minute_raw.set_index('datetime')
+
+    ta_logger.info("--- Testing Minute Data TA ---")
+    df_minute_ta = calculate_all_technical_indicators(df_minute_raw.copy(), symbol="SAMPLE_MINUTE")
+    if not df_minute_ta.empty:
+        ta_logger.info("Minute TA Data (last 5 rows):\n%s", df_minute_ta.tail())
+
+    ta_logger.info("\n--- Testing 15-Minute Aggregation & TA ---")
+    df_15min_raw = aggregate_candles(df_minute_raw.copy(), rule="15min")
+    if not df_15min_raw.empty:
+        ta_logger.info("15-Min Aggregated Data (first 5 rows):\n%s", df_15min_raw.head())
+        df_15min_ta = calculate_all_technical_indicators(df_15min_raw.copy(), symbol="SAMPLE_15MIN")
+        if not df_15min_ta.empty:
+            ta_logger.info("15-Min TA Data (last 5 rows):\n%s", df_15min_ta.tail())
+    else:
+        ta_logger.warning("15-minute aggregation resulted in empty data.")
+
+    ta_logger.info("\n--- Testing Hourly Aggregation & TA ---")
+    df_hourly_raw = aggregate_candles(df_minute_raw.copy(), rule="H") # 'H' for hourly
+    if not df_hourly_raw.empty:
+        ta_logger.info("Hourly Aggregated Data (first 5 rows):\n%s", df_hourly_raw.head())
+        df_hourly_ta = calculate_all_technical_indicators(df_hourly_raw.copy(), symbol="SAMPLE_HOURLY")
+        if not df_hourly_ta.empty:
+            ta_logger.info("Hourly TA Data (last 5 rows):\n%s", df_hourly_ta.tail())
+    else:
+        ta_logger.warning("Hourly aggregation resulted in empty data.")
+
+    ta_logger.info("\n--- Testing Daily Aggregation & TA ---")
+    # For daily, we might need more varied sample data spanning multiple days
+    # Using existing df_minute_raw for now, which will result in one daily candle
+    df_daily_raw = aggregate_candles(df_minute_raw.copy(), rule="D") # 'D' for daily
+    if not df_daily_raw.empty:
+        ta_logger.info("Daily Aggregated Data (first 5 rows):\n%s", df_daily_raw.head())
+        df_daily_ta = calculate_all_technical_indicators(df_daily_raw.copy(), symbol="SAMPLE_DAILY")
+        if not df_daily_ta.empty:
+            ta_logger.info("Daily TA Data (last 5 rows):\n%s", df_daily_ta.tail())
+    else:
+        ta_logger.warning("Daily aggregation resulted in empty data.")
+
+    ta_logger.info("\n--- Testing with insufficient data (RSI example) ---")
+    df_insufficient = df_minute_raw.head(5).copy()
+    df_insufficient_ta = calculate_rsi(df_insufficient, period=14)
+    ta_logger.info("RSI with insufficient data:\n%s", df_insufficient_ta)
+
+    ta_logger.info("\n--- Testing FVG with minimal data ---")
+    df_fvg_minimal = df_minute_raw.head(3).copy()
+    df_fvg_minimal_ta = identify_fair_value_gaps(df_fvg_minimal)
+    ta_logger.info("FVG with minimal data:\n%s", df_fvg_minimal_ta)
+
+    ta_logger.info("\n--- Testing with missing columns (MFI example) ---")
+    df_missing_cols = df_minute_raw[['open', 'close']].copy()
+    df_missing_cols_ta = calculate_mfi(df_missing_cols)
+    ta_logger.info("MFI with missing columns:\n%s", df_missing_cols_ta)
 
