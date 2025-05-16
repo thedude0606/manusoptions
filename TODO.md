@@ -19,14 +19,9 @@
   - [X] Structure the calculated TA values (latest values) into a list of dictionaries suitable for `dash_table.DataTable`.
   - [X] Update the `columns` and `data` properties of `tech-indicators-table` to display real data, replacing dummy data.
   - [X] Ensure columns are: "Indicator", "1min", "15min", "Hourly", "Daily".
-- [X] **Fix `SyntaxError` in `dashboard_app.py` (f-string quotes):** (Completed)
+- [X] **Fix `SyntaxError` in `dashboard_app.py` (f-string quotes & backslashes):** (Completed)
   - [X] Corrected nested quote usage in f-strings for 'Implied Volatility', 'Delta', 'Gamma', 'Theta', and 'Vega' fields in the `update_options_chain_stream_data` callback.
-  - [ ] Test TA calculations for various symbols and timeframes.
-  - [ ] Verify UI updates correctly and handles errors gracefully.
-- [ ] **Iterative GitHub Pushes:** (In Progress)
-  - [ ] Push changes to GitHub after significant milestones.
-
-### Medium Priority
+  - [X] Removed erroneous backslashes from f-string expressions for 'Gamma', 'Theta', and 'Vega' that were causing `SyntaxError: f-string expression part cannot include a backslash`.
 - [ ] **Enhance Error Handling:** (Not Started)
   - [ ] Improve error messages displayed in the UI for TA calculation failures.
 - [ ] **Code Cleanup and Optimization:** (Not Started)

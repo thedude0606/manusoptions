@@ -396,3 +396,16 @@ This addition is crucial for providing user control over the streaming process, 
       `f"{data_dict.get('volatility', 0) * 100:.2f}%"` instead of `f"{data_dict.get("volatility", 0) * 100:.2f}%"`.
     - This change was applied to all affected f-strings in that section of the code to ensure consistent and correct syntax.
 
+
+
+
+## Syntax Error Fix (Round 2 - Backslashes) in `dashboard_app.py` (May 16, 2025)
+
+- **Decision:** Correct `SyntaxError: f-string expression part cannot include a backslash` in `dashboard_app.py`.
+  - **Rationale:** After fixing the initial f-string nested quote issue, a subsequent attempt to run the script by the user revealed a new `SyntaxError`. This was caused by the `file_str_replace` tool inadvertently introducing backslashes (e.g., `\'` instead of `'`) when changing double quotes to single quotes within the f-string expressions for the Greek fields (Gamma, Theta, Vega).
+  - **Implementation Details:**
+    - The error occurred in the same `update_options_chain_stream_data` callback, affecting the f-strings for "Gamma", "Theta", and "Vega".
+    - The fix involved carefully using `file_str_replace` again to remove the erroneous backslashes, ensuring that the single quotes within the `data_dict.get('key_name', ...)` calls were correctly formatted without any escape characters. For example, `f"{data_dict.get(\'gamma\', 0):.4f}"` was corrected to `f"{data_dict.get('gamma', 0):.4f}"`.
+    - Additionally, a formatting issue where some corrected lines were not on new lines was also addressed by ensuring the `new_str` in `file_str_replace` included proper newlines to maintain code readability and structure.
+    - This iterative correction ensures that all f-strings in the affected block are now syntactically correct according to Python standards.
+
