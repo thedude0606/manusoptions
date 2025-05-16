@@ -2,16 +2,21 @@
 
 ## Key Architectural Choices
 
-- (To be filled as decisions are made)
+- Maintaining consistent column naming conventions across the application
+- Using vectorized operations for pandas Series objects to avoid ambiguous truth value errors
+- Ensuring proper handling of DatetimeIndex for time series data
 
 ## Technology Selections
 
-- Python for the main application logic.
-- Git for version control.
+- Python for the main application logic
+- Git for version control
+- Pandas for data manipulation and analysis
+- NumPy for numerical operations
 
 ## Design Patterns Used
 
-- (To be filled as patterns are identified or implemented)
+- Factory pattern for client initialization
+- Observer pattern for error handling and notification
 
 ## Rationale for Important Decisions
 
@@ -20,8 +25,6 @@
     - **Investigation:** The function definition in `technical_analysis.py` (`def calculate_all_technical_indicators(df, symbol="N/A")`) showed it only accepts `df` and `symbol` as arguments.
     - **Decision:** Modified the call in `dashboard_app.py` to remove the `period_name` argument. The period information, which was previously passed via `period_name`, is now concatenated with the `selected_symbol` and passed as the `symbol` argument (e.g., `symbol=f"{selected_symbol}_{period}"`). This aligns the function call with its definition and ensures the period context is still available if needed within the function or for logging/debugging purposes via the symbol string.
     - **Rationale:** This change directly addresses the `TypeError` by ensuring the function is called with the correct arguments. Passing the period information as part of the symbol string is a common practice to provide context without altering the function signature, especially if the function itself doesn't strictly require the period for its internal calculations but the context is useful for downstream processing or identification of the resulting data.
-
-
 
 - **Fix for `MinData-Format-SPY: Index is not DatetimeIndex after fetch` Error (2025-05-16):**
     - **Issue:** The application was logging an error `Index is not DatetimeIndex after fetch` in `dashboard_app.py` when processing minute data. This occurred because the DataFrame returned by `get_minute_data` in `dashboard_utils/data_fetchers.py` did not have a `DatetimeIndex`, and the expected `timestamp` column (as a datetime object) was not correctly prepared for `dashboard_app.py`.
@@ -36,7 +39,6 @@
         4. Added a comment to emphasize that the `"timestamp"` column should remain a datetime object and string formatting should be handled by the consuming function if needed for display purposes.
     - **Rationale:** This change ensures that `get_minute_data` returns a DataFrame with a `"timestamp"` column containing datetime objects. This aligns with the expectations of `dashboard_app.py`, allowing it to correctly convert this column to a `DatetimeIndex` and perform further time-based operations or technical analysis calculations. Delaying string formatting to the presentation layer (e.g., just before displaying in a Dash table) is a better practice as it keeps the underlying data in its correct type for processing.
 
-
 - **Fix for `The truth value of a Series is ambiguous` Error in RSI Calculation (2025-05-16):**
     - **Issue:** The application was throwing a `ValueError: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all()` error in the RSI calculation within `technical_analysis.py`. This occurred in the `calculate_rsi` function when attempting to use a pandas Series in a scalar context within a conditional expression.
     - **Investigation:** The error was occurring at this line:
@@ -50,3 +52,12 @@
       ```
       This approach properly handles Series objects by using vectorized operations throughout, avoiding any ambiguous truth value evaluations.
     - **Rationale:** The fix ensures that all operations on pandas Series objects use proper vectorized methods, avoiding the ambiguous truth value error. Using nested `np.where` calls is a common pattern for handling complex conditional logic with pandas Series objects, as it maintains the vectorized nature of the operations and avoids scalar context evaluations. This approach is more efficient and correctly handles element-wise operations on the Series data.
+
+- **Fix for Technical Indicator Tab N/A and Strange Values (2025-05-16):**
+    - **Issue:** The technical indicator tab was displaying N/A and strange values in its output, as shown in the example provided by the user.
+    - **Investigation:** After reviewing the code, I identified that the issue was related to how Series objects were being handled in conditional expressions within the technical indicator calculations, particularly in the RSI calculation. Additionally, there were inconsistencies in column naming between data fetching and technical analysis modules.
+    - **Decision:** 
+      1. Fixed the Series truth value ambiguity in the RSI calculation by using proper vectorized operations with nested `np.where` calls.
+      2. Ensured consistent column naming across modules, particularly maintaining lowercase column names ('open', 'high', 'low', 'close', 'volume') and preserving the datetime nature of the 'timestamp' column.
+      3. Improved error handling and logging to better identify issues in the technical analysis calculations.
+    - **Rationale:** These changes address the root causes of the N/A and strange values by ensuring proper handling of pandas Series objects in vectorized operations and maintaining consistent data types and column naming conventions throughout the application. The improved error handling and logging also make it easier to identify and debug any future issues that may arise in the technical indicator calculations.
