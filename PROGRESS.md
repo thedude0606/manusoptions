@@ -50,6 +50,8 @@ This document tracks the progress of the Manus Options project.
     *   `PROGRESS.md`: Updated to reflect current status.
     *   `TODO.md`: Updated task statuses.
 
+*   Investigated user-reported Dash duplicate output error for `error-message-store.data`. Confirmed that all relevant callbacks in `dashboard_app.py` in the repository correctly use `allow_duplicate=True`. The issue might have been with a local, out-of-sync version of the file. (2025-05-16)
+
 *   Addressed user-reported `ObsoleteAttributeException` by updating `app.run_server` to `app.run` in `dashboard_app.py` (2025-05-16).
 
 *(For a detailed list of all completed sub-tasks, please refer to the `TODO.md` file.)*
