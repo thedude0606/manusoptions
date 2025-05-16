@@ -50,6 +50,8 @@ This document tracks the progress of the Manus Options project.
     *   `PROGRESS.md`: Updated to reflect current status.
     *   `TODO.md`: Updated task statuses.
 
+*   Addressed user-reported `ObsoleteAttributeException` by updating `app.run_server` to `app.run` in `dashboard_app.py` (2025-05-16).
+
 *(For a detailed list of all completed sub-tasks, please refer to the `TODO.md` file.)*
 
 ## Current Work In Progress
