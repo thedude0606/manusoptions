@@ -227,6 +227,7 @@ def update_minute_data_tab(selected_symbol, current_errors):
     data = df_display.to_dict("records")
     return cols, data, new_errors
 
+print("DEBUG: Defining callback for update_tech_indicators_tab")
 @app.callback(
     Output("tech-indicators-table", "columns"),
     Output("tech-indicators-table", "data"),
