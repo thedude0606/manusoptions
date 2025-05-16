@@ -36,3 +36,9 @@
 - Schwab API client setup and data fetching (`dashboard_utils.data_fetchers`) must be functional.
 - Base Dash app structure (`dashboard_app.py`) should be stable.
 
+
+
+- [X] **Investigate Dash Callback Error (2025-05-16):** (Completed)
+  - [X] User reported: `In the callback for output(s): tech-indicators-table.columns tech-indicators-table.data error-message-store.data@... Output 2 (error-message-store.data@...) is already in use.`
+  - [X] Reviewed `dashboard_app.py` and confirmed all callbacks outputting to `error-message-store.data` (i.e., `update_minute_data_tab`, `update_tech_indicators_tab`, `manage_options_stream`, `update_options_chain_stream_data`) correctly use `allow_duplicate=True`.
+  - [X] Conclusion: No code change required in the repository. The error likely originated from an out-of-sync local file or an older version.

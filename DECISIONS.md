@@ -409,3 +409,17 @@ This addition is crucial for providing user control over the streaming process, 
     - Additionally, a formatting issue where some corrected lines were not on new lines was also addressed by ensuring the `new_str` in `file_str_replace` included proper newlines to maintain code readability and structure.
     - This iterative correction ensures that all f-strings in the affected block are now syntactically correct according to Python standards.
 
+
+
+
+## Dash Callback Error Investigation (Duplicate Output - 2025-05-16)
+
+- **Issue Reported:** User encountered a Dash error: `In the callback for output(s): tech-indicators-table.columns tech-indicators-table.data error-message-store.data@... Output 2 (error-message-store.data@...) is already in use.`
+- **Investigation:**
+  - Reviewed the `dashboard_app.py` file in the `thedude0606/manusoptions` repository.
+  - Specifically examined all callbacks that output to `dcc.Store(id="error-message-store")`.
+  - These callbacks are: `update_minute_data_tab`, `update_tech_indicators_tab`, `manage_options_stream`, and `update_options_chain_stream_data`.
+- **Finding:** All identified callbacks that write to `error-message-store.data` already correctly implement the `allow_duplicate=True` parameter in their `Output` definition.
+  - Example: `Output("error-message-store", "data", allow_duplicate=True)`
+- **Decision:** No code changes are required in the current version of `dashboard_app.py` in the repository to address this specific error.
+  - **Rationale:** The existing code correctly handles multiple outputs to the same component property by using `allow_duplicate=True`. The error reported by the user likely originated from an older, local version of the file that was not synchronized with the repository, or a version that existed before `allow_duplicate=True` was consistently applied to all relevant callbacks targeting `error-message-store.data`. The `PROGRESS.md` file also notes a previous investigation on 2025-05-16 with a similar conclusion. This re-confirms the existing codebase is sound in this regard.

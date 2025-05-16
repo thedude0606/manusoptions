@@ -75,3 +75,6 @@ This document tracks the progress of the Manus Options project.
 4.  **Begin work on user customization for TA parameters.**
 5.  **Continue with Phase 2: Options Recommendation Platform Features** as outlined in `TODO.md` (if applicable after addressing immediate enhancements).
 
+
+
+*   **Investigated Dash Callback Error (2025-05-16):** Investigated user-reported Dash duplicate output error: `In the callback for output(s): tech-indicators-table.columns tech-indicators-table.data error-message-store.data@... Output 2 (error-message-store.data@...) is already in use.` Confirmed that all relevant callbacks in `dashboard_app.py` (specifically `update_minute_data_tab`, `update_tech_indicators_tab`, `manage_options_stream`, and `update_options_chain_stream_data`) that output to `error-message-store.data` correctly use the `allow_duplicate=True` parameter. No code changes were required in the repository as the existing implementation is correct. The reported error likely stemmed from a local, out-of-sync version of the `dashboard_app.py` file on the user's side or an older version prior to these flags being implemented consistently.
