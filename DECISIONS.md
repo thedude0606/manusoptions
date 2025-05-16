@@ -21,3 +21,17 @@
     - **Decision:** Modified the call in `dashboard_app.py` to remove the `period_name` argument. The period information, which was previously passed via `period_name`, is now concatenated with the `selected_symbol` and passed as the `symbol` argument (e.g., `symbol=f"{selected_symbol}_{period}"`). This aligns the function call with its definition and ensures the period context is still available if needed within the function or for logging/debugging purposes via the symbol string.
     - **Rationale:** This change directly addresses the `TypeError` by ensuring the function is called with the correct arguments. Passing the period information as part of the symbol string is a common practice to provide context without altering the function signature, especially if the function itself doesn't strictly require the period for its internal calculations but the context is useful for downstream processing or identification of the resulting data.
 
+
+
+- **Fix for `MinData-Format-SPY: Index is not DatetimeIndex after fetch` Error (2025-05-16):**
+    - **Issue:** The application was logging an error `Index is not DatetimeIndex after fetch` in `dashboard_app.py` when processing minute data. This occurred because the DataFrame returned by `get_minute_data` in `dashboard_utils/data_fetchers.py` did not have a `DatetimeIndex`, and the expected `timestamp` column (as a datetime object) was not correctly prepared for `dashboard_app.py`.
+    - **Investigation:** Analysis of `dashboard_utils/data_fetchers.py` revealed two issues in the `get_minute_data` function:
+        1. The timestamp column, after conversion from epoch milliseconds to a datetime object, was being renamed to `"Timestamp"` (capitalized).
+        2. Crucially, this `"Timestamp"` column was then being converted to a string using `.dt.strftime(...)` before the DataFrame was returned.
+        In `dashboard_app.py`, the code attempts to convert a column named `"timestamp"` (lowercase) to a `DatetimeIndex` and then set it as the index. This failed because the column was named `"Timestamp"` and was already a string.
+    - **Decision:** Modified `dashboard_utils/data_fetchers.py` within the `get_minute_data` function:
+        1. Ensured the column resulting from `pd.to_datetime(all_candles_df["datetime"], unit="ms", utc=True).dt.tz_convert("America/New_York")` is named `"timestamp"` (lowercase).
+        2. Removed the line `all_candles_df["Timestamp"] = all_candles_df["Timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S %Z")`. The `"timestamp"` column is now returned as a proper datetime object.
+        3. Updated the `columns_to_keep` list to use `"timestamp"`.
+        4. Added a comment to emphasize that the `"timestamp"` column should remain a datetime object and string formatting should be handled by the consuming function if needed for display purposes.
+    - **Rationale:** This change ensures that `get_minute_data` returns a DataFrame with a `"timestamp"` column containing datetime objects. This aligns with the expectations of `dashboard_app.py`, allowing it to correctly convert this column to a `DatetimeIndex` and perform further time-based operations or technical analysis calculations. Delaying string formatting to the presentation layer (e.g., just before displaying in a Dash table) is a better practice as it keeps the underlying data in its correct type for processing.

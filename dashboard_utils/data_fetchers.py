@@ -139,15 +139,28 @@ def get_minute_data(client: schwabdev.Client, symbol: str, days_history: int = 1
         return pd.DataFrame(), f"No minute data found for {symbol} after attempting to fetch {days_history} days."
 
     # Process the combined DataFrame
-    all_candles_df["datetime"] = pd.to_datetime(all_candles_df["datetime"], unit="ms", utc=True).dt.tz_convert("America/New_York")
+    # Convert API 'datetime' (epoch ms) to pandas datetime objects, store in 'timestamp' column (America/New_York timezone)
+    all_candles_df["timestamp"] = pd.to_datetime(all_candles_df["datetime"], unit="ms", utc=True).dt.tz_convert("America/New_York")
+    
+    # Rename other relevant columns for consistency
     all_candles_df = all_candles_df.rename(columns={
-        "datetime": "Timestamp", "open": "Open", "high": "High",
-        "low": "Low", "close": "Close", "volume": "Volume"
+        "open": "Open", "high": "High", "low": "Low", 
+        "close": "Close", "volume": "Volume"
     })
-    all_candles_df = all_candles_df[["Timestamp", "Open", "High", "Low", "Close", "Volume"]]
-    all_candles_df = all_candles_df.drop_duplicates(subset=["Timestamp"])
-    all_candles_df = all_candles_df.sort_values(by="Timestamp", ascending=False)
-    all_candles_df["Timestamp"] = all_candles_df["Timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S %Z")
+    
+    # Select the final set of columns, ensuring 'timestamp' is a datetime object.
+    # This implicitly drops the original 'datetime' column from the API if it's not in the list.
+    columns_to_keep = ["timestamp", "Open", "High", "Low", "Close", "Volume"]
+    all_candles_df = all_candles_df[columns_to_keep]
+    
+    # Remove duplicate entries based on the 'timestamp'
+    all_candles_df = all_candles_df.drop_duplicates(subset=["timestamp"])
+    
+    # Sort data by timestamp, typically newest first for financial time series
+    all_candles_df = all_candles_df.sort_values(by="timestamp", ascending=False)
+    
+    # IMPORTANT: The 'timestamp' column is now a datetime object.
+    # DO NOT convert it to a string here. String formatting for display will be handled by the consuming function (e.g., in dashboard_app.py).
     
     logger.info(f"Successfully fetched a total of {len(all_candles_df)} unique minute candles for {symbol} over {days_history} days.")
     return all_candles_df, None
