@@ -41,7 +41,8 @@ def account_id_provider():
     return os.getenv("SCHWAB_ACCOUNT_HASH")
 
 # --- Global Instances --- 
-SCHWAB_CLIENT, client_init_error = get_schwab_client()
+client_instance, client_init_error = get_schwab_client()
+SCHWAB_CLIENT = client_instance  # Store only the client instance, not the tuple
 STREAMING_MANAGER = StreamingManager(schwab_client_provider, account_id_provider)
 app_logger.info("Global instances (Schwab client, StreamingManager) created.")
 
@@ -238,7 +239,7 @@ def update_data_for_active_tab(selected_symbol, active_tab):
 
     if not client_to_use:
         app_logger.info(f"UpdateDataTabs: Schwab client not initialized for {selected_symbol}. Attempting reinit.")
-        client_to_use, client_err = get_schwab_client()
+        client_instance, client_err = get_schwab_client()
         if client_err:
             error_msg = f"Client re-init failed: {client_err}"
             app_logger.error(f"UpdateDataTabs: {error_msg}")
@@ -246,7 +247,8 @@ def update_data_for_active_tab(selected_symbol, active_tab):
             minute_cols, minute_data = default_minute_cols, []
             tech_cols, tech_data = default_tech_cols, []
             return minute_cols, minute_data, tech_cols, tech_data, error_event_to_send
-        SCHWAB_CLIENT = client_to_use
+        SCHWAB_CLIENT = client_instance  # Store only the client instance, not the tuple
+        client_to_use = client_instance
         app_logger.info(f"UpdateDataTabs: Schwab client reinitialized successfully for {selected_symbol}.")
 
     if active_tab == "tab-minute-data":
@@ -338,16 +340,21 @@ def update_data_for_active_tab(selected_symbol, active_tab):
                     indicator_data = []
                     all_indicator_names = set()
                     for period_res in ta_results.values():
-                        all_indicator_names.update(period_res.keys())
+                        all_indicator_names.update(period_res.columns)
 
                     for indicator_name in sorted(list(all_indicator_names)):
                         row = {"Indicator": indicator_name}
                         for period_key in ["1min", "15min", "Hourly", "Daily"]:
-                            value = ta_results.get(period_key, {}).get(indicator_name)
-                            if isinstance(value, float):
-                                row[period_key] = f"{value:.2f}" if not np.isnan(value) else "N/A"
-                            elif value is not None:
-                                row[period_key] = str(value)
+                            df_period = ta_results.get(period_key, pd.DataFrame())
+                            if not df_period.empty and indicator_name in df_period.columns:
+                                # Get the most recent value for this indicator
+                                value = df_period[indicator_name].iloc[0]  # Assuming sorted with most recent first
+                                if isinstance(value, float):
+                                    row[period_key] = f"{value:.2f}" if not np.isnan(value) else "N/A"
+                                elif value is not None:
+                                    row[period_key] = str(value)
+                                else:
+                                    row[period_key] = "N/A"
                             else:
                                 row[period_key] = "N/A"
                         indicator_data.append(row)
@@ -365,23 +372,72 @@ def update_data_for_active_tab(selected_symbol, active_tab):
     return minute_cols, minute_data, tech_cols, tech_data, error_event_to_send
 
 
-# --- Options Chain Callbacks (Keep existing or add if they were missing from snippet) ---
-# Placeholder for manage_options_stream, update_options_chain_stream_data, stop_all_streaming
-# Ensure these also use new-error-event-store with allow_duplicate=True if they are separate
-# OR integrate them into a single error handling mechanism if that's the broader goal.
-# For now, assuming they exist elsewhere and are handled or will be handled separately.
-
-# Example of how other callbacks might send errors (if they are kept separate):
-# @app.callback(
-#     Output("new-error-event-store", "data", allow_duplicate=True),
-#     Input(...)
-# )
-# def some_other_callback_that_can_error(...):
-#     # ... logic ...
-#     if error_condition:
-#         timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-#         return {"source": "SourceOfError", "message": "Error details", "timestamp": timestamp_str}
-#     return dash.no_update
+# --- Options Chain Callbacks ---
+@app.callback(
+    Output("options-chain-stream-status", "children"),
+    Output("options-calls-table", "columns"),
+    Output("options-calls-table", "data"),
+    Output("options-puts-table", "columns"),
+    Output("options-puts-table", "data"),
+    Output("current-option-keys-store", "data"),
+    Output("new-error-event-store", "data", allow_duplicate=True),
+    Input("selected-symbol-store", "data"),
+    Input("options-chain-interval", "n_intervals"),
+    State("current-option-keys-store", "data"),
+    prevent_initial_call=True
+)
+def manage_options_stream(selected_symbol, n_intervals, current_keys):
+    timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    if not selected_symbol:
+        status_msg = "Select a symbol to view options chain."
+        return status_msg, [], [], [], [], [], dash.no_update
+    
+    try:
+        global SCHWAB_CLIENT
+        client_to_use = SCHWAB_CLIENT
+        
+        if not client_to_use:
+            app_logger.info(f"OptionsStream: Schwab client not initialized for {selected_symbol}. Attempting reinit.")
+            client_instance, client_err = get_schwab_client()
+            if client_err:
+                error_msg = f"Client re-init failed: {client_err}"
+                app_logger.error(f"OptionsStream: {error_msg}")
+                return f"Error: {error_msg}", [], [], [], [], [], {"source": "OptionsStream-Client", "message": error_msg, "timestamp": timestamp_str}
+            SCHWAB_CLIENT = client_instance  # Store only the client instance, not the tuple
+            client_to_use = client_instance
+            app_logger.info(f"OptionsStream: Schwab client reinitialized successfully for {selected_symbol}.")
+        
+        # Get options chain data
+        calls_df, puts_df, error = get_options_chain_data(client_to_use, selected_symbol)
+        
+        if error:
+            error_msg = f"Options chain fetch error: {error}"
+            app_logger.error(f"OptionsStream for {selected_symbol}: {error_msg}")
+            return f"Error: {error_msg}", [], [], [], [], [], {"source": f"OptionsStream-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
+        
+        # Get option contract keys for streaming
+        contract_keys, keys_error = get_option_contract_keys(client_to_use, selected_symbol)
+        if keys_error:
+            app_logger.warning(f"OptionsStream for {selected_symbol}: Contract keys error: {keys_error}")
+            # Continue with REST data, just log the warning
+        
+        # Format tables
+        calls_columns = [{"name": col, "id": col} for col in calls_df.columns] if not calls_df.empty else []
+        puts_columns = [{"name": col, "id": col} for col in puts_df.columns] if not puts_df.empty else []
+        
+        calls_data = calls_df.to_dict("records") if not calls_df.empty else []
+        puts_data = puts_df.to_dict("records") if not puts_df.empty else []
+        
+        status_msg = f"Options chain for {selected_symbol} loaded. Calls: {len(calls_data)}, Puts: {len(puts_data)}"
+        app_logger.info(f"OptionsStream: {status_msg}")
+        
+        return status_msg, calls_columns, calls_data, puts_columns, puts_data, list(contract_keys) if contract_keys else [], dash.no_update
+        
+    except Exception as e:
+        error_msg = f"Error in options chain processing: {str(e)}"
+        app_logger.exception(f"OptionsStream for {selected_symbol}: {error_msg}")
+        return f"Error: {error_msg}", [], [], [], [], [], {"source": f"OptionsStream-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
 
 
 # --- Main Execution ---
@@ -389,4 +445,3 @@ if __name__ == "__main__":
     app_logger.info("Starting Dash app server...")
     # Make sure to use the correct host and port, especially for Docker
     app.run(debug=True, host="0.0.0.0", port=8050)
-

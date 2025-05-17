@@ -5,6 +5,7 @@
 - Maintaining consistent column naming conventions across the application
 - Using vectorized operations for pandas Series objects to avoid ambiguous truth value errors
 - Ensuring proper handling of DatetimeIndex for time series data
+- Proper client object handling to avoid tuple-related errors
 
 ## Technology Selections
 
@@ -12,11 +13,13 @@
 - Git for version control
 - Pandas for data manipulation and analysis
 - NumPy for numerical operations
+- Dash for interactive web application
 
 ## Design Patterns Used
 
 - Factory pattern for client initialization
 - Observer pattern for error handling and notification
+- Dependency injection for client and account providers
 
 ## Rationale for Important Decisions
 
@@ -61,3 +64,18 @@
       2. Ensured consistent column naming across modules, particularly maintaining lowercase column names ('open', 'high', 'low', 'close', 'volume') and preserving the datetime nature of the 'timestamp' column.
       3. Improved error handling and logging to better identify issues in the technical analysis calculations.
     - **Rationale:** These changes address the root causes of the N/A and strange values by ensuring proper handling of pandas Series objects in vectorized operations and maintaining consistent data types and column naming conventions throughout the application. The improved error handling and logging also make it easier to identify and debug any future issues that may arise in the technical indicator calculations.
+
+- **Fix for Schwab Client Tuple Handling Error (2025-05-17):**
+    - **Issue:** The application was throwing errors like `'tuple' object has no attribute 'price_history'` when attempting to fetch data using the Schwab client.
+    - **Investigation:** The `get_schwab_client()` function returns a tuple `(client, error)`, but in several places throughout the code, this tuple was being passed directly to functions expecting just the client object, leading to AttributeError exceptions.
+    - **Decision:** Modified all instances where the client is initialized or reinitialized to properly unpack the tuple and store only the client instance:
+      ```python
+      # Before:
+      SCHWAB_CLIENT, client_init_error = get_schwab_client()
+      
+      # After:
+      client_instance, client_init_error = get_schwab_client()
+      SCHWAB_CLIENT = client_instance  # Store only the client instance, not the tuple
+      ```
+      This pattern was applied consistently throughout the codebase, including in callback functions where the client might be reinitialized.
+    - **Rationale:** This fix ensures that only the actual client object (not the tuple) is ever passed to functions that expect a client. This prevents AttributeError exceptions and allows the data fetching and technical analysis functions to work as intended. The change maintains the error handling capabilities of the original design while ensuring proper object types are passed throughout the application.

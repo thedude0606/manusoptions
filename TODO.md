@@ -26,7 +26,7 @@
 - [X] Update DECISIONS.md with rationale for the fix. (completed)
 - [X] Push all changes to the GitHub repository. (completed)
 
-### Current Task: Technical Indicator Tab N/A and Strange Values (Completed)
+### Third Task: Technical Indicator Tab N/A and Strange Values (Completed)
 - [X] Investigate N/A and strange values in technical indicator tab (completed)
 - [X] Identify the exact file and line causing the issue in technical indicator calculations. (completed)
 - [X] Analyze the `calculate_rsi` function and other technical indicator functions. (completed)
@@ -36,6 +36,17 @@
 - [X] Update PROGRESS.md with the fix details. (completed)
 - [X] Update DECISIONS.md with rationale for the fix. (completed)
 - [X] Push all changes to the GitHub repository. (completed)
+
+### Current Task: Schwab Client Tuple Handling Error (In Progress)
+- [X] Investigate errors related to Schwab client handling (completed)
+- [X] Identify instances where the client tuple is incorrectly passed to functions (completed)
+- [X] Analyze the data flow from client initialization to usage in data fetching functions (completed)
+- [X] Fix all instances where the tuple is incorrectly used instead of just the client object (completed)
+- [X] Ensure consistent client handling across all functions and callbacks (completed)
+- [ ] Test the fix with sample and live data
+- [ ] Update PROGRESS.md with the fix details
+- [ ] Update DECISIONS.md with rationale for the fix
+- [ ] Push all changes to the GitHub repository
 
 ## Dependencies Between Tasks
 

@@ -14,16 +14,19 @@
 - Identified the cause of the Series truth value error in `technical_analysis.py` (improper handling of pandas Series in a conditional expression).
 - Fixed the Series truth value error by using nested `np.where` calls to properly handle Series objects in the RSI calculation.
 - Fixed the technical indicator tab issues with N/A and strange values by ensuring proper handling of Series objects in conditional expressions and maintaining consistent column naming.
+- Investigated new error: `'tuple' object has no attribute 'price_history'` in client handling.
+- Identified the cause of the tuple error in `dashboard_app.py` (the tuple returned by `get_schwab_client()` was being passed to functions instead of just the client object).
+- Fixed the Schwab client handling by ensuring only the client instance (not the tuple) is passed to downstream functions.
 - Updated all documentation files (PROGRESS.md, TODO.md, DECISIONS.md) to reflect the changes and rationale.
 - Pushed all changes to GitHub.
 
 ## Current Work in Progress
 
-- None (all identified issues have been fixed)
+- Testing the Schwab client handling fix with sample and live data.
 
 ## Known Issues/Challenges
 
-- None currently identified (all known issues have been resolved)
+- None currently identified (all known issues have been resolved).
 
 ## Next Steps
 
