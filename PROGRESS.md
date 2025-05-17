@@ -23,17 +23,26 @@
 - Added comprehensive logging throughout the technical indicator processing flow for better debugging.
 - Updated all documentation files (PROGRESS.md, TODO.md, DECISIONS.md) to reflect the changes and rationale.
 - Pushed all changes to GitHub.
+- Identified new issue with technical indicators tab: "No valid OHLCV columns found for aggregation" error in logs.
+- Analyzed the column name mismatch between data fetchers (uppercase 'Open', 'High', etc.) and technical analysis module (lowercase 'open', 'high', etc.).
+- Created validation framework to verify terminal output against technical indicators tab data.
+- Implemented validation script (`validate_technical_indicators.py`) to detect and fix column name mismatches.
+- Created sample data generator (`sample_data_generator.py`) for testing the validation process.
 
 ## Current Work in Progress
 
-- Testing the technical indicator tab with sample and live data to validate fixes.
+- Testing the validation scripts with sample data to verify the column name mismatch fix.
+- Preparing to push validation framework to GitHub.
 
 ## Known Issues/Challenges
 
-- None currently identified (all known issues have been resolved).
+- Column name mismatch between data fetchers and technical analysis module causing aggregation failures.
+- Only 1-minute data calculations are working; 15min, Hourly, and Daily aggregations fail due to the column name issue.
 
 ## Next Steps
 
+- Implement a permanent fix for the column name mismatch in the main codebase.
+- Test the fix with both sample and live data.
 - Monitor the application for any additional issues that may arise.
 - Consider implementing additional technical indicators or enhancing existing ones if needed.
 - Explore opportunities for performance optimization in the technical analysis calculations.

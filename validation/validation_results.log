@@ -1,0 +1,40 @@
+2025-05-17 15:51:10,628 - validation - INFO - Starting validation for symbol MSFT
+2025-05-17 15:51:10,629 - validation - INFO - Log data: {'fetched_candles': {'MSFT': 32134}, 'aggregation_errors': {'message': ['No valid OHLCV columns found for aggregation.', 'No valid OHLCV columns found for aggregation.', 'No valid OHLCV columns found for aggregation.']}, 'indicator_calculations': {'MSFT': {'1min': {'rows': 32134, 'columns': 18}}}, 'indicator_counts': {'MSFT': {'1min': 18}}}
+2025-05-17 15:51:10,641 - validation - INFO - Sample data loaded: 1000 rows, columns: ['Open', 'High', 'Low', 'Close', 'Volume']
+2025-05-17 15:51:10,641 - validation - WARNING - Column case mismatch: [('open', 'Open'), ('high', 'High'), ('low', 'Low'), ('close', 'Close'), ('volume', 'Volume')]
+2025-05-17 15:51:10,641 - validation - INFO - Column validation: Failed
+2025-05-17 15:51:10,641 - validation - INFO - Renaming columns: {'Open': 'open', 'High': 'high', 'Low': 'low', 'Close': 'close', 'Volume': 'volume'}
+2025-05-17 15:51:10,642 - validation - INFO - Fixed columns: ['open', 'high', 'low', 'close', 'volume']
+2025-05-17 15:51:10,642 - validation - INFO - Running technical analysis for MSFT on DataFrame with 1000 rows
+2025-05-17 15:51:10,642 - technical_analysis - INFO - Calculating TA for MSFT on DataFrame with 1000 rows.
+2025-05-17 15:51:10,662 - technical_analysis - INFO - Finished TA for MSFT. DataFrame now has 18 columns.
+2025-05-17 15:51:10,663 - validation - INFO - Technical analysis results: 1000 rows, 18 columns
+2025-05-17 15:51:10,663 - validation - INFO - Running aggregation with rule '15min' on DataFrame with 1000 rows
+2025-05-17 15:51:10,683 - validation - INFO - Aggregation for 15min: 67 rows
+2025-05-17 15:51:10,683 - validation - INFO - Running technical analysis for MSFT_15min on DataFrame with 67 rows
+2025-05-17 15:51:10,683 - technical_analysis - INFO - Calculating TA for MSFT_15min on DataFrame with 67 rows.
+2025-05-17 15:51:10,693 - technical_analysis - INFO - Finished TA for MSFT_15min. DataFrame now has 18 columns.
+2025-05-17 15:51:10,693 - validation - INFO - Technical analysis for 15min: 67 rows, 18 columns
+2025-05-17 15:51:10,693 - validation - INFO - Running aggregation with rule '1H' on DataFrame with 1000 rows
+2025-05-17 15:51:10,697 - validation - INFO - Aggregation for Hourly: 18 rows
+2025-05-17 15:51:10,697 - validation - INFO - Running technical analysis for MSFT_Hourly on DataFrame with 18 rows
+2025-05-17 15:51:10,697 - technical_analysis - INFO - Calculating TA for MSFT_Hourly on DataFrame with 18 rows.
+2025-05-17 15:51:10,697 - technical_analysis - WARNING - BBands: DataFrame length 18 is less than window 20 or 'close' column missing.
+2025-05-17 15:51:10,699 - technical_analysis - WARNING - MACD: DataFrame length 18 is less than long_window 26 or 'close' column missing.
+2025-05-17 15:51:10,704 - technical_analysis - INFO - Finished TA for MSFT_Hourly. DataFrame now has 18 columns.
+2025-05-17 15:51:10,705 - validation - INFO - Technical analysis for Hourly: 18 rows, 18 columns
+2025-05-17 15:51:10,705 - validation - INFO - Running aggregation with rule '1D' on DataFrame with 1000 rows
+2025-05-17 15:51:10,708 - validation - INFO - Aggregation for Daily: 2 rows
+2025-05-17 15:51:10,708 - validation - INFO - Running technical analysis for MSFT_Daily on DataFrame with 2 rows
+2025-05-17 15:51:10,708 - technical_analysis - INFO - Calculating TA for MSFT_Daily on DataFrame with 2 rows.
+2025-05-17 15:51:10,709 - technical_analysis - WARNING - BBands: DataFrame length 2 is less than window 20 or 'close' column missing.
+2025-05-17 15:51:10,709 - technical_analysis - WARNING - RSI: DataFrame length 2 is less than period 14+1 or 'close' column missing.
+2025-05-17 15:51:10,709 - technical_analysis - WARNING - MACD: DataFrame length 2 is less than long_window 26 or 'close' column missing.
+2025-05-17 15:51:10,710 - technical_analysis - WARNING - IMI: Not enough data for period 14. Need 14 rows, got 2.
+2025-05-17 15:51:10,710 - technical_analysis - WARNING - MFI: Not enough data for period 14. Need 15 rows, got 2.
+2025-05-17 15:51:10,711 - technical_analysis - WARNING - FVG: Not enough data points to identify gaps. Need at least 3, got 2.
+2025-05-17 15:51:10,711 - technical_analysis - INFO - Finished TA for MSFT_Daily. DataFrame now has 18 columns.
+2025-05-17 15:51:10,711 - validation - INFO - Technical analysis for Daily: 2 rows, 18 columns
+2025-05-17 15:51:10,711 - validation - INFO - Validation results: Failed
+2025-05-17 15:51:10,711 - validation - WARNING - Validation issue: Candle count mismatch: expected 32134, got 1000
+2025-05-17 15:51:10,711 - validation - WARNING - Validation issue: Aggregation errors found in logs: ['No valid OHLCV columns found for aggregation.', 'No valid OHLCV columns found for aggregation.', 'No valid OHLCV columns found for aggregation.']

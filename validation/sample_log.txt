@@ -1,0 +1,30 @@
+2025-05-17 10:46:11,007 - dashboard_utils.data_fetchers - INFO - Successfully fetched a total of 32134 unique minute candles for MSFT over 90 days.
+2025-05-17 10:46:11,008 - __main__ - INFO - UpdateDataTabs (TechInd): Fetched 32134 minute candles for MSFT for TA.
+2025-05-17 10:46:11,052 - __main__ - INFO - UpdateDataTabs (TechInd): Converted 'timestamp' column to DatetimeIndex for MSFT.
+2025-05-17 10:46:11,053 - __main__ - INFO - UpdateDataTabs (TechInd): Starting data aggregation for MSFT.
+2025-05-17 10:46:11,053 - __main__ - INFO - UpdateDataTabs (TechInd): Aggregating 15min data for MSFT...
+2025-05-17 10:46:11,053 - technical_analysis - ERROR - Aggregation: No valid OHLCV columns found for aggregation.
+2025-05-17 10:46:11,053 - __main__ - WARNING - UpdateDataTabs (TechInd): Aggregation for 15min returned empty DataFrame for MSFT.
+2025-05-17 10:46:11,053 - __main__ - INFO - UpdateDataTabs (TechInd): Aggregating Hourly data for MSFT...
+2025-05-17 10:46:11,053 - technical_analysis - ERROR - Aggregation: No valid OHLCV columns found for aggregation.
+2025-05-17 10:46:11,053 - __main__ - WARNING - UpdateDataTabs (TechInd): Aggregation for Hourly returned empty DataFrame for MSFT.
+2025-05-17 10:46:11,053 - __main__ - INFO - UpdateDataTabs (TechInd): Aggregating Daily data for MSFT...
+2025-05-17 10:46:11,053 - technical_analysis - ERROR - Aggregation: No valid OHLCV columns found for aggregation.
+2025-05-17 10:46:11,053 - __main__ - WARNING - UpdateDataTabs (TechInd): Aggregation for Daily returned empty DataFrame for MSFT.
+2025-05-17 10:46:11,053 - __main__ - INFO - UpdateDataTabs (TechInd): Completed data aggregation for MSFT.
+2025-05-17 10:46:11,054 - __main__ - INFO - UpdateDataTabs (TechInd): Starting technical indicator calculations for MSFT.
+2025-05-17 10:46:11,054 - __main__ - INFO - UpdateDataTabs (TechInd): Calculating indicators for 1min for MSFT...
+2025-05-17 10:46:11,054 - technical_analysis - INFO - Calculating TA for MSFT_1min on DataFrame with 32134 rows.
+2025-05-17 10:46:11,085 - technical_analysis - INFO - Finished TA for MSFT_1min. DataFrame now has 18 columns.
+2025-05-17 10:46:11,085 - __main__ - INFO - UpdateDataTabs (TechInd): 1min calculation returned DataFrame with shape (32134, 18) for MSFT.
+2025-05-17 10:46:11,085 - __main__ - INFO - UpdateDataTabs (TechInd): Skipping 15min calculations due to empty aggregated data for MSFT.
+2025-05-17 10:46:11,085 - __main__ - INFO - UpdateDataTabs (TechInd): Skipping Hourly calculations due to empty aggregated data for MSFT.
+2025-05-17 10:46:11,085 - __main__ - INFO - UpdateDataTabs (TechInd): Skipping Daily calculations due to empty aggregated data for MSFT.
+2025-05-17 10:46:11,085 - __main__ - INFO - UpdateDataTabs (TechInd): Completed technical indicator calculations for MSFT.
+2025-05-17 10:46:11,085 - __main__ - INFO - UpdateDataTabs (TechInd): Collecting indicator names for MSFT...
+2025-05-17 10:46:11,085 - __main__ - INFO - UpdateDataTabs (TechInd): Found 18 indicators for 1min for MSFT.
+2025-05-17 10:46:11,085 - __main__ - INFO - UpdateDataTabs (TechInd): No indicators found for 15min for MSFT.
+2025-05-17 10:46:11,085 - __main__ - INFO - UpdateDataTabs (TechInd): No indicators found for Hourly for MSFT.
+2025-05-17 10:46:11,085 - __main__ - INFO - UpdateDataTabs (TechInd): No indicators found for Daily for MSFT.
+2025-05-17 10:46:11,085 - __main__ - INFO - UpdateDataTabs (TechInd): Total unique indicators found: 18 for MSFT.
+2025-05-17 10:46:11,090 - __main__ - INFO - UpdateDataTabs (TechInd): Formatted TA data for MSFT table. Rows: 18
