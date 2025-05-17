@@ -37,6 +37,25 @@
   - More flexible and powerful than Streamlit for complex applications
   - More integrated Python workflow than Flask+JavaScript
 
+### CSV Export Functionality
+
+- **Decision**: Implement CSV export for minute data tab.
+- **Rationale**: Allows users to verify data accuracy and perform external analysis of the raw data.
+- **Alternatives Considered**:
+  - JSON export format
+  - Excel export format
+  - Direct database connection
+- **Trade-offs**:
+  - CSV is universally compatible with analysis tools
+  - Simple implementation with built-in pandas functionality
+  - Lightweight compared to Excel export
+  - Less structured than JSON for complex nested data
+- **Implementation**:
+  - Added "Export to CSV" button to minute data tab UI
+  - Created callback to generate and serve CSV files using Dash's dcc.Download component
+  - Added data storage mechanism to ensure all minute data is available for export
+  - Included symbol name and timestamp in filename for easy identification
+
 ## Bug Fix Decisions
 
 ### `period_name` Argument Error

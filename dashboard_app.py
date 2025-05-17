@@ -8,6 +8,8 @@ import os # For account ID
 import logging # For app-level logging
 import json # For pretty printing dicts in logs
 import re # For parsing option key
+import base64 # For CSV download
+import io # For CSV download
 
 # Import utility functions
 from dashboard_utils.data_fetchers import get_schwab_client, get_minute_data, get_options_chain_data, get_option_contract_keys
@@ -68,14 +70,20 @@ app.layout = html.Div([
     dcc.Tabs(id="tabs-main", value="tab-minute-data", children=[
         dcc.Tab(label="Minute Streaming Data", value="tab-minute-data", children=[
             html.Div(id="minute-data-content", children=[
-                html.H4(id="minute-data-header"),
+                html.Div([
+                    html.H4(id="minute-data-header", style={"display": "inline-block", "marginRight": "20px"}),
+                    html.Button("Export to CSV", id="export-minute-data-button", n_clicks=0, 
+                               style={"backgroundColor": "#4CAF50", "color": "white", "border": "none", 
+                                      "padding": "10px 15px", "borderRadius": "4px", "cursor": "pointer"})
+                ]),
                 dash_table.DataTable(
                     id="minute-data-table", 
                     columns=[], 
                     data=[],
                     page_size=15, 
                     style_table={"overflowX": "auto"}
-                )
+                ),
+                dcc.Download(id="download-minute-data-csv")
             ])
         ]),
         dcc.Tab(label="Technical Indicators", value="tab-tech-indicators", children=[
@@ -108,6 +116,7 @@ app.layout = html.Div([
     dcc.Store(id="error-message-store", data=initial_errors), # Main store for all errors, populated by a single callback
     dcc.Store(id="new-error-event-store"), # Intermediate store for individual error events
     dcc.Store(id="current-option-keys-store", data=[]),
+    dcc.Store(id="minute-data-store", data=None),  # Store for minute data to be exported
 
     html.Div(id="error-log-display", children="No errors yet." if not initial_errors else [html.P(err) for err in initial_errors], style={"marginTop": "20px", "border": "1px solid #ccc", "padding": "10px", "height": "100px", "overflowY": "scroll", "whiteSpace": "pre-wrap"})
 ])
@@ -211,6 +220,7 @@ def update_error_log(error_messages):
     Output("minute-data-table", "data"),
     Output("tech-indicators-table", "columns"),
     Output("tech-indicators-table", "data"),
+    Output("minute-data-store", "data"),  # Store minute data for export
     Output("new-error-event-store", "data"), # No allow_duplicate=True
     Input("selected-symbol-store", "data"),
     Input("tabs-main", "value"), # To know which tab is active
@@ -221,6 +231,7 @@ def update_data_for_active_tab(selected_symbol, active_tab):
 
     minute_cols, minute_data = dash.no_update, dash.no_update
     tech_cols, tech_data = dash.no_update, dash.no_update
+    minute_data_store = dash.no_update
     error_event_to_send = dash.no_update
 
     default_minute_cols = [{"name": i, "id": i} for i in ["Timestamp", "Open", "High", "Low", "Close", "Volume"]]
@@ -231,7 +242,8 @@ def update_data_for_active_tab(selected_symbol, active_tab):
         app_logger.debug("CB_update_data_for_active_tab: No selected symbol. Clearing tables.")
         minute_cols, minute_data = default_minute_cols, []
         tech_cols, tech_data = default_tech_cols, []
-        return minute_cols, minute_data, tech_cols, tech_data, error_event_to_send
+        minute_data_store = None
+        return minute_cols, minute_data, tech_cols, tech_data, minute_data_store, error_event_to_send
 
     global SCHWAB_CLIENT
     client_to_use = SCHWAB_CLIENT
@@ -246,7 +258,8 @@ def update_data_for_active_tab(selected_symbol, active_tab):
             error_event_to_send = {"source": "UpdateDataTabs-Client", "message": error_msg, "timestamp": timestamp_str}
             minute_cols, minute_data = default_minute_cols, []
             tech_cols, tech_data = default_tech_cols, []
-            return minute_cols, minute_data, tech_cols, tech_data, error_event_to_send
+            minute_data_store = None
+            return minute_cols, minute_data, tech_cols, tech_data, minute_data_store, error_event_to_send
         SCHWAB_CLIENT = client_instance  # Store only the client instance, not the tuple
         client_to_use = client_instance
         app_logger.info(f"UpdateDataTabs: Schwab client reinitialized successfully for {selected_symbol}.")
@@ -260,9 +273,11 @@ def update_data_for_active_tab(selected_symbol, active_tab):
             app_logger.error(f"UpdateDataTabs (MinuteData) for {selected_symbol}: {error_msg}")
             error_event_to_send = {"source": f"MinData-Fetch-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
             minute_cols, minute_data = default_minute_cols, []
+            minute_data_store = None
         elif df.empty:
             app_logger.warning(f"UpdateDataTabs (MinuteData): No minute data returned for {selected_symbol}.")
             minute_cols, minute_data = default_minute_cols, []
+            minute_data_store = None
         else:
             app_logger.info(f"UpdateDataTabs (MinuteData): Successfully fetched {len(df)} rows for {selected_symbol}.")
             if "timestamp" in df.columns and not isinstance(df.index, pd.DatetimeIndex):
@@ -274,18 +289,21 @@ def update_data_for_active_tab(selected_symbol, active_tab):
                     app_logger.error(f"UpdateDataTabs (MinuteData-Format) for {selected_symbol}: {error_msg}")
                     error_event_to_send = {"source": f"MinData-Format-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
                     minute_cols, minute_data = default_minute_cols, []
+                    minute_data_store = None
 
             elif not isinstance(df.index, pd.DatetimeIndex):
                 error_msg = "Index is not DatetimeIndex after fetch."
                 app_logger.error(f"UpdateDataTabs (MinuteData-Format) for {selected_symbol}: {error_msg}")
                 error_event_to_send = {"source": f"MinData-Format-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
                 minute_cols, minute_data = default_minute_cols, []
+                minute_data_store = None
             
             if error_event_to_send is dash.no_update: # if no formatting error occurred
                 df_display = df.reset_index()
                 df_display["timestamp"] = df_display["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
                 minute_cols = [{"name": i, "id": i} for i in df_display.columns]
                 minute_data = df_display.to_dict("records")
+                minute_data_store = df_display.to_dict("records")  # Store data for export
 
     elif active_tab == "tab-tech-indicators":
         app_logger.info(f"UpdateDataTabs: Fetching/calculating TA for {selected_symbol}...")
@@ -436,7 +454,7 @@ def update_data_for_active_tab(selected_symbol, active_tab):
                     error_event_to_send = {"source": f"TechInd-Calc-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
                     tech_cols, tech_data = default_tech_cols, []
     
-    return minute_cols, minute_data, tech_cols, tech_data, error_event_to_send
+    return minute_cols, minute_data, tech_cols, tech_data, minute_data_store, error_event_to_send
 
 
 # --- Options Chain Callbacks ---
@@ -505,6 +523,34 @@ def manage_options_stream(selected_symbol, n_intervals, current_keys):
         error_msg = f"Error in options chain processing: {str(e)}"
         app_logger.exception(f"OptionsStream for {selected_symbol}: {error_msg}")
         return f"Error: {error_msg}", [], [], [], [], [], {"source": f"OptionsStream-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
+
+
+# --- CSV Export Callback ---
+@app.callback(
+    Output("download-minute-data-csv", "data"),
+    Input("export-minute-data-button", "n_clicks"),
+    State("minute-data-store", "data"),
+    State("selected-symbol-store", "data"),
+    prevent_initial_call=True
+)
+def export_minute_data_to_csv(n_clicks, minute_data, selected_symbol):
+    if n_clicks == 0 or not minute_data:
+        return dash.no_update
+    
+    try:
+        app_logger.info(f"Exporting minute data to CSV for {selected_symbol}...")
+        df = pd.DataFrame(minute_data)
+        
+        # Generate filename with symbol and current timestamp
+        timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{selected_symbol}_minute_data_{timestamp_str}.csv"
+        
+        # Return the CSV data for download
+        return dcc.send_data_frame(df.to_csv, filename, index=False)
+    
+    except Exception as e:
+        app_logger.error(f"Error exporting minute data to CSV: {str(e)}", exc_info=True)
+        return dash.no_update
 
 
 # --- Main Execution ---

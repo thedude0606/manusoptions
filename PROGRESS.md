@@ -32,10 +32,15 @@
 - Added column normalization logic to `dashboard_app.py` to ensure compatibility with technical analysis functions.
 - Tested the fixes with sample data and confirmed that aggregation and technical analysis now work correctly.
 - Pushed all updated files to GitHub.
+- Implemented CSV export functionality for the minute data tab to allow data verification and analysis.
+- Added an "Export to CSV" button to the minute data tab UI.
+- Created a callback to generate and serve CSV files when the export button is clicked.
+- Added data storage mechanism to ensure all minute data is available for export.
+- Ensured exported CSV files include symbol name and timestamp in the filename for easy identification.
 
 ## Current Work in Progress
 
-- None - all identified issues have been resolved.
+- None - all identified issues have been resolved and requested features implemented.
 
 ## Known Issues/Challenges
 
@@ -46,3 +51,4 @@
 - Monitor the application for any additional issues that may arise.
 - Consider implementing additional technical indicators or enhancing existing ones if needed.
 - Explore opportunities for performance optimization in the technical analysis calculations.
+- Consider adding export functionality to other tabs if needed.
