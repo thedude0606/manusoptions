@@ -17,12 +17,16 @@
 - Investigated new error: `'tuple' object has no attribute 'price_history'` in client handling.
 - Identified the cause of the tuple error in `dashboard_app.py` (the tuple returned by `get_schwab_client()` was being passed to functions instead of just the client object).
 - Fixed the Schwab client handling by ensuring only the client instance (not the tuple) is passed to downstream functions.
+- Investigated new error: `'dict' object has no attribute 'columns'` in technical indicator processing.
+- Identified the cause of the dict vs DataFrame error in `dashboard_app.py` (inconsistent handling of technical analysis results).
+- Fixed the technical indicator processing by ensuring all results are consistently stored as DataFrames.
+- Added comprehensive logging throughout the technical indicator processing flow for better debugging.
 - Updated all documentation files (PROGRESS.md, TODO.md, DECISIONS.md) to reflect the changes and rationale.
 - Pushed all changes to GitHub.
 
 ## Current Work in Progress
 
-- Testing the Schwab client handling fix with sample and live data.
+- Testing the technical indicator tab with sample and live data to validate fixes.
 
 ## Known Issues/Challenges
 

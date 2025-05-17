@@ -6,6 +6,8 @@
 - Using vectorized operations for pandas Series objects to avoid ambiguous truth value errors
 - Ensuring proper handling of DatetimeIndex for time series data
 - Proper client object handling to avoid tuple-related errors
+- Consistent use of DataFrames for technical indicator results
+- Comprehensive logging throughout the technical indicator processing flow
 
 ## Technology Selections
 
@@ -79,3 +81,29 @@
       ```
       This pattern was applied consistently throughout the codebase, including in callback functions where the client might be reinitialized.
     - **Rationale:** This fix ensures that only the actual client object (not the tuple) is ever passed to functions that expect a client. This prevents AttributeError exceptions and allows the data fetching and technical analysis functions to work as intended. The change maintains the error handling capabilities of the original design while ensuring proper object types are passed throughout the application.
+
+- **Fix for Technical Indicator Dict vs DataFrame Error (2025-05-17):**
+    - **Issue:** The application was throwing an error `'dict' object has no attribute 'columns'` when processing technical indicators, as shown in the error log provided by the user.
+    - **Investigation:** The error occurred in the technical indicator processing logic where the code was attempting to access the `.columns` attribute on a dictionary object. This happened because `ta_results[period]` was sometimes an empty dictionary (when no aggregated data was available) instead of a DataFrame, but the code was treating all values in `ta_results` as DataFrames.
+    - **Decision:** 
+      1. Modified the code to ensure that `ta_results` always contains DataFrames (even if empty) for all periods:
+         ```python
+         # Initialize ta_results with empty DataFrames
+         ta_results = {
+             "1min": pd.DataFrame(),
+             "15min": pd.DataFrame(),
+             "Hourly": pd.DataFrame(),
+             "Daily": pd.DataFrame()
+         }
+         ```
+      2. Added type checking and conversion to ensure that any non-DataFrame results are converted to empty DataFrames:
+         ```python
+         if isinstance(result_df, pd.DataFrame):
+             app_logger.info(f"UpdateDataTabs (TechInd): {period} calculation returned DataFrame with shape {result_df.shape} for {selected_symbol}.")
+             ta_results[period] = result_df
+         else:
+             app_logger.warning(f"UpdateDataTabs (TechInd): {period} calculation returned {type(result_df).__name__} instead of DataFrame for {selected_symbol}. Converting to empty DataFrame.")
+             ta_results[period] = pd.DataFrame()  # Ensure we always have a DataFrame
+         ```
+      3. Added comprehensive logging throughout the technical indicator processing flow to provide detailed information about the state of the data at each step.
+    - **Rationale:** This fix ensures that the code consistently handles DataFrame objects throughout the technical indicator processing flow, preventing AttributeError exceptions when accessing DataFrame-specific attributes like `.columns`. The added logging provides valuable context for debugging by capturing the state of the data at each major step, making it easier to identify and diagnose issues in the future. This approach follows the principle of defensive programming by ensuring consistent data types and providing detailed logging for troubleshooting.
