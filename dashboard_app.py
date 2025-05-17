@@ -307,6 +307,16 @@ def update_data_for_active_tab(selected_symbol, active_tab):
                         df_minute_raw['timestamp'] = pd.to_datetime(df_minute_raw['timestamp'])
                         df_minute_raw = df_minute_raw.set_index('timestamp')
                         app_logger.info(f"UpdateDataTabs (TechInd): Converted 'timestamp' column to DatetimeIndex for {selected_symbol}.")
+                        
+                        # Normalize column names to lowercase for technical analysis compatibility
+                        column_rename_map = {}
+                        for col in df_minute_raw.columns:
+                            if col.lower() in ['open', 'high', 'low', 'close', 'volume']:
+                                column_rename_map[col] = col.lower()
+                        
+                        if column_rename_map:
+                            df_minute_raw = df_minute_raw.rename(columns=column_rename_map)
+                            app_logger.info(f"UpdateDataTabs (TechInd): Normalized column names to lowercase for {selected_symbol}: {column_rename_map}")
                     except Exception as e:
                         error_msg = f"Failed to convert 'timestamp' to DatetimeIndex for TA: {e}"
                         app_logger.error(f"UpdateDataTabs (TechInd-Format) for {selected_symbol}: {error_msg}")

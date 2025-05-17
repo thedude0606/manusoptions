@@ -69,37 +69,39 @@
 - **Rationale**: Some functions expected DataFrame objects but received dictionaries, causing attribute errors.
 - **Implementation**: Standardized all technical indicator processing to use DataFrames consistently.
 
-## Validation Framework Decisions
+## Column Name Standardization Decisions
 
 ### Column Name Mismatch Issue
 
-- **Decision**: Create a validation framework to detect and fix column name mismatches.
-- **Rationale**: The mismatch between uppercase column names in data fetchers and lowercase names expected by technical analysis functions causes aggregation failures.
+- **Decision**: Standardize on lowercase column names throughout the codebase.
+- **Rationale**: The mismatch between uppercase column names in data fetchers and lowercase names expected by technical analysis functions was causing aggregation failures.
 - **Alternatives Considered**:
-  - Modifying data fetchers to return lowercase column names
   - Modifying technical analysis functions to accept uppercase column names
-  - Adding a normalization step in the dashboard application
+  - Adding case-insensitive column access throughout the codebase
 - **Trade-offs**:
-  - Validation approach allows detection and correction without changing existing code
-  - Provides a way to verify that terminal output matches technical indicators tab
-  - More complex than directly fixing the column names in one place
+  - Lowercase naming follows Python conventions
+  - Consistent naming reduces errors and simplifies code
+  - Required changes in multiple files but provides a more robust solution
+- **Implementation**: 
+  - Modified data_fetchers.py to return lowercase column names
+  - Added column normalization in dashboard_app.py as a fallback mechanism
+  - Comprehensive testing confirmed the fix resolves aggregation errors
+
+### Validation Framework
+
+- **Decision**: Create a validation framework to detect and fix column name mismatches.
+- **Rationale**: Provides a way to verify that terminal output matches technical indicators tab and helps identify similar issues in the future.
+- **Alternatives Considered**:
+  - Direct code fixes without validation
+  - Manual testing only
+- **Trade-offs**:
+  - Validation approach allows detection and correction with automated testing
+  - More complex than direct fixes but provides better long-term maintainability
+  - Helps prevent regression of similar issues
 - **Implementation**: 
   - Created validation scripts to parse terminal logs and compare with technical analysis results
   - Added column name normalization function to fix mismatches
   - Generated sample data for testing the validation process
-
-### Sample Data Generation
-
-- **Decision**: Create a sample data generator for testing.
-- **Rationale**: Testing with consistent, reproducible data allows for more reliable validation.
-- **Alternatives Considered**:
-  - Using real market data for testing
-  - Using static test data files
-- **Trade-offs**:
-  - Generated data can be customized for specific test scenarios
-  - May not capture all edge cases present in real market data
-  - More flexible than static test files
-- **Implementation**: Created a script to generate realistic OHLCV data with configurable parameters.
 
 ## Future Enhancement Decisions
 

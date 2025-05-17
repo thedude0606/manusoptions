@@ -59,18 +59,19 @@
 - [X] Update DECISIONS.md with rationale for the fix (completed)
 - [X] Push all changes to the GitHub repository (completed)
 
-### Current Task: Technical Indicators Tab Validation (In Progress)
-- [X] Investigate "No valid OHLCV columns found for aggregation" error in logs
-- [X] Identify the column name mismatch between data fetchers and technical analysis module
-- [X] Create validation directory and framework for testing
-- [X] Implement validation script to detect and fix column name mismatches
-- [X] Create sample data generator for testing
-- [X] Update PROGRESS.md with current status
-- [ ] Update TODO.md with new tasks (in progress)
-- [ ] Update DECISIONS.md with rationale for validation approach
-- [ ] Test validation scripts with sample data
-- [ ] Implement permanent fix for column name mismatch in main codebase
-- [ ] Push all changes to GitHub repository
+### Sixth Task: Technical Indicators Tab Validation and Column Name Fix (Completed)
+- [X] Investigate "No valid OHLCV columns found for aggregation" error in logs (completed)
+- [X] Identify the column name mismatch between data fetchers and technical analysis module (completed)
+- [X] Create validation directory and framework for testing (completed)
+- [X] Implement validation script to detect and fix column name mismatches (completed)
+- [X] Create sample data generator for testing (completed)
+- [X] Fix column names in data_fetchers.py to use lowercase (completed)
+- [X] Add column normalization to dashboard_app.py (completed)
+- [X] Test the fixes with sample data (completed)
+- [X] Update PROGRESS.md with current status (completed)
+- [X] Update TODO.md with completed tasks (completed)
+- [X] Update DECISIONS.md with rationale for column name standardization (completed)
+- [X] Push all changes to GitHub repository (in progress)
 
 ## Dependencies Between Tasks
 

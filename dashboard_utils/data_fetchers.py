@@ -143,14 +143,16 @@ def get_minute_data(client: schwabdev.Client, symbol: str, days_history: int = 1
     all_candles_df["timestamp"] = pd.to_datetime(all_candles_df["datetime"], unit="ms", utc=True).dt.tz_convert("America/New_York")
     
     # Rename other relevant columns for consistency
+    # Using lowercase column names for compatibility with technical_analysis.py
     all_candles_df = all_candles_df.rename(columns={
-        "open": "Open", "high": "High", "low": "Low", 
-        "close": "Close", "volume": "Volume"
+        "open": "open", "high": "high", "low": "low", 
+        "close": "close", "volume": "volume"
     })
     
     # Select the final set of columns, ensuring 'timestamp' is a datetime object.
     # This implicitly drops the original 'datetime' column from the API if it's not in the list.
-    columns_to_keep = ["timestamp", "Open", "High", "Low", "Close", "Volume"]
+    # Using lowercase column names for compatibility with technical_analysis.py
+    columns_to_keep = ["timestamp", "open", "high", "low", "close", "volume"]
     all_candles_df = all_candles_df[columns_to_keep]
     
     # Remove duplicate entries based on the 'timestamp'
