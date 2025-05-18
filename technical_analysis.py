@@ -21,20 +21,33 @@ def calculate_bollinger_bands(df, window=20, num_std_dev=2):
         df[f'bb_lower_{window}'] = np.nan
         return df
     
+    # Use min_periods=1 to calculate with available data, but mark as invalid if less than window
     rolling_mean = df['close'].rolling(window=window, min_periods=1).mean()
     rolling_std = df['close'].rolling(window=window, min_periods=1).std()
 
     df[f'bb_middle_{window}'] = rolling_mean
     df[f'bb_upper_{window}'] = rolling_mean + (rolling_std * num_std_dev)
     df[f'bb_lower_{window}'] = rolling_mean - (rolling_std * num_std_dev)
+    
+    # If we don't have enough data, mark the first (window-1) values as NaN
+    # This ensures we don't show misleading values when there's insufficient data
+    if len(df) < window:
+        df.loc[df.index[:window-1], [f'bb_middle_{window}', f'bb_upper_{window}', f'bb_lower_{window}']] = np.nan
+    
     return df
 
 def calculate_rsi(df, period=14):
     """Calculates Relative Strength Index (RSI)."""
-    if 'close' not in df.columns or len(df) < period + 1: # RSI needs at least period+1 to calculate diff then roll
-        ta_logger.warning(f"RSI: DataFrame length {len(df)} is less than period {period}+1 or 'close' column missing.")
+    if 'close' not in df.columns:
+        ta_logger.warning(f"RSI: 'close' column missing.")
         df[f"rsi_{period}"] = np.nan
         return df
+    
+    if len(df) < period + 1: # RSI needs at least period+1 to calculate diff then roll
+        ta_logger.warning(f"RSI: DataFrame length {len(df)} is less than period {period}+1.")
+        df[f"rsi_{period}"] = np.nan
+        return df
+        
     delta = df["close"].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=period, min_periods=1).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=period, min_periods=1).mean()
@@ -45,21 +58,38 @@ def calculate_rsi(df, period=14):
     
     df[f"rsi_{period}"] = 100 - (100 / (1 + rs))
     df.loc[rs == np.inf, f"rsi_{period}"] = 100 # Handle case where loss is zero and gain is positive
+    
+    # Mark the first period values as NaN since they're not reliable
+    df.loc[df.index[:period], f"rsi_{period}"] = np.nan
+    
     return df
 
 def calculate_macd(df, short_window=12, long_window=26, signal_window=9):
     """Calculates Moving Average Convergence Divergence (MACD)."""
-    if 'close' not in df.columns or len(df) < long_window:
-        ta_logger.warning(f"MACD: DataFrame length {len(df)} is less than long_window {long_window} or 'close' column missing.")
+    if 'close' not in df.columns:
+        ta_logger.warning(f"MACD: 'close' column missing.")
         df["macd"] = np.nan
         df["macd_signal"] = np.nan
         df["macd_hist"] = np.nan
         return df
+        
+    if len(df) < long_window:
+        ta_logger.warning(f"MACD: DataFrame length {len(df)} is less than long_window {long_window}.")
+        df["macd"] = np.nan
+        df["macd_signal"] = np.nan
+        df["macd_hist"] = np.nan
+        return df
+        
+    # Calculate with min_periods=1 to use available data
     short_ema = df["close"].ewm(span=short_window, adjust=False, min_periods=1).mean()
     long_ema = df["close"].ewm(span=long_window, adjust=False, min_periods=1).mean()
     df["macd"] = short_ema - long_ema
     df["macd_signal"] = df["macd"].ewm(span=signal_window, adjust=False, min_periods=1).mean()
     df["macd_hist"] = df["macd"] - df["macd_signal"]
+    
+    # Mark early values as NaN since they're not reliable
+    df.loc[df.index[:long_window-1], ["macd", "macd_signal", "macd_hist"]] = np.nan
+    
     return df
 
 def calculate_imi(df, period=14):
@@ -68,6 +98,7 @@ def calculate_imi(df, period=14):
         ta_logger.warning("IMI: Requires 'open' and 'close' columns.")
         df[f"imi_{period}"] = np.nan
         return df
+        
     if len(df) < period:
         ta_logger.warning(f"IMI: Not enough data for period {period}. Need {period} rows, got {len(df)}.")
         df[f"imi_{period}"] = np.nan
@@ -82,9 +113,14 @@ def calculate_imi(df, period=14):
     sum_losses = losses.rolling(window=period, min_periods=1).sum()
 
     denominator = sum_gains + sum_losses
+    # Use 50.0 as neutral value when denominator is zero (neither gains nor losses)
     imi_values = np.where(denominator == 0, 50.0, (sum_gains / denominator) * 100)
     
     df[f"imi_{period}"] = imi_values
+    
+    # Mark early values as NaN since they're not reliable
+    df.loc[df.index[:period-1], f"imi_{period}"] = np.nan
+    
     return df
 
 def calculate_mfi(df, period=14):
@@ -93,6 +129,7 @@ def calculate_mfi(df, period=14):
         ta_logger.warning("MFI: Requires 'high', 'low', 'close', and 'volume' columns.")
         df[f"mfi_{period}"] = np.nan
         return df
+        
     if len(df) < period + 1: # MFI uses typical_price.diff(), so needs period+1
         ta_logger.warning(f"MFI: Not enough data for period {period}. Need {period+1} rows, got {len(df)}.")
         df[f"mfi_{period}"] = np.nan
@@ -120,6 +157,10 @@ def calculate_mfi(df, period=14):
     mfi_values = np.where(money_flow_ratio == np.inf, 100, mfi_values) # If sum_negative_money_flow is 0 and sum_positive is not, MFI is 100
     
     df[f"mfi_{period}"] = mfi_values
+    
+    # Mark early values as NaN since they're not reliable
+    df.loc[df.index[:period], f"mfi_{period}"] = np.nan
+    
     return df
 
 def identify_fair_value_gaps(df):
@@ -202,12 +243,43 @@ def aggregate_candles(df, rule, ohlc_col_names=None):
             'volume': 'volume'
         }
 
+    # Check if columns exist in DataFrame (case-insensitive)
+    column_map = {}
+    for expected_col, default_name in ohlc_col_names.items():
+        # Try exact match first
+        if default_name in df.columns:
+            column_map[expected_col] = default_name
+        else:
+            # Try case-insensitive match
+            matches = [col for col in df.columns if col.lower() == default_name.lower()]
+            if matches:
+                column_map[expected_col] = matches[0]
+                ta_logger.info(f"Aggregation: Using column '{matches[0]}' for '{expected_col}'")
+
+    # If we don't have all required columns, try to normalize column names
+    if len(column_map) < 5:  # We need all 5 OHLCV columns
+        ta_logger.warning(f"Aggregation: Missing columns. Found: {column_map}")
+        # Try to normalize column names (convert to lowercase)
+        rename_map = {}
+        for col in df.columns:
+            if col.lower() in ['open', 'high', 'low', 'close', 'volume']:
+                rename_map[col] = col.lower()
+        
+        if rename_map:
+            ta_logger.info(f"Aggregation: Normalizing column names: {rename_map}")
+            df = df.rename(columns=rename_map)
+            
+            # Update column_map with normalized names
+            for expected_col, default_name in ohlc_col_names.items():
+                if default_name.lower() in df.columns:
+                    column_map[expected_col] = default_name.lower()
+
     agg_funcs = {}
-    if ohlc_col_names['open'] in df.columns: agg_funcs[ohlc_col_names['open']] = 'first'
-    if ohlc_col_names['high'] in df.columns: agg_funcs[ohlc_col_names['high']] = 'max'
-    if ohlc_col_names['low'] in df.columns: agg_funcs[ohlc_col_names['low']] = 'min'
-    if ohlc_col_names['close'] in df.columns: agg_funcs[ohlc_col_names['close']] = 'last'
-    if ohlc_col_names['volume'] in df.columns: agg_funcs[ohlc_col_names['volume']] = 'sum'
+    if column_map.get('open') in df.columns: agg_funcs[column_map['open']] = 'first'
+    if column_map.get('high') in df.columns: agg_funcs[column_map['high']] = 'max'
+    if column_map.get('low') in df.columns: agg_funcs[column_map['low']] = 'min'
+    if column_map.get('close') in df.columns: agg_funcs[column_map['close']] = 'last'
+    if column_map.get('volume') in df.columns: agg_funcs[column_map['volume']] = 'sum'
     
     if not agg_funcs:
         ta_logger.error("Aggregation: No valid OHLCV columns found for aggregation.")
@@ -215,7 +287,18 @@ def aggregate_candles(df, rule, ohlc_col_names=None):
 
     try:
         aggregated_df = df.resample(rule).agg(agg_funcs)
-        aggregated_df = aggregated_df.dropna(subset=[ohlc_col_names['close']]) # Drop rows where close is NaN after resampling
+        aggregated_df = aggregated_df.dropna(subset=[column_map.get('close', 'close')]) # Drop rows where close is NaN after resampling
+        
+        # Rename columns back to standard lowercase if they were different
+        rename_back = {}
+        for expected_col, actual_col in column_map.items():
+            if actual_col != expected_col:
+                rename_back[actual_col] = expected_col
+        
+        if rename_back:
+            ta_logger.info(f"Aggregation: Renaming columns back to standard: {rename_back}")
+            aggregated_df = aggregated_df.rename(columns=rename_back)
+        
     except Exception as e:
         ta_logger.error(f"Error during resampling with rule '{rule}': {e}")
         return pd.DataFrame()
@@ -233,7 +316,7 @@ def calculate_all_technical_indicators(df, symbol="N/A"):
 
     # Standardize column names to lowercase if they exist, for robustness
     # Expected columns: 'open', 'high', 'low', 'close', 'volume'
-    # The data_fetchers.py already standardizes to lowercase 'open', 'high', 'low', 'close', 'volume', 'timestamp'
+    # The data_fetchers.py already standardizes to lowercase 'open', 'high', 'low', 'close', 'volume'
     # and sets 'timestamp' as datetime index. So, this step might be redundant if data comes from there.
     # However, it's good practice if this module is used independently.
     rename_map = {col: col.lower() for col in df_ta.columns if col.lower() in ['open', 'high', 'low', 'close', 'volume']}
@@ -249,6 +332,7 @@ def calculate_all_technical_indicators(df, symbol="N/A"):
 
     ta_logger.info(f"Calculating TA for {symbol} on DataFrame with {len(df_ta)} rows.")
 
+    # Calculate indicators with improved edge case handling
     df_ta = calculate_bollinger_bands(df_ta)
     df_ta = calculate_rsi(df_ta)
     df_ta = calculate_macd(df_ta)

@@ -71,14 +71,22 @@ def parse_log_file(log_file_path):
     
     return log_data
 
-def load_sample_data(data_file_path):
-    """Load sample data from a CSV file."""
+def load_sample_data(data_file_path, max_rows=None):
+    """Load sample data from a CSV file.
+    
+    Args:
+        data_file_path: Path to the CSV file
+        max_rows: Maximum number of rows to load (None for all rows)
+    """
     if not os.path.exists(data_file_path):
         logger.error(f"Sample data file not found: {data_file_path}")
         return None
     
     try:
-        df = pd.read_csv(data_file_path)
+        # If max_rows is None, load all rows
+        df = pd.read_csv(data_file_path, nrows=max_rows)
+        logger.info(f"Loaded {len(df)} rows from {data_file_path}")
+        
         # Convert timestamp to datetime
         if 'timestamp' in df.columns:
             df['timestamp'] = pd.to_datetime(df['timestamp'])
@@ -156,10 +164,24 @@ def run_aggregation(df, rule):
     try:
         logger.info(f"Running aggregation with rule '{rule}' on DataFrame with {len(df)} rows")
         df_agg = aggregate_candles(df, rule)
+        if df_agg is None or df_agg.empty:
+            logger.warning(f"Aggregation with rule '{rule}' returned empty DataFrame")
+            return pd.DataFrame()
+        
+        # Ensure the aggregated DataFrame has a DatetimeIndex
+        if not isinstance(df_agg.index, pd.DatetimeIndex):
+            logger.warning(f"Aggregated DataFrame does not have DatetimeIndex, attempting to fix")
+            if 'timestamp' in df_agg.columns:
+                df_agg['timestamp'] = pd.to_datetime(df_agg['timestamp'])
+                df_agg = df_agg.set_index('timestamp')
+            else:
+                logger.error(f"Cannot convert aggregated DataFrame to DatetimeIndex, no timestamp column")
+                return pd.DataFrame()
+        
         return df_agg
     except Exception as e:
         logger.error(f"Error running aggregation: {e}")
-        return None
+        return pd.DataFrame()
 
 def validate_against_logs(ta_results, log_data, symbol):
     """Validate technical analysis results against log data."""
@@ -202,6 +224,7 @@ def main():
     parser.add_argument('--log-file', type=str, required=True, help='Path to terminal log file')
     parser.add_argument('--data-file', type=str, required=True, help='Path to sample data file')
     parser.add_argument('--symbol', type=str, default='MSFT', help='Symbol to validate')
+    parser.add_argument('--max-rows', type=int, default=None, help='Maximum number of rows to process (None for all rows)')
     args = parser.parse_args()
     
     logger.info(f"Starting validation for symbol {args.symbol}")
@@ -214,8 +237,8 @@ def main():
     
     logger.info(f"Log data: {log_data}")
     
-    # Load sample data
-    df = load_sample_data(args.data_file)
+    # Load sample data - use all rows by default
+    df = load_sample_data(args.data_file, args.max_rows)
     if df is None:
         logger.error("Failed to load sample data")
         return 1
