@@ -14,6 +14,25 @@
   - Custom implementation gives more control than third-party libraries
   - Performance may be slightly lower than optimized C/C++ libraries like TA-Lib
 
+### Technical Indicator Validation
+
+- **Decision**: Implement comprehensive validation of technical indicators across all timeframes.
+- **Rationale**: Ensuring accurate calculation of indicators is critical for trading decisions and strategy development.
+- **Alternatives Considered**:
+  - Relying on visual inspection alone
+  - Using third-party validation tools
+  - Implementing automated testing without manual verification
+- **Trade-offs**:
+  - Manual cross-verification provides highest confidence but requires more effort
+  - Detailed code analysis helps understand edge cases and expected behavior
+  - Documentation of findings provides reference for future development
+- **Implementation**:
+  - Analyzed CSV exports across different timeframes (1-minute, 15-minute, Hourly, Daily)
+  - Reviewed implementation code to understand calculation logic and requirements
+  - Cross-referenced code with observed data patterns to validate calculations
+  - Confirmed that blank values for certain indicators are expected based on implementation
+  - Created detailed documentation of findings and recommendations
+
 ### Candlestick Pattern Detection Implementation
 
 - **Decision**: Create a dedicated module for candlestick pattern detection with comprehensive coverage of both traditional and advanced patterns.
@@ -184,6 +203,23 @@
   - Generated sample data for testing the validation process
 
 ## Future Enhancement Decisions
+
+### Technical Indicator Enhancements
+
+- **Decision**: Consider implementing recommended enhancements for technical indicators.
+- **Rationale**: While current implementation is functioning correctly, several improvements could enhance usability and maintainability.
+- **Alternatives Considered**:
+  - Maintaining current implementation without changes
+  - Complete rewrite using third-party libraries
+- **Trade-offs**:
+  - Incremental improvements maintain compatibility while enhancing functionality
+  - Enhanced logging improves transparency without significant performance impact
+  - Standardizing early value handling improves code consistency and maintainability
+- **Potential Implementations**:
+  - Add more detailed logging for FVG detection
+  - Standardize approaches for handling early values across all indicators
+  - Add visualization aids for insufficient data vs. absent patterns
+  - Develop specific unit tests for edge cases
 
 ### Performance Optimization
 
