@@ -88,14 +88,20 @@ app.layout = html.Div([
         ]),
         dcc.Tab(label="Technical Indicators", value="tab-tech-indicators", children=[
             html.Div(id="tech-indicators-content", children=[
-                html.H4(id="tech-indicators-header"),
+                html.Div([
+                    html.H4(id="tech-indicators-header", style={"display": "inline-block", "marginRight": "20px"}),
+                    html.Button("Export to CSV", id="export-tech-indicators-button", n_clicks=0, 
+                               style={"backgroundColor": "#4CAF50", "color": "white", "border": "none", 
+                                      "padding": "10px 15px", "borderRadius": "4px", "cursor": "pointer"})
+                ]),
                 dash_table.DataTable(
                     id="tech-indicators-table", 
                     columns=[], 
                     data=[],
                     page_size=10,
                     style_table={"overflowX": "auto"}
-                )
+                ),
+                dcc.Download(id="download-tech-indicators-csv")
             ])
         ]),
         dcc.Tab(label="Options Chain (Stream)", value="tab-options-chain", children=[
@@ -117,6 +123,7 @@ app.layout = html.Div([
     dcc.Store(id="new-error-event-store"), # Intermediate store for individual error events
     dcc.Store(id="current-option-keys-store", data=[]),
     dcc.Store(id="minute-data-store", data=None),  # Store for minute data to be exported
+    dcc.Store(id="tech-indicators-store", data=None),  # Store for technical indicators data to be exported
 
     html.Div(id="error-log-display", children="No errors yet." if not initial_errors else [html.P(err) for err in initial_errors], style={"marginTop": "20px", "border": "1px solid #ccc", "padding": "10px", "height": "100px", "overflowY": "scroll", "whiteSpace": "pre-wrap"})
 ])
@@ -221,6 +228,7 @@ def update_error_log(error_messages):
     Output("tech-indicators-table", "columns"),
     Output("tech-indicators-table", "data"),
     Output("minute-data-store", "data"),  # Store minute data for export
+    Output("tech-indicators-store", "data"),  # Store technical indicators data for export
     Output("new-error-event-store", "data"), # No allow_duplicate=True
     Input("selected-symbol-store", "data"),
     Input("tabs-main", "value"), # To know which tab is active
@@ -232,6 +240,7 @@ def update_data_for_active_tab(selected_symbol, active_tab):
     minute_cols, minute_data = dash.no_update, dash.no_update
     tech_cols, tech_data = dash.no_update, dash.no_update
     minute_data_store = dash.no_update
+    tech_data_store = dash.no_update
     error_event_to_send = dash.no_update
 
     default_minute_cols = [{"name": i, "id": i} for i in ["Timestamp", "Open", "High", "Low", "Close", "Volume"]]
@@ -243,7 +252,8 @@ def update_data_for_active_tab(selected_symbol, active_tab):
         minute_cols, minute_data = default_minute_cols, []
         tech_cols, tech_data = default_tech_cols, []
         minute_data_store = None
-        return minute_cols, minute_data, tech_cols, tech_data, minute_data_store, error_event_to_send
+        tech_data_store = None
+        return minute_cols, minute_data, tech_cols, tech_data, minute_data_store, tech_data_store, error_event_to_send
 
     global SCHWAB_CLIENT
     client_to_use = SCHWAB_CLIENT
@@ -259,7 +269,8 @@ def update_data_for_active_tab(selected_symbol, active_tab):
             minute_cols, minute_data = default_minute_cols, []
             tech_cols, tech_data = default_tech_cols, []
             minute_data_store = None
-            return minute_cols, minute_data, tech_cols, tech_data, minute_data_store, error_event_to_send
+            tech_data_store = None
+            return minute_cols, minute_data, tech_cols, tech_data, minute_data_store, tech_data_store, error_event_to_send
         SCHWAB_CLIENT = client_instance  # Store only the client instance, not the tuple
         client_to_use = client_instance
         app_logger.info(f"UpdateDataTabs: Schwab client reinitialized successfully for {selected_symbol}.")
@@ -303,158 +314,139 @@ def update_data_for_active_tab(selected_symbol, active_tab):
                 df_display["timestamp"] = df_display["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
                 minute_cols = [{"name": i, "id": i} for i in df_display.columns]
                 minute_data = df_display.to_dict("records")
-                minute_data_store = df_display.to_dict("records")  # Store data for export
+                minute_data_store = df_display.to_dict("records")
+                app_logger.info(f"UpdateDataTabs (MinuteData): Formatted data for {selected_symbol} table. Rows: {len(minute_data)}")
 
     elif active_tab == "tab-tech-indicators":
-        app_logger.info(f"UpdateDataTabs: Fetching/calculating TA for {selected_symbol}...")
+        app_logger.info(f"UpdateDataTabs: Fetching minute data for technical indicators for {selected_symbol}...")
         df_minute_raw, error = get_minute_data(client_to_use, selected_symbol, days_history=90)
-
+        
         if error:
-            error_msg = f"Data fetch error for TA: {error}"
+            error_msg = f"Data fetch error: {error}"
             app_logger.error(f"UpdateDataTabs (TechInd-Fetch) for {selected_symbol}: {error_msg}")
             error_event_to_send = {"source": f"TechInd-Fetch-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
             tech_cols, tech_data = default_tech_cols, []
+            tech_data_store = None
         elif df_minute_raw.empty:
-            app_logger.warning(f"UpdateDataTabs (TechInd): No minute data for {selected_symbol} to calculate TA.")
+            app_logger.warning(f"UpdateDataTabs (TechInd): No minute data returned for {selected_symbol}.")
             tech_cols, tech_data = default_tech_cols, []
+            tech_data_store = None
         else:
-            app_logger.info(f"UpdateDataTabs (TechInd): Fetched {len(df_minute_raw)} minute candles for {selected_symbol} for TA.")
-            if not isinstance(df_minute_raw.index, pd.DatetimeIndex):
-                if 'timestamp' in df_minute_raw.columns:
+            app_logger.info(f"UpdateDataTabs (TechInd): Successfully fetched {len(df_minute_raw)} rows for {selected_symbol}.")
+            try:
+                # Ensure we have a DatetimeIndex
+                if "timestamp" in df_minute_raw.columns and not isinstance(df_minute_raw.index, pd.DatetimeIndex):
+                    df_minute_raw["timestamp"] = pd.to_datetime(df_minute_raw["timestamp"])
+                    df_minute_raw = df_minute_raw.set_index("timestamp")
+                
+                # Normalize column names to lowercase for technical analysis functions
+                df_minute_raw.columns = [col.lower() for col in df_minute_raw.columns]
+                
+                # Initialize aggregated DataFrames
+                aggregated_dfs = {
+                    "1min": df_minute_raw.copy()
+                }
+                    
+                # Add detailed logging for aggregation
+                app_logger.info(f"UpdateDataTabs (TechInd): Starting data aggregation for {selected_symbol}.")
+                
+                # Perform aggregation with detailed logging
+                for period, rule in [("15min", "15T"), ("Hourly", "H"), ("Daily", "D")]:
                     try:
-                        df_minute_raw['timestamp'] = pd.to_datetime(df_minute_raw['timestamp'])
-                        df_minute_raw = df_minute_raw.set_index('timestamp')
-                        app_logger.info(f"UpdateDataTabs (TechInd): Converted 'timestamp' column to DatetimeIndex for {selected_symbol}.")
-                        
-                        # Normalize column names to lowercase for technical analysis compatibility
-                        column_rename_map = {}
-                        for col in df_minute_raw.columns:
-                            if col.lower() in ['open', 'high', 'low', 'close', 'volume']:
-                                column_rename_map[col] = col.lower()
-                        
-                        if column_rename_map:
-                            df_minute_raw = df_minute_raw.rename(columns=column_rename_map)
-                            app_logger.info(f"UpdateDataTabs (TechInd): Normalized column names to lowercase for {selected_symbol}: {column_rename_map}")
-                    except Exception as e:
-                        error_msg = f"Failed to convert 'timestamp' to DatetimeIndex for TA: {e}"
-                        app_logger.error(f"UpdateDataTabs (TechInd-Format) for {selected_symbol}: {error_msg}")
-                        error_event_to_send = {"source": f"TechInd-Format-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
-                        tech_cols, tech_data = default_tech_cols, []
-                else:
-                    error_msg = "Timestamp column missing or index not DatetimeIndex for TA."
-                    app_logger.error(f"UpdateDataTabs (TechInd-Format) for {selected_symbol}: {error_msg}")
-                    error_event_to_send = {"source": f"TechInd-Format-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
-                    tech_cols, tech_data = default_tech_cols, []
-            
-            if error_event_to_send is dash.no_update: # if no formatting error
-                try:
-                    # Initialize with empty DataFrames for all periods
-                    aggregated_dfs = {
-                        "1min": df_minute_raw.copy(),
-                        "15min": pd.DataFrame(),
-                        "Hourly": pd.DataFrame(),
-                        "Daily": pd.DataFrame()
-                    }
-                    
-                    # Add detailed logging for aggregation
-                    app_logger.info(f"UpdateDataTabs (TechInd): Starting data aggregation for {selected_symbol}.")
-                    
-                    # Perform aggregation with detailed logging
-                    for period, rule in [("15min", "15T"), ("Hourly", "H"), ("Daily", "D")]:
-                        try:
-                            app_logger.info(f"UpdateDataTabs (TechInd): Aggregating {period} data for {selected_symbol}...")
-                            agg_df = aggregate_candles(df_minute_raw, rule)
-                            if agg_df.empty:
-                                app_logger.warning(f"UpdateDataTabs (TechInd): Aggregation for {period} returned empty DataFrame for {selected_symbol}.")
-                            else:
-                                app_logger.info(f"UpdateDataTabs (TechInd): Successfully aggregated {len(agg_df)} rows for {period} for {selected_symbol}.")
-                            aggregated_dfs[period] = agg_df
-                        except Exception as agg_e:
-                            app_logger.error(f"UpdateDataTabs (TechInd): Error aggregating {period} data for {selected_symbol}: {str(agg_e)}", exc_info=True)
-                            # Keep empty DataFrame for this period
-                    
-                    app_logger.info(f"UpdateDataTabs (TechInd): Completed data aggregation for {selected_symbol}.")
-
-                    # Initialize ta_results with empty DataFrames
-                    ta_results = {
-                        "1min": pd.DataFrame(),
-                        "15min": pd.DataFrame(),
-                        "Hourly": pd.DataFrame(),
-                        "Daily": pd.DataFrame()
-                    }
-                    
-                    # Calculate technical indicators with detailed logging
-                    app_logger.info(f"UpdateDataTabs (TechInd): Starting technical indicator calculations for {selected_symbol}.")
-                    
-                    for period, df_agg in aggregated_dfs.items():
-                        try:
-                            if not df_agg.empty:
-                                app_logger.info(f"UpdateDataTabs (TechInd): Calculating indicators for {period} for {selected_symbol}...")
-                                result_df = calculate_all_technical_indicators(df_agg.copy(), symbol=f"{selected_symbol}_{period}")
-                                
-                                # Log the result type and shape
-                                if isinstance(result_df, pd.DataFrame):
-                                    app_logger.info(f"UpdateDataTabs (TechInd): {period} calculation returned DataFrame with shape {result_df.shape} for {selected_symbol}.")
-                                    ta_results[period] = result_df
-                                else:
-                                    app_logger.warning(f"UpdateDataTabs (TechInd): {period} calculation returned {type(result_df).__name__} instead of DataFrame for {selected_symbol}. Converting to empty DataFrame.")
-                                    ta_results[period] = pd.DataFrame()  # Ensure we always have a DataFrame
-                            else:
-                                app_logger.info(f"UpdateDataTabs (TechInd): Skipping {period} calculations due to empty aggregated data for {selected_symbol}.")
-                        except Exception as calc_e:
-                            app_logger.error(f"UpdateDataTabs (TechInd): Error calculating indicators for {period} for {selected_symbol}: {str(calc_e)}", exc_info=True)
-                            # Keep empty DataFrame for this period
-                    
-                    app_logger.info(f"UpdateDataTabs (TechInd): Completed technical indicator calculations for {selected_symbol}.")
-                    
-                    # Collect all indicator names from all periods
-                    app_logger.info(f"UpdateDataTabs (TechInd): Collecting indicator names for {selected_symbol}...")
-                    indicator_data = []
-                    all_indicator_names = set()
-                    
-                    # Safely collect column names from each DataFrame
-                    for period, df in ta_results.items():
-                        if isinstance(df, pd.DataFrame) and not df.empty:
-                            all_indicator_names.update(df.columns)
-                            app_logger.info(f"UpdateDataTabs (TechInd): Found {len(df.columns)} indicators for {period} for {selected_symbol}.")
+                        app_logger.info(f"UpdateDataTabs (TechInd): Aggregating {period} data for {selected_symbol}...")
+                        agg_df = aggregate_candles(df_minute_raw, rule)
+                        if agg_df.empty:
+                            app_logger.warning(f"UpdateDataTabs (TechInd): Aggregation for {period} returned empty DataFrame for {selected_symbol}.")
                         else:
-                            app_logger.info(f"UpdateDataTabs (TechInd): No indicators found for {period} for {selected_symbol}.")
-                    
-                    app_logger.info(f"UpdateDataTabs (TechInd): Total unique indicators found: {len(all_indicator_names)} for {selected_symbol}.")
-                    
-                    # Format data for display
-                    for indicator_name in sorted(list(all_indicator_names)):
-                        row = {"Indicator": indicator_name}
-                        for period_key in ["1min", "15min", "Hourly", "Daily"]:
-                            df_period = ta_results.get(period_key, pd.DataFrame())
-                            if isinstance(df_period, pd.DataFrame) and not df_period.empty and indicator_name in df_period.columns:
-                                try:
-                                    # Get the most recent value for this indicator
-                                    value = df_period[indicator_name].iloc[0]  # Assuming sorted with most recent first
-                                    if isinstance(value, float):
-                                        row[period_key] = f"{value:.2f}" if not np.isnan(value) else "N/A"
-                                    elif value is not None:
-                                        row[period_key] = str(value)
-                                    else:
-                                        row[period_key] = "N/A"
-                                except Exception as val_e:
-                                    app_logger.error(f"UpdateDataTabs (TechInd): Error extracting {indicator_name} value for {period_key} for {selected_symbol}: {str(val_e)}")
-                                    row[period_key] = "Error"
+                            app_logger.info(f"UpdateDataTabs (TechInd): Successfully aggregated {len(agg_df)} rows for {period} for {selected_symbol}.")
+                        aggregated_dfs[period] = agg_df
+                    except Exception as agg_e:
+                        app_logger.error(f"UpdateDataTabs (TechInd): Error aggregating {period} data for {selected_symbol}: {str(agg_e)}", exc_info=True)
+                        # Keep empty DataFrame for this period
+                
+                app_logger.info(f"UpdateDataTabs (TechInd): Completed data aggregation for {selected_symbol}.")
+                # Initialize ta_results with empty DataFrames
+                ta_results = {
+                    "1min": pd.DataFrame(),
+                    "15min": pd.DataFrame(),
+                    "Hourly": pd.DataFrame(),
+                    "Daily": pd.DataFrame()
+                }
+                
+                # Calculate technical indicators with detailed logging
+                app_logger.info(f"UpdateDataTabs (TechInd): Starting technical indicator calculations for {selected_symbol}.")
+                
+                for period, df_agg in aggregated_dfs.items():
+                    try:
+                        if not df_agg.empty:
+                            app_logger.info(f"UpdateDataTabs (TechInd): Calculating indicators for {period} for {selected_symbol}...")
+                            result_df = calculate_all_technical_indicators(df_agg.copy(), symbol=f"{selected_symbol}_{period}")
+                            
+                            # Log the result type and shape
+                            if isinstance(result_df, pd.DataFrame):
+                                app_logger.info(f"UpdateDataTabs (TechInd): {period} calculation returned DataFrame with shape {result_df.shape} for {selected_symbol}.")
+                                ta_results[period] = result_df
                             else:
-                                row[period_key] = "N/A"
-                        indicator_data.append(row)
-                    
-                    tech_cols = default_tech_cols
-                    tech_data = indicator_data
-                    app_logger.info(f"UpdateDataTabs (TechInd): Formatted TA data for {selected_symbol} table. Rows: {len(tech_data)}")
+                                app_logger.error(f"UpdateDataTabs (TechInd): {period} calculation returned {type(result_df)} instead of DataFrame for {selected_symbol}.")
+                                ta_results[period] = pd.DataFrame()  # Ensure we always have a DataFrame
+                        else:
+                            app_logger.info(f"UpdateDataTabs (TechInd): Skipping {period} calculations due to empty aggregated data for {selected_symbol}.")
+                    except Exception as calc_e:
+                        app_logger.error(f"UpdateDataTabs (TechInd): Error calculating indicators for {period} for {selected_symbol}: {str(calc_e)}", exc_info=True)
+                        # Keep empty DataFrame for this period
+                
+                app_logger.info(f"UpdateDataTabs (TechInd): Completed technical indicator calculations for {selected_symbol}.")
+                
+                # Collect all indicator names from all periods
+                app_logger.info(f"UpdateDataTabs (TechInd): Collecting indicator names for {selected_symbol}...")
+                indicator_data = []
+                all_indicator_names = set()
+                
+                # Safely collect column names from each DataFrame
+                for period, df in ta_results.items():
+                    if isinstance(df, pd.DataFrame) and not df.empty:
+                        all_indicator_names.update(df.columns)
+                        app_logger.info(f"UpdateDataTabs (TechInd): Found {len(df.columns)} indicators for {period} for {selected_symbol}.")
+                    else:
+                        app_logger.info(f"UpdateDataTabs (TechInd): No indicators found for {period} for {selected_symbol}.")
+                
+                app_logger.info(f"UpdateDataTabs (TechInd): Total unique indicators found: {len(all_indicator_names)} for {selected_symbol}.")
+                
+                # Format data for display
+                for indicator_name in sorted(list(all_indicator_names)):
+                    row = {"Indicator": indicator_name}
+                    for period_key in ["1min", "15min", "Hourly", "Daily"]:
+                        df_period = ta_results.get(period_key, pd.DataFrame())
+                        if isinstance(df_period, pd.DataFrame) and not df_period.empty and indicator_name in df_period.columns:
+                            try:
+                                # Get the most recent value for this indicator
+                                value = df_period[indicator_name].iloc[0]  # Assuming sorted with most recent first
+                                if isinstance(value, float):
+                                    row[period_key] = f"{value:.2f}" if not np.isnan(value) else "N/A"
+                                elif value is not None:
+                                    row[period_key] = str(value)
+                                else:
+                                    row[period_key] = "N/A"
+                            except Exception as val_e:
+                                app_logger.error(f"UpdateDataTabs (TechInd): Error extracting {indicator_name} value for {period_key} for {selected_symbol}: {str(val_e)}")
+                                row[period_key] = "Error"
+                        else:
+                            row[period_key] = "N/A"
+                    indicator_data.append(row)
+                
+                tech_cols = default_tech_cols
+                tech_data = indicator_data
+                tech_data_store = indicator_data
+                app_logger.info(f"UpdateDataTabs (TechInd): Formatted TA data for {selected_symbol} table. Rows: {len(tech_data)}")
 
-                except Exception as e:
-                    error_msg = f"TA calculation/aggregation error: {str(e)}"
-                    app_logger.exception(f"UpdateDataTabs (TechInd-Calc) for {selected_symbol}: {error_msg}")
-                    error_event_to_send = {"source": f"TechInd-Calc-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
-                    tech_cols, tech_data = default_tech_cols, []
+            except Exception as e:
+                error_msg = f"TA calculation/aggregation error: {str(e)}"
+                app_logger.exception(f"UpdateDataTabs (TechInd-Calc) for {selected_symbol}: {error_msg}")
+                error_event_to_send = {"source": f"TechInd-Calc-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
+                tech_cols, tech_data = default_tech_cols, []
+                tech_data_store = None
     
-    return minute_cols, minute_data, tech_cols, tech_data, minute_data_store, error_event_to_send
+    return minute_cols, minute_data, tech_cols, tech_data, minute_data_store, tech_data_store, error_event_to_send
 
 
 # --- Options Chain Callbacks ---
@@ -525,7 +517,7 @@ def manage_options_stream(selected_symbol, n_intervals, current_keys):
         return f"Error: {error_msg}", [], [], [], [], [], {"source": f"OptionsStream-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
 
 
-# --- CSV Export Callback ---
+# --- CSV Export Callbacks ---
 @app.callback(
     Output("download-minute-data-csv", "data"),
     Input("export-minute-data-button", "n_clicks"),
@@ -550,6 +542,32 @@ def export_minute_data_to_csv(n_clicks, minute_data, selected_symbol):
     
     except Exception as e:
         app_logger.error(f"Error exporting minute data to CSV: {str(e)}", exc_info=True)
+        return dash.no_update
+
+@app.callback(
+    Output("download-tech-indicators-csv", "data"),
+    Input("export-tech-indicators-button", "n_clicks"),
+    State("tech-indicators-store", "data"),
+    State("selected-symbol-store", "data"),
+    prevent_initial_call=True
+)
+def export_tech_indicators_to_csv(n_clicks, tech_data, selected_symbol):
+    if n_clicks == 0 or not tech_data:
+        return dash.no_update
+    
+    try:
+        app_logger.info(f"Exporting technical indicators data to CSV for {selected_symbol}...")
+        df = pd.DataFrame(tech_data)
+        
+        # Generate filename with symbol and current timestamp
+        timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{selected_symbol}_technical_indicators_{timestamp_str}.csv"
+        
+        # Return the CSV data for download
+        return dcc.send_data_frame(df.to_csv, filename, index=False)
+    
+    except Exception as e:
+        app_logger.error(f"Error exporting technical indicators data to CSV: {str(e)}", exc_info=True)
         return dash.no_update
 
 

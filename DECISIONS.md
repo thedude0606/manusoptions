@@ -37,7 +37,7 @@
   - More flexible and powerful than Streamlit for complex applications
   - More integrated Python workflow than Flask+JavaScript
 
-### CSV Export Functionality
+### CSV Export Functionality for Minute Data
 
 - **Decision**: Implement CSV export for minute data tab.
 - **Rationale**: Allows users to verify data accuracy and perform external analysis of the raw data.
@@ -55,6 +55,26 @@
   - Created callback to generate and serve CSV files using Dash's dcc.Download component
   - Added data storage mechanism to ensure all minute data is available for export
   - Included symbol name and timestamp in filename for easy identification
+
+### CSV Export Functionality for Technical Indicators
+
+- **Decision**: Implement CSV export for technical indicators tab.
+- **Rationale**: Provides consistency with minute data tab and allows users to export technical analysis results for further analysis or record-keeping.
+- **Alternatives Considered**:
+  - Using a different export format than CSV
+  - Exporting only specific indicators rather than all indicators
+  - Combining minute data and technical indicators in a single export
+- **Trade-offs**:
+  - Consistent user experience across tabs with similar export functionality
+  - CSV format maintains the tabular structure of technical indicators data
+  - Separate exports for minute data and technical indicators keeps files focused and manageable
+  - Simpler implementation by reusing existing export pattern
+- **Implementation**:
+  - Added "Export to CSV" button to technical indicators tab UI with same styling as minute data tab
+  - Created dedicated data store (tech-indicators-store) for technical indicators export data
+  - Implemented callback to generate and serve CSV files using the same pattern as minute data export
+  - Ensured exported CSV files include symbol name and timestamp in filename for easy identification
+  - Modified update_data_for_active_tab callback to populate the tech-indicators-store
 
 ## Bug Fix Decisions
 

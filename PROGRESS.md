@@ -37,10 +37,16 @@
 - Created a callback to generate and serve CSV files when the export button is clicked.
 - Added data storage mechanism to ensure all minute data is available for export.
 - Ensured exported CSV files include symbol name and timestamp in the filename for easy identification.
+- Implemented CSV export functionality for the technical indicators tab to allow data verification and analysis.
+- Added an "Export to CSV" button to the technical indicators tab UI.
+- Created callback to generate and serve CSV files when the export button is clicked.
+- Added data storage mechanism (tech-indicators-store) to ensure all technical indicators data is available for export.
+- Ensured exported CSV files include symbol name and timestamp in the filename for easy identification.
 
 ## Current Work in Progress
 
-- None - all identified issues have been resolved and requested features implemented.
+- Testing the CSV export functionality for the technical indicators tab with different symbols and data sizes.
+- Updating documentation to reflect the new CSV export feature for technical indicators.
 
 ## Known Issues/Challenges
 

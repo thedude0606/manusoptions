@@ -73,10 +73,20 @@
 - [X] Update DECISIONS.md with rationale for column name standardization (completed)
 - [X] Push all changes to GitHub repository (completed)
 
-### Seventh Task: CSV Export Functionality for Minute Data Tab (In Progress)
+### Seventh Task: CSV Export Functionality for Minute Data Tab (Completed)
 - [X] Implement "Export to CSV" button in the minute data tab UI
 - [X] Create callback to generate and serve CSV files when the export button is clicked
 - [X] Add data storage mechanism to ensure all minute data is available for export
+- [X] Ensure exported CSV files include symbol name and timestamp in the filename
+- [X] Test the CSV export functionality with different symbols and data sizes
+- [X] Update PROGRESS.md with the new feature details
+- [X] Update DECISIONS.md with rationale for the CSV export implementation
+- [X] Push all changes to GitHub repository
+
+### Eighth Task: CSV Export Functionality for Technical Indicators Tab (In Progress)
+- [X] Implement "Export to CSV" button in the technical indicators tab UI
+- [X] Create callback to generate and serve CSV files when the export button is clicked
+- [X] Add data storage mechanism to ensure all technical indicators data is available for export
 - [X] Ensure exported CSV files include symbol name and timestamp in the filename
 - [ ] Test the CSV export functionality with different symbols and data sizes
 - [ ] Update PROGRESS.md with the new feature details
