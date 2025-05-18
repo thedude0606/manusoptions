@@ -14,6 +14,23 @@
   - Custom implementation gives more control than third-party libraries
   - Performance may be slightly lower than optimized C/C++ libraries like TA-Lib
 
+### Data Ordering for Technical Indicators
+
+- **Decision**: Modify technical indicator calculation to sort data in ascending chronological order before processing.
+- **Rationale**: The current implementation incorrectly assumes data is already in ascending order, causing issues with MACD and potentially other indicators when data is in reverse order.
+- **Alternatives Considered**:
+  - Modifying each indicator function to handle both ascending and descending orders
+  - Keeping the current implementation and documenting the requirement for ascending order
+  - Adding a configuration parameter to specify the expected data order
+- **Trade-offs**:
+  - Sorting before calculation ensures consistent behavior regardless of input order
+  - Slight performance impact from sorting operation is outweighed by correctness benefits
+  - Centralizing the sorting logic improves maintainability compared to handling in each indicator
+- **Implementation**:
+  - Add sorting by timestamp in ascending order in the `calculate_all_technical_indicators()` function
+  - Add clear documentation about the importance of data ordering for time-dependent calculations
+  - Consider adding warning logs when data is detected to be in reverse order
+
 ### Technical Indicator Validation
 
 - **Decision**: Implement comprehensive validation of technical indicators across all timeframes.
@@ -30,8 +47,8 @@
   - Analyzed CSV exports across different timeframes (1-minute, 15-minute, Hourly, Daily)
   - Reviewed implementation code to understand calculation logic and requirements
   - Cross-referenced code with observed data patterns to validate calculations
-  - Confirmed that blank values for certain indicators are expected based on implementation
-  - Created detailed documentation of findings and recommendations
+  - Identified critical issue with MACD calculation when data is in reverse chronological order
+  - Created detailed documentation of findings and recommended solutions
 
 ### Candlestick Pattern Detection Implementation
 
@@ -137,6 +154,23 @@
   - Included timeframe information in exported CSV filenames
 
 ## Bug Fix Decisions
+
+### MACD Calculation with Reverse Chronological Data
+
+- **Decision**: Sort DataFrame by timestamp in ascending order before calculating technical indicators.
+- **Rationale**: The current implementation incorrectly marks recent values as NaN when data is in reverse chronological order, causing MACD and potentially other indicators to show blank values for recent timestamps.
+- **Alternatives Considered**:
+  - Modifying each indicator function to detect and handle data ordering
+  - Adding a parameter to specify expected data order
+  - Documenting the requirement for ascending order without changing code
+- **Trade-offs**:
+  - Centralizing sorting logic in one place improves maintainability
+  - Slight performance impact from sorting is justified by correctness benefits
+  - Ensures consistent behavior regardless of input data ordering
+- **Implementation**:
+  - Add sorting by timestamp in the `calculate_all_technical_indicators()` function
+  - Add clear documentation about the importance of data ordering
+  - Consider adding warning logs when reverse order is detected
 
 ### `period_name` Argument Error
 

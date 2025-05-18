@@ -54,26 +54,30 @@
 - Conducted comprehensive validation of all technical indicators across different timeframes (1-minute, 15-minute, Hourly, Daily).
 - Analyzed the implementation code in technical_analysis.py and candlestick_patterns.py to understand calculation logic.
 - Cross-referenced code logic with observed data patterns to validate indicator calculations.
-- Confirmed that blank values for MACD and FVG indicators at specific timestamps are expected and correct based on the implementation.
-- Created detailed technical indicator validation documentation with findings and recommendations.
+- Identified critical issue with MACD calculation when data is in reverse chronological order.
+- Discovered that the MACD calculation code incorrectly marks recent values as NaN when data is in reverse order.
+- Developed detailed documentation explaining the MACD calculation issue and recommended solutions.
+- Created a fix proposal to sort the DataFrame by timestamp in ascending order before calculating indicators.
 
 ## Current Work in Progress
 
-- Pushing validation analysis and documentation updates to GitHub repository.
-- Considering implementation of recommended enhancements for technical indicators.
-- Exploring potential visualization improvements for technical indicators with insufficient data.
+- Implementing fix for MACD calculation issue with reverse chronological data.
+- Updating documentation to reflect the MACD calculation issue and solution.
+- Preparing to push code changes and documentation updates to GitHub.
 
 ## Known Issues/Challenges
 
-- No functional issues identified in technical indicator calculations - all indicators are calculating properly for their respective timeframes.
-- The blank values observed for MACD, MACD signal, MACD histogram, and FVG at specific timestamps are expected and correct based on the implementation requirements.
+- MACD calculation issue: When data is in reverse chronological order (newest first), the code incorrectly marks the most recent values as NaN instead of the oldest values.
+- This issue affects all time-dependent indicators that mark early values as unreliable, not just MACD.
+- The current implementation assumes data is in ascending chronological order, which doesn't match the actual data ordering in the CSV exports.
 
 ## Next Steps
 
-- Consider implementing enhanced logging for FVG detection to improve transparency.
-- Standardize approaches for handling early values across all technical indicators.
-- Add visualization aids in the UI to help users understand when indicators have insufficient data versus when patterns simply aren't present.
-- Develop unit tests specifically for edge cases to ensure continued reliability as the codebase evolves.
+- Implement the recommended fix to sort the DataFrame by timestamp in ascending order before calculating indicators.
+- Add a warning log when data is detected to be in reverse chronological order to help with debugging.
+- Create unit tests that specifically test both ascending and descending data order scenarios.
+- Review other technical indicators for similar assumptions about data ordering.
+- Consider adding a configuration option to preserve the original data order in the output if needed.
 - Complete the integration of candlestick patterns with the technical indicators chart.
 - Validate the candlestick pattern detection functionality with real market data.
 - Consider implementing visualization components for candlestick patterns.
