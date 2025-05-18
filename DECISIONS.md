@@ -14,6 +14,27 @@
   - Custom implementation gives more control than third-party libraries
   - Performance may be slightly lower than optimized C/C++ libraries like TA-Lib
 
+### Candlestick Pattern Detection Implementation
+
+- **Decision**: Create a dedicated module for candlestick pattern detection with comprehensive coverage of both traditional and advanced patterns.
+- **Rationale**: Separating candlestick pattern logic into its own module provides better organization, maintainability, and allows for focused development of this complex feature.
+- **Alternatives Considered**:
+  - Integrating pattern detection directly into technical_analysis.py
+  - Using a third-party library for pattern detection
+  - Implementing only basic patterns instead of comprehensive coverage
+- **Trade-offs**:
+  - Dedicated module increases code organization but adds another file to maintain
+  - Custom implementation provides full control over pattern definitions and thresholds
+  - Comprehensive coverage increases utility but also complexity
+  - Vectorized implementation balances performance with readability
+- **Implementation**:
+  - Created candlestick_patterns.py with modular functions for each pattern type
+  - Implemented traditional single-candle patterns (Doji, Hammer/Hanging Man, etc.)
+  - Implemented traditional multi-candle patterns (Engulfing, Morning/Evening Star, etc.)
+  - Implemented advanced price action concepts (Order Blocks, Liquidity Grabs, etc.)
+  - Used consistent error handling and logging approach matching technical_analysis.py
+  - Designed for integration with existing technical indicator workflows
+
 ### Data Fetching and Processing
 
 - **Decision**: Standardize column names in lowercase format for technical analysis.

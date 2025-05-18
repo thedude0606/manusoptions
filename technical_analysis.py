@@ -2,6 +2,7 @@
 import pandas as pd
 import numpy as np
 import logging
+from candlestick_patterns import calculate_all_candlestick_patterns
 
 # Configure basic logging for the module
 ta_logger = logging.getLogger(__name__)
@@ -340,9 +341,8 @@ def calculate_all_technical_indicators(df, symbol="N/A"):
     df_ta = calculate_mfi(df_ta)
     df_ta = identify_fair_value_gaps(df_ta)
     
-    # Placeholder for candle patterns if needed later
-    # df_ta["candle_pattern_bullish"] = False
-    # df_ta["candle_pattern_bearish"] = False
+    # Calculate candlestick patterns
+    df_ta = calculate_all_candlestick_patterns(df_ta, symbol=symbol)
 
     ta_logger.info(f"Finished TA for {symbol}. DataFrame now has {len(df_ta.columns)} columns.")
     return df_ta
@@ -356,52 +356,23 @@ if __name__ == '__main__':
             '2023-01-01 09:33:00', '2023-01-01 09:34:00', '2023-01-01 09:35:00',
             '2023-01-01 09:36:00', '2023-01-01 09:37:00', '2023-01-01 09:38:00',
             '2023-01-01 09:39:00', '2023-01-01 09:40:00', '2023-01-01 09:41:00',
-            '2023-01-01 09:42:00', '2023-01-01 09:43:00', '2023-01-01 09:44:00',
-            '2023-01-01 09:45:00', '2023-01-01 09:46:00', '2023-01-01 09:47:00',
-            '2023-01-01 09:48:00', '2023-01-01 09:49:00', '2023-01-01 09:50:00'
+            '2023-01-01 09:42:00', '2023-01-01 09:43:00', '2023-01-01 09:44:00'
         ]),
-        'open': [150.0, 150.2, 150.1, 150.5, 150.6, 150.3, 150.0, 150.2, 150.1, 150.5, 150.6, 150.3, 150.0, 150.2, 150.1, 150.5, 150.6, 150.3, 150.0, 150.2, 150.1],
-        'high': [150.5, 150.6, 150.8, 150.9, 150.8, 150.7, 150.5, 150.6, 150.8, 150.9, 150.8, 150.7, 150.5, 150.6, 150.8, 150.9, 150.8, 150.7, 150.5, 150.6, 150.8],
-        'low':  [149.8, 150.0, 149.9, 150.2, 150.3, 150.1, 149.8, 150.0, 149.9, 150.2, 150.3, 150.1, 149.8, 150.0, 149.9, 150.2, 150.3, 150.1, 149.8, 150.0, 149.9],
-        'close':[150.3, 150.4, 150.6, 150.7, 150.5, 150.6, 150.3, 150.4, 150.6, 150.7, 150.5, 150.6, 150.3, 150.4, 150.6, 150.7, 150.5, 150.6, 150.3, 150.4, 150.6],
-        'volume':[1000, 1200, 1100, 1500, 1300, 1400, 1000, 1200, 1100, 1500, 1300, 1400, 1000, 1200, 1100, 1500, 1300, 1400, 1000, 1200, 1100]
+        'open': [150.0, 151.0, 152.0, 153.0, 154.0, 155.0, 154.0, 153.0, 152.0, 151.0, 150.0, 149.0, 148.0, 147.0, 146.0],
+        'high': [152.0, 153.0, 154.0, 155.0, 156.0, 157.0, 156.0, 155.0, 154.0, 153.0, 152.0, 151.0, 150.0, 149.0, 148.0],
+        'low': [149.0, 150.0, 151.0, 152.0, 153.0, 154.0, 153.0, 152.0, 151.0, 150.0, 149.0, 148.0, 147.0, 146.0, 145.0],
+        'close': [151.0, 152.0, 153.0, 154.0, 155.0, 156.0, 155.0, 154.0, 153.0, 152.0, 151.0, 150.0, 149.0, 148.0, 147.0],
+        'volume': [1000, 1100, 1200, 1300, 1400, 1500, 1400, 1300, 1200, 1100, 1000, 900, 800, 700, 600]
     }
-    df_minute_raw = pd.DataFrame(sample_data)
-    df_minute_raw = df_minute_raw.set_index('datetime')
-
-    ta_logger.info("--- Testing Minute Data TA ---")
-    df_minute_ta = calculate_all_technical_indicators(df_minute_raw.copy(), symbol="SAMPLE_MINUTE")
-    if not df_minute_ta.empty:
-        ta_logger.info("Minute TA Data (last 5 rows):\n%s", df_minute_ta.tail())
-
-    ta_logger.info("\n--- Testing 15-Minute Aggregation & TA ---")
-    df_15min_raw = aggregate_candles(df_minute_raw.copy(), rule="15min")
-    if not df_15min_raw.empty:
-        ta_logger.info("15-Min Aggregated Data (first 5 rows):\n%s", df_15min_raw.head())
-        df_15min_ta = calculate_all_technical_indicators(df_15min_raw.copy(), symbol="SAMPLE_15MIN")
-        if not df_15min_ta.empty:
-            ta_logger.info("15-Min TA Data (last 5 rows):\n%s", df_15min_ta.tail())
-    else:
-        ta_logger.warning("15-minute aggregation resulted in empty data.")
-
-    ta_logger.info("\n--- Testing Hourly Aggregation & TA ---")
-    df_hourly_raw = aggregate_candles(df_minute_raw.copy(), rule="H") # 'H' for hourly
-    if not df_hourly_raw.empty:
-        ta_logger.info("Hourly Aggregated Data (first 5 rows):\n%s", df_hourly_raw.head())
-        df_hourly_ta = calculate_all_technical_indicators(df_hourly_raw.copy(), symbol="SAMPLE_HOURLY")
-        if not df_hourly_ta.empty:
-            ta_logger.info("Hourly TA Data (last 5 rows):\n%s", df_hourly_ta.tail())
-    else:
-        ta_logger.warning("Hourly aggregation resulted in empty data.")
-
-    ta_logger.info("\n--- Testing Daily Aggregation & TA ---")
-    # For daily, we might need more varied sample data spanning multiple days
-    # Using existing df_minute_raw for now, which will result in one daily candle
-    df_daily_raw = aggregate_candles(df_minute_raw.copy(), rule="D") # 'D' for daily
-    if not df_daily_raw.empty:
-        ta_logger.info("Daily Aggregated Data (first 5 rows):\n%s", df_daily_raw.head())
-        df_daily_ta = calculate_all_technical_indicators(df_daily_raw.copy(), symbol="SAMPLE_DAILY")
-        if not df_daily_ta.empty:
-            ta_logger.info("Daily TA Data (last 5 rows):\n%s", df_daily_ta.tail())
-    else:
-        ta_logger.warning("Daily aggregation resulted in empty data.")
+    
+    sample_df = pd.DataFrame(sample_data)
+    sample_df.set_index('datetime', inplace=True)
+    
+    # Calculate all technical indicators
+    result_df = calculate_all_technical_indicators(sample_df, symbol="SAMPLE")
+    
+    # Print the first few rows of the result
+    print(result_df.head())
+    
+    # Print all column names to see what indicators were calculated
+    print("\nCalculated indicators:", result_df.columns.tolist())

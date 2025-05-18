@@ -46,11 +46,18 @@
 - Added a timeframe dropdown selector to allow viewing different timeframes (1min, 15min, Hourly, Daily).
 - Updated the data storage mechanism to store complete historical data for all timeframes.
 - Enhanced the CSV export functionality to export the full historical series for the selected timeframe.
+- Created a comprehensive candlestick pattern detection module (candlestick_patterns.py) with both traditional and advanced patterns.
+- Implemented detection for traditional single-candle patterns (Doji, Hammer/Hanging Man, Inverted Hammer/Shooting Star, Marubozu).
+- Implemented detection for traditional multi-candle patterns (Engulfing, Morning/Evening Star, Harami).
+- Implemented detection for advanced price action concepts (Order Blocks, Liquidity Grabs, Market Structure Shifts, Mitigation Blocks).
+- Designed the module to follow the same structure and error handling approach as the existing technical indicators.
 
 ## Current Work in Progress
 
+- Integrating candlestick pattern detection with the technical indicators chart.
+- Updating the technical_analysis.py file to include candlestick pattern calculations.
 - Pushing code changes to GitHub repository.
-- Updating documentation to reflect the new functionality for displaying and exporting full historical technical indicator data.
+- Updating documentation to reflect the new candlestick pattern functionality.
 
 ## Known Issues/Challenges
 
@@ -58,7 +65,8 @@
 
 ## Next Steps
 
-- Validate the changes to ensure the technical indicators tab correctly displays and exports full historical data.
-- Consider implementing additional technical indicators or enhancing existing ones if needed.
-- Explore opportunities for performance optimization in the technical analysis calculations.
-- Consider adding visualization components for technical indicators.
+- Complete the integration of candlestick patterns with the technical indicators chart.
+- Validate the candlestick pattern detection functionality with real market data.
+- Consider implementing visualization components for candlestick patterns.
+- Explore opportunities for performance optimization in the candlestick pattern detection.
+- Consider enhancing the candlestick pattern detection with machine learning approaches for pattern recognition.

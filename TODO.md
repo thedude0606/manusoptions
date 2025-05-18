@@ -8,14 +8,18 @@
 - [ ] Update CSV export functionality to include full historical data
 - [ ] Implement proper error handling for all API calls
 - [ ] Add unit tests for critical components
+- [ ] Implement comprehensive candlestick pattern detection (IN PROGRESS)
+- [ ] Integrate candlestick patterns with technical indicators chart
 
 ## Medium Priority
 - [ ] Improve UI/UX of the dashboard
 - [ ] Add more technical indicators
 - [ ] Implement caching mechanism for frequently accessed data
 - [ ] Add user preferences for default settings
+- [ ] Add visualization components for candlestick patterns
 
 ## Low Priority
 - [ ] Create documentation for API usage
 - [ ] Optimize performance for large datasets
 - [ ] Add visualization components for technical indicators
+- [ ] Enhance candlestick pattern detection with machine learning
