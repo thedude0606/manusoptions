@@ -76,6 +76,26 @@
   - Ensured exported CSV files include symbol name and timestamp in filename for easy identification
   - Modified update_data_for_active_tab callback to populate the tech-indicators-store
 
+### Full Historical Technical Indicators Display and Export
+
+- **Decision**: Modify technical indicators tab to display and export full historical series instead of just the most recent value.
+- **Rationale**: Provides users with complete historical data for each indicator, enabling more comprehensive analysis and visualization.
+- **Alternatives Considered**:
+  - Keeping the current approach of showing only the most recent value
+  - Creating a separate tab for historical indicator data
+  - Implementing a hybrid approach with summary view and detailed view options
+- **Trade-offs**:
+  - Full historical data provides more analytical value but requires more complex UI
+  - Timeframe selector helps manage the potentially large amount of data
+  - Increased memory usage on client side when handling large datasets
+  - More complex data structure in the store component
+- **Implementation**:
+  - Added a timeframe dropdown selector to allow viewing different timeframes (1min, 15min, Hourly, Daily)
+  - Modified the data storage mechanism to store complete historical data for all timeframes
+  - Created a new callback to update the table based on selected timeframe
+  - Enhanced the CSV export functionality to export the full historical series for the selected timeframe
+  - Included timeframe information in exported CSV filenames
+
 ## Bug Fix Decisions
 
 ### `period_name` Argument Error

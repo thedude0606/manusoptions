@@ -42,11 +42,15 @@
 - Created callback to generate and serve CSV files when the export button is clicked.
 - Added data storage mechanism (tech-indicators-store) to ensure all technical indicators data is available for export.
 - Ensured exported CSV files include symbol name and timestamp in the filename for easy identification.
+- Modified the technical indicators tab to display and export full historical series instead of just the most recent value.
+- Added a timeframe dropdown selector to allow viewing different timeframes (1min, 15min, Hourly, Daily).
+- Updated the data storage mechanism to store complete historical data for all timeframes.
+- Enhanced the CSV export functionality to export the full historical series for the selected timeframe.
 
 ## Current Work in Progress
 
-- Testing the CSV export functionality for the technical indicators tab with different symbols and data sizes.
-- Updating documentation to reflect the new CSV export feature for technical indicators.
+- Pushing code changes to GitHub repository.
+- Updating documentation to reflect the new functionality for displaying and exporting full historical technical indicator data.
 
 ## Known Issues/Challenges
 
@@ -54,7 +58,7 @@
 
 ## Next Steps
 
-- Monitor the application for any additional issues that may arise.
+- Validate the changes to ensure the technical indicators tab correctly displays and exports full historical data.
 - Consider implementing additional technical indicators or enhancing existing ones if needed.
 - Explore opportunities for performance optimization in the technical analysis calculations.
-- Consider adding export functionality to other tabs if needed.
+- Consider adding visualization components for technical indicators.
