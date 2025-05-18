@@ -7,7 +7,7 @@
 - [x] Modify technical indicators tab to display full historical series
 - [x] Update CSV export functionality to include full historical data
 - [x] Validate technical indicators calculation for all timeframes
-- [ ] Fix MACD calculation issue with reverse chronological data (IN PROGRESS)
+- [x] Fix MACD calculation issue with reverse chronological data
 - [ ] Implement proper error handling for all API calls
 - [ ] Add unit tests for critical components
 - [ ] Implement comprehensive candlestick pattern detection (IN PROGRESS)

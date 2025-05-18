@@ -314,6 +314,17 @@ def calculate_all_technical_indicators(df, symbol="N/A"):
 
     # Ensure DataFrame is a copy to avoid SettingWithCopyWarning on original data from dashboard
     df_ta = df.copy()
+    
+    # CRITICAL FIX: Ensure data is sorted in ascending chronological order (oldest first)
+    # This is required for all technical indicators to calculate correctly
+    if isinstance(df_ta.index, pd.DatetimeIndex):
+        ta_logger.info(f"Sorting DataFrame by DatetimeIndex in ascending order for {symbol}")
+        df_ta = df_ta.sort_index(ascending=True)
+    elif 'timestamp' in df_ta.columns:
+        ta_logger.info(f"Sorting DataFrame by timestamp column in ascending order for {symbol}")
+        df_ta = df_ta.sort_values(by='timestamp', ascending=True)
+    else:
+        ta_logger.warning(f"No timestamp column or DatetimeIndex found for {symbol}. Technical indicators may not calculate correctly.")
 
     # Standardize column names to lowercase if they exist, for robustness
     # Expected columns: 'open', 'high', 'low', 'close', 'volume'

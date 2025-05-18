@@ -61,20 +61,20 @@
 
 ## Current Work in Progress
 
-- Implementing fix for MACD calculation issue with reverse chronological data.
-- Updating documentation to reflect the MACD calculation issue and solution.
-- Preparing to push code changes and documentation updates to GitHub.
+- Validating technical indicators after implementing fix for data ordering issue.
+- Preparing comprehensive documentation on the data ordering fix.
+- Testing indicator calculations with properly sorted data.
 
 ## Known Issues/Challenges
 
-- MACD calculation issue: When data is in reverse chronological order (newest first), the code incorrectly marks the most recent values as NaN instead of the oldest values.
-- This issue affects all time-dependent indicators that mark early values as unreliable, not just MACD.
-- The current implementation assumes data is in ascending chronological order, which doesn't match the actual data ordering in the CSV exports.
+- ✅ FIXED: MACD calculation issue with reverse chronological data. Implemented a fix to ensure data is sorted in ascending chronological order before technical indicator calculations.
+- ✅ FIXED: Issue affecting all time-dependent indicators that mark early values as unreliable when data is in reverse chronological order.
+- Technical indicator validation is in progress to ensure all indicators now calculate correctly with the proper data ordering.
 
 ## Next Steps
 
-- Implement the recommended fix to sort the DataFrame by timestamp in ascending order before calculating indicators.
-- Add a warning log when data is detected to be in reverse chronological order to help with debugging.
+- ✅ DONE: Implemented fix to sort the DataFrame by timestamp in ascending order before calculating indicators.
+- ✅ DONE: Added logging when data is sorted to help with debugging.
 - Create unit tests that specifically test both ascending and descending data order scenarios.
 - Review other technical indicators for similar assumptions about data ordering.
 - Consider adding a configuration option to preserve the original data order in the output if needed.
