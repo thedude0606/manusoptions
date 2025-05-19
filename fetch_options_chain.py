@@ -54,19 +54,19 @@ STREAMING_FILTER_DTE = 0  # Target Days To Expiration (e.g., 0 for 0DTE). Set to
 
 STREAMING_OPTION_FIELDS_REQUEST = "0,2,3,4,9,10,20,27,28,29,30,31,32"
 STREAMING_FIELD_MAPPING = {
-    0: "ContractKey",
-    2: "BidPrice",
-    3: "AskPrice",
-    4: "LastPrice",
-    9: "OpenInterest",
-    10: "Volatility",
-    20: "StrikePrice", 
-    27: "DaysToExpiration",
-    28: "Delta",
-    29: "Gamma",
-    30: "Theta",
-    31: "Vega",
-    32: "Rho"
+    0: "key",
+    2: "bidPrice",
+    3: "askPrice",
+    4: "lastPrice",
+    9: "openInterest",
+    10: "volatility",
+    20: "strikePrice", 
+    27: "daysToExpiration",
+    28: "delta",
+    29: "gamma",
+    30: "theta",
+    31: "vega",
+    32: "rho"
 }
 MAX_CONTRACTS_PER_STREAM_SUBSCRIPTION = 300
 
@@ -99,7 +99,7 @@ def stream_message_handler(message_json_str):
                 logger.debug(f"Processing contract: {contract_key} with fields: {contract_item}")
                 
                 # Log specific price fields if they exist
-                for price_field in ["2", "3", "4"]:  # BidPrice, AskPrice, LastPrice
+                for price_field in ["2", "3", "4"]:  # bidPrice, askPrice, lastPrice
                     if price_field in contract_item:
                         field_name = STREAMING_FIELD_MAPPING.get(int(price_field), f"Unknown-{price_field}")
                         logger.info(f"PRICE FIELD FOUND: Contract {contract_key} has {field_name}={contract_item[price_field]}")
@@ -145,7 +145,7 @@ def stream_message_handler(message_json_str):
                             logger.debug(f"Current value for {metric_name}: {current_metric_value}")
 
                             # Special logging for price fields
-                            if field_idx in [2, 3, 4]:  # BidPrice, AskPrice, LastPrice
+                            if field_idx in [2, 3, 4]:  # bidPrice, askPrice, lastPrice
                                 logger.info(f"PRICE UPDATE: Contract {contract_key}, {metric_name}: {current_metric_value} -> {new_value_typed}")
 
                             if current_metric_value != new_value_typed:
@@ -308,9 +308,9 @@ def run_options_streaming_mode(client, symbols_to_stream):
                 sample_count = 0
                 for contract_key, contract_data in list(current_contracts_data.items())[:5]:  # Sample first 5 contracts
                     price_info = {
-                        "BidPrice": contract_data.get("BidPrice", "N/A"),
-                        "AskPrice": contract_data.get("AskPrice", "N/A"),
-                        "LastPrice": contract_data.get("LastPrice", "N/A")
+                        "bidPrice": contract_data.get("bidPrice", "N/A"),
+                        "askPrice": contract_data.get("askPrice", "N/A"),
+                        "lastPrice": contract_data.get("lastPrice", "N/A")
                     }
                     logger.info(f"Sample contract {contract_key} price data: {price_info}")
                     sample_count += 1
@@ -320,16 +320,16 @@ def run_options_streaming_mode(client, symbols_to_stream):
                     contract_key = next(iter(current_contracts_data))
                     contract_data = current_contracts_data[contract_key]
                     price_info = {
-                        "BidPrice": contract_data.get("BidPrice", "N/A"),
-                        "AskPrice": contract_data.get("AskPrice", "N/A"),
-                        "LastPrice": contract_data.get("LastPrice", "N/A")
+                        "bidPrice": contract_data.get("bidPrice", "N/A"),
+                        "askPrice": contract_data.get("askPrice", "N/A"),
+                        "lastPrice": contract_data.get("lastPrice", "N/A")
                     }
                     logger.info(f"Single sample contract {contract_key} price data: {price_info}")
                 
                 # Check if we have any price fields at all
-                has_bid = any("BidPrice" in data for data in current_contracts_data.values())
-                has_ask = any("AskPrice" in data for data in current_contracts_data.values())
-                has_last = any("LastPrice" in data for data in current_contracts_data.values())
+                has_bid = any("bidPrice" in data for data in current_contracts_data.values())
+                has_ask = any("askPrice" in data for data in current_contracts_data.values())
+                has_last = any("lastPrice" in data for data in current_contracts_data.values())
                 logger.info(f"Price fields present in any contract: Bid={has_bid}, Ask={has_ask}, Last={has_last}")
                 
                 if detected_changes:
