@@ -33,7 +33,7 @@ logger.info(f"Streaming manager logger initialized. Logging to console and file:
 logging.getLogger("schwabdev").setLevel(logging.DEBUG)
 
 class StreamingManager:
-    # Corrected Field map based on user-provided list
+    # Updated field list to ensure we get all price data
     SCHWAB_FIELD_IDS_TO_REQUEST = "0,2,3,4,8,9,10,12,16,17,18,20,21,23,26,28,29,30,31"
     
     SCHWAB_FIELD_MAP = {
@@ -383,6 +383,13 @@ class StreamingManager:
                                 
                                 # Log each field value for debugging
                                 logger.debug(f"[MsgID:{current_message_id}] Field {field_id} -> {field_name}: {value}")
+                            # Handle numeric field IDs as strings
+                            elif field_id.isdigit() and int(field_id) in self.SCHWAB_FIELD_MAP:
+                                field_name = self.SCHWAB_FIELD_MAP[int(field_id)]
+                                new_update_data[field_name] = value
+                                
+                                # Log each field value for debugging
+                                logger.debug(f"[MsgID:{current_message_id}] Field {field_id} (numeric) -> {field_name}: {value}")
                         
                         if "key" not in new_update_data: # Ensure the contract key itself is in the update if it was mapped from "0"
                             new_update_data["key"] = contract_key

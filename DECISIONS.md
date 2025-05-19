@@ -21,12 +21,13 @@
 - **Trade-offs**: More complex implementation but better performance and user experience
 
 ### Fix for Last, Bid, Ask Values Not Showing in Options Streaming Tab
-- **Decision**: Enhance the options chain callback to explicitly update with streaming data
-- **Rationale**: The original implementation was not properly integrating streaming data with the displayed options chain
+- **Decision**: Enhance the streaming data processing pipeline to correctly handle field mapping
+- **Rationale**: The original implementation had issues with field mapping and contract key matching between REST and streaming data
 - **Implementation Details**:
-  1. Added code to update calls and puts DataFrames with streaming data before display
-  2. Enhanced logging to better track streaming data flow
-  3. Improved error handling for streaming data updates
+  1. Enhanced field mapping to handle both string and numeric field IDs from the stream
+  2. Improved contract key formatting to ensure proper matching between REST and streaming data
+  3. Added more detailed logging of price field updates for better diagnostics
+  4. Ensured proper data type conversion for numeric values in the stream
 - **Alternatives Considered**: Creating a separate streaming-only display or using polling instead of streaming
 - **Trade-offs**: More complex code but provides real-time updates without requiring full data refresh
 

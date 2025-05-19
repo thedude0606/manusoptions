@@ -20,6 +20,8 @@ The project is a dashboard for options trading using the Schwab API. It provides
   - Enhanced streaming data handling to properly update options chain with real-time data
   - Improved logging for streaming data to better diagnose issues
   - Added explicit mapping of streamed data fields to options chain display
+  - Fixed contract key formatting to ensure proper matching between REST and streaming data
+  - Enhanced field mapping to handle both string and numeric field IDs from the stream
 
 ### In Progress
 
