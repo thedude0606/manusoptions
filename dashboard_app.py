@@ -666,4 +666,4 @@ def export_tech_indicators_to_csv(n_clicks, tech_data_store, selected_timeframe,
 # --- Main Entry Point ---
 if __name__ == "__main__":
     app_logger.info("Starting Dash app server...")
-    app.run_server(debug=True, host="0.0.0.0", port=8050)
+    app.run(debug=True, host="0.0.0.0", port=8050)
