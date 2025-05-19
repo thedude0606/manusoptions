@@ -1,10 +1,12 @@
 # TODO List
 
 ## High Priority
+- [x] Fix Dash ObsoleteAttributeException by replacing app.run_server with app.run
 - [x] Fix last, bid, ask values not showing up in options streaming tab
 - [x] Enhance streaming data handling to update options chain with real-time data
 - [x] Improve logging for streaming data to better diagnose issues
 - [ ] Test fix for streaming data display across multiple symbols
+- [ ] Verify compatibility with latest Dash API across all components
 - [ ] Optimize streaming data refresh rate for better performance
 
 ## Medium Priority

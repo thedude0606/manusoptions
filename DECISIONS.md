@@ -39,6 +39,16 @@
 - **Alternatives Considered**: Flask with JavaScript frontend, Django
 - **Trade-offs**: Less flexibility than a custom JavaScript frontend but faster development and easier integration with Python data processing
 
+### Dash API Update (app.run vs app.run_server)
+- **Decision**: Replace app.run_server with app.run to comply with current Dash API
+- **Rationale**: The app.run_server method has been deprecated in newer versions of Dash, causing ObsoleteAttributeException
+- **Implementation Details**:
+  1. Updated dashboard_app.py to use app.run instead of app.run_server
+  2. Maintained all original parameters (debug=True, host="0.0.0.0", port=8050)
+  3. Ensured backward compatibility with existing functionality
+- **Alternatives Considered**: Downgrading Dash version, using compatibility layer
+- **Trade-offs**: Minor code change required but ensures compatibility with current and future Dash versions
+
 ### Pandas for Data Processing
 - **Decision**: Use Pandas for data manipulation and analysis
 - **Rationale**: Pandas provides powerful tools for time series data and financial calculations

@@ -16,6 +16,11 @@ The project is a dashboard for options trading using the Schwab API. It provides
 
 ### Recent Fixes
 
+- Fixed Dash ObsoleteAttributeException by replacing app.run_server with app.run
+  - Updated dashboard_app.py to use the current Dash API
+  - Ensured compatibility with newer versions of Dash
+  - Maintained all original parameters (debug, host, port)
+
 - Fixed issue with last, bid, and ask values not showing up in the options streaming tab
   - Enhanced streaming data handling to properly update options chain with real-time data
   - Improved logging for streaming data to better diagnose issues
