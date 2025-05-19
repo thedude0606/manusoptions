@@ -125,7 +125,18 @@ def calculate_imi(df, period=14):
     return df
 
 def calculate_mfi(df, period=14):
-    """Calculates Money Flow Index (MFI)."""
+    """Calculates Money Flow Index (MFI) using the standard textbook approach.
+    
+    The Money Flow Index is a momentum indicator that measures the flow of money into and out of a security.
+    It is calculated using the typical price and volume over a specified period.
+    
+    Formula:
+    1. Calculate typical price: (High + Low + Close) / 3
+    2. Calculate raw money flow: Typical Price * Volume
+    3. Determine positive/negative money flow based on current period's price change
+    4. Calculate money flow ratio: (Positive Money Flow Sum) / (Negative Money Flow Sum)
+    5. Calculate MFI: 100 - (100 / (1 + Money Flow Ratio))
+    """
     if not all(col in df.columns for col in ["high", "low", "close", "volume"]):
         ta_logger.warning("MFI: Requires 'high', 'low', 'close', and 'volume' columns.")
         df[f"mfi_{period}"] = np.nan
@@ -136,27 +147,43 @@ def calculate_mfi(df, period=14):
         df[f"mfi_{period}"] = np.nan
         return df
 
+    # Calculate typical price
     typical_price = (df["high"] + df["low"] + df["close"]) / 3
-    raw_money_flow = typical_price * df["volume"]
-    money_flow_direction = typical_price.diff()
-
-    positive_money_flow = raw_money_flow.copy()
-    # Shift money_flow_direction to align with raw_money_flow for correct masking
-    positive_money_flow[money_flow_direction.shift(-1) <= 0] = 0 
-
-    negative_money_flow = raw_money_flow.copy()
-    negative_money_flow[money_flow_direction.shift(-1) > 0] = 0
-
-    sum_positive_money_flow = positive_money_flow.rolling(window=period, min_periods=1).sum()
-    sum_negative_money_flow = negative_money_flow.rolling(window=period, min_periods=1).sum()
-
-    money_flow_ratio = np.where(sum_negative_money_flow == 0, np.inf, sum_positive_money_flow / sum_negative_money_flow)
-    # Handle cases where both are zero, MFR should be 1 (leading to MFI of 50)
-    money_flow_ratio = np.where((sum_positive_money_flow == 0) & (sum_negative_money_flow == 0), 1, money_flow_ratio)
-
-    mfi_values = 100 - (100 / (1 + money_flow_ratio))
-    mfi_values = np.where(money_flow_ratio == np.inf, 100, mfi_values) # If sum_negative_money_flow is 0 and sum_positive is not, MFI is 100
     
+    # Calculate raw money flow
+    raw_money_flow = typical_price * df["volume"]
+    
+    # Determine price direction (current period compared to previous)
+    price_direction = typical_price.diff()
+    
+    # Create positive and negative money flow series
+    positive_money_flow = pd.Series(0, index=df.index)
+    negative_money_flow = pd.Series(0, index=df.index)
+    
+    # Set money flow values based on price direction (standard approach)
+    # Positive money flow when price increased
+    positive_money_flow[price_direction > 0] = raw_money_flow[price_direction > 0]
+    # Negative money flow when price decreased
+    negative_money_flow[price_direction < 0] = raw_money_flow[price_direction < 0]
+    
+    # Calculate positive and negative money flow sums over the period
+    sum_positive_money_flow = positive_money_flow.rolling(window=period).sum()
+    sum_negative_money_flow = negative_money_flow.rolling(window=period).sum()
+    
+    # Calculate money flow ratio
+    # Handle division by zero: if negative flow is zero, ratio is infinity (if positive flow exists) or 1 (if both are zero)
+    money_flow_ratio = np.where(
+        sum_negative_money_flow == 0,
+        np.where(sum_positive_money_flow == 0, 1, np.inf),
+        sum_positive_money_flow / sum_negative_money_flow
+    )
+    
+    # Calculate MFI
+    mfi_values = 100 - (100 / (1 + money_flow_ratio))
+    # If money flow ratio is infinity, MFI is 100
+    mfi_values = np.where(money_flow_ratio == np.inf, 100, mfi_values)
+    
+    # Store results in DataFrame
     df[f"mfi_{period}"] = mfi_values
     
     # Mark early values as NaN since they're not reliable

@@ -31,6 +31,24 @@
   - Add clear documentation about the importance of data ordering for time-dependent calculations
   - Consider adding warning logs when data is detected to be in reverse order
 
+### MFI Calculation Standardization
+
+- **Decision**: Update the Money Flow Index (MFI) calculation to use the standard textbook approach.
+- **Rationale**: The previous implementation used a non-standard approach with shifted price direction, which produced values inconsistent with established financial literature.
+- **Alternatives Considered**:
+  - Keeping the non-standard implementation with added documentation
+  - Providing both implementations with an option to choose
+  - Maintaining backward compatibility with a flag
+- **Trade-offs**:
+  - Standard implementation ensures consistency with other financial tools and platforms
+  - Improves reliability for trading decisions based on MFI
+  - Changes existing indicator values, which may affect historical analysis
+  - More intuitive implementation that doesn't rely on future price information
+- **Implementation**:
+  - Replace the shifted money flow direction logic with standard current-period price change
+  - Add comprehensive documentation explaining the MFI calculation formula
+  - Validate against standard implementations to ensure accuracy
+
 ### Technical Indicator Validation
 
 - **Decision**: Implement comprehensive validation of technical indicators across all timeframes.
@@ -171,6 +189,24 @@
   - Add sorting by timestamp in the `calculate_all_technical_indicators()` function
   - Add clear documentation about the importance of data ordering
   - Consider adding warning logs when reverse order is detected
+
+### MFI Calculation Standardization
+
+- **Decision**: Replace non-standard MFI implementation with standard textbook approach.
+- **Rationale**: The previous implementation used a shifted money flow direction approach that was inconsistent with established financial literature and standard practice.
+- **Alternatives Considered**:
+  - Keeping the non-standard implementation with added documentation
+  - Supporting both implementations with a configuration option
+  - Maintaining backward compatibility
+- **Trade-offs**:
+  - Standard implementation ensures consistency with other financial tools
+  - Improves reliability for trading decisions
+  - Changes existing indicator values, which may affect historical analysis
+  - More intuitive implementation that doesn't rely on future price information
+- **Implementation**:
+  - Updated the MFI calculation to use current period price changes for determining money flow direction
+  - Added comprehensive documentation explaining the formula and approach
+  - Validated against standard implementations to ensure accuracy
 
 ### `period_name` Argument Error
 
