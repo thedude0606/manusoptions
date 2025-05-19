@@ -1,40 +1,24 @@
-# Project TODO List
+# TODO List
 
-## High Priority Tasks
+## High Priority
+- [x] Fix last, bid, ask values not showing up in options streaming tab
+- [x] Enhance streaming data handling to update options chain with real-time data
+- [x] Improve logging for streaming data to better diagnose issues
+- [ ] Test fix for streaming data display across multiple symbols
+- [ ] Optimize streaming data refresh rate for better performance
 
-- [x] Fix Last, Bid, Ask values not showing in options streaming tab
-- [x] Fix logging system to properly create log files
-- [x] Enhance raw stream message logging for debugging
-- [ ] Implement additional filtering options for options chain display
-- [ ] Add visualization components for technical indicators
-- [ ] Optimize streaming data updates to reduce UI lag
+## Medium Priority
+- [ ] Add more technical indicators (VWAP, Bollinger Bands)
+- [ ] Implement options strategy builder
+- [ ] Add visualization tools for options data
+- [ ] Enhance user interface with more interactive elements
 
-## Medium Priority Tasks
-
-- [ ] Enhance error reporting in the UI
-- [ ] Implement caching for frequently accessed data
-- [ ] Add user preferences for dashboard customization
-- [ ] Improve mobile responsiveness of the dashboard
-
-## Low Priority Tasks
-
-- [ ] Add export functionality for all data tables
-- [ ] Implement dark mode theme
-- [ ] Create user documentation
-- [ ] Add additional technical indicators
+## Low Priority
+- [ ] Implement user preferences and settings
+- [ ] Add authentication and user management
+- [ ] Develop automated trading strategies based on technical indicators
 
 ## Dependencies
-
-- Filtering options depend on stable options chain data display
-- Visualization components depend on reliable technical indicator calculations
-- UI enhancements depend on core functionality stability
-
-## Completed Tasks
-
-- [x] Initial project setup with Dash framework
-- [x] Authentication with Schwab API
-- [x] Basic dashboard layout with tabs
-- [x] Minute data fetching and display
-- [x] Technical indicator calculation and display
-- [x] Options chain data fetching via REST API
-- [x] Streaming infrastructure for real-time options data
+- Fix for streaming data display must be completed before implementing options strategy builder
+- Technical indicators must be implemented before developing automated trading strategies
+- User interface enhancements depend on core functionality being stable

@@ -485,7 +485,7 @@ def manage_options_stream(selected_symbol, n_intervals, current_keys):
         return status_msg, [], [], [], [], [], dash.no_update
     
     try:
-        global SCHWAB_CLIENT
+        global SCHWAB_CLIENT, STREAMING_MANAGER
         client_to_use = SCHWAB_CLIENT
         
         if not client_to_use:
@@ -513,6 +513,67 @@ def manage_options_stream(selected_symbol, n_intervals, current_keys):
             app_logger.warning(f"OptionsStream for {selected_symbol}: Contract keys error: {keys_error}")
             # Continue with REST data, just log the warning
         
+        # Start streaming if we have new contract keys
+        if contract_keys and (not current_keys or set(contract_keys) != set(current_keys)):
+            app_logger.info(f"OptionsStream: Starting streaming for {len(contract_keys)} contract keys.")
+            
+            # Stop any existing stream first
+            STREAMING_MANAGER.stop_streaming()
+            
+            # Start new stream with the new keys
+            success, stream_error = STREAMING_MANAGER.start_streaming(contract_keys)
+            if not success:
+                app_logger.error(f"OptionsStream: Failed to start streaming: {stream_error}")
+                # Continue with REST data, just log the error
+        
+        # Get streaming status
+        stream_status = STREAMING_MANAGER.get_status()
+        
+        # Get streaming data
+        streaming_data = STREAMING_MANAGER.get_streaming_data()
+        
+        # Update the options chain data with streaming data if available
+        if streaming_data:
+            app_logger.info(f"OptionsStream: Updating options chain with streaming data for {len(streaming_data)} contracts.")
+            
+            # Update calls DataFrame
+            if not calls_df.empty:
+                for idx, row in calls_df.iterrows():
+                    contract_key = row.get("Contract Key")
+                    if contract_key in streaming_data:
+                        stream_data = streaming_data[contract_key]
+                        
+                        # Update Last, Bid, Ask with streaming data
+                        if "lastPrice" in stream_data:
+                            calls_df.at[idx, "Last"] = stream_data["lastPrice"]
+                        if "bidPrice" in stream_data:
+                            calls_df.at[idx, "Bid"] = stream_data["bidPrice"]
+                        if "askPrice" in stream_data:
+                            calls_df.at[idx, "Ask"] = stream_data["askPrice"]
+                        
+                        # Log the updates for debugging
+                        app_logger.debug(f"OptionsStream: Updated call option {contract_key} with streaming data: " +
+                                        f"Last={stream_data.get('lastPrice')}, Bid={stream_data.get('bidPrice')}, Ask={stream_data.get('askPrice')}")
+            
+            # Update puts DataFrame
+            if not puts_df.empty:
+                for idx, row in puts_df.iterrows():
+                    contract_key = row.get("Contract Key")
+                    if contract_key in streaming_data:
+                        stream_data = streaming_data[contract_key]
+                        
+                        # Update Last, Bid, Ask with streaming data
+                        if "lastPrice" in stream_data:
+                            puts_df.at[idx, "Last"] = stream_data["lastPrice"]
+                        if "bidPrice" in stream_data:
+                            puts_df.at[idx, "Bid"] = stream_data["bidPrice"]
+                        if "askPrice" in stream_data:
+                            puts_df.at[idx, "Ask"] = stream_data["askPrice"]
+                        
+                        # Log the updates for debugging
+                        app_logger.debug(f"OptionsStream: Updated put option {contract_key} with streaming data: " +
+                                        f"Last={stream_data.get('lastPrice')}, Bid={stream_data.get('bidPrice')}, Ask={stream_data.get('askPrice')}")
+        
         # Format tables
         calls_columns = [{"name": col, "id": col} for col in calls_df.columns] if not calls_df.empty else []
         puts_columns = [{"name": col, "id": col} for col in puts_df.columns] if not puts_df.empty else []
@@ -527,7 +588,9 @@ def manage_options_stream(selected_symbol, n_intervals, current_keys):
                            f"Bid: {calls_df['Bid'].iloc[0] if 'Bid' in calls_df.columns else 'N/A'}, " +
                            f"Ask: {calls_df['Ask'].iloc[0] if 'Ask' in calls_df.columns else 'N/A'}")
         
-        status_msg = f"Options chain for {selected_symbol} loaded. Calls: {len(calls_data)}, Puts: {len(puts_data)}"
+        # Create status message
+        stream_info = f"Stream: {stream_status['status_message']} | Data count: {stream_status['data_count']}"
+        status_msg = f"Options chain for {selected_symbol} loaded. Calls: {len(calls_data)}, Puts: {len(puts_data)} | {stream_info}"
         app_logger.info(f"OptionsStream: {status_msg}")
         
         return status_msg, calls_columns, calls_data, puts_columns, puts_data, list(contract_keys) if contract_keys else [], dash.no_update
@@ -600,9 +663,7 @@ def export_tech_indicators_to_csv(n_clicks, tech_data_store, selected_timeframe,
         app_logger.error(f"Error exporting technical indicators data to CSV: {str(e)}", exc_info=True)
         return dash.no_update
 
-
-# --- Main Execution ---
+# --- Main Entry Point ---
 if __name__ == "__main__":
     app_logger.info("Starting Dash app server...")
-    # Make sure to use the correct host and port, especially for Docker
-    app.run(debug=True, host="0.0.0.0", port=8050)
+    app.run_server(debug=True, host="0.0.0.0", port=8050)
