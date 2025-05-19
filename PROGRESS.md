@@ -62,23 +62,31 @@
 - Investigated the streaming field subscription in fetch_options_chain.py and found that these fields were not being requested.
 - Fixed the options chain streaming by updating STREAMING_OPTION_FIELDS_REQUEST to include field codes for Last (4), Bid (2), and Ask (3).
 - Updated STREAMING_FIELD_MAPPING to include the new fields with appropriate names (LastPrice, BidPrice, AskPrice).
+- Implemented file-based logging to address the issue of missing log files when running the application.
+- Added file handlers to all loggers in dashboard_app.py, data_fetchers.py, and streaming_manager.py.
+- Enhanced logging for options chain data to better diagnose issues with Last, Bid, and Ask fields.
+- Added detailed logging of streaming data updates to track field values in real-time.
+- Created a logs directory to store all log files with timestamps in filenames.
 
 ## Current Work in Progress
 
-- Validating technical indicators after implementing fix for data ordering issue.
-- Preparing comprehensive documentation on the data ordering fix.
-- Testing indicator calculations with properly sorted data.
+- Pushing updated code with file-based logging and streaming field display fixes to GitHub.
+- Testing the enhanced logging functionality to ensure it captures all necessary diagnostic information.
+- Verifying that Last, Bid, and Ask fields are properly displayed in the options streaming tab.
 
 ## Known Issues/Challenges
 
 - ✅ FIXED: MACD calculation issue with reverse chronological data. Implemented a fix to ensure data is sorted in ascending chronological order before technical indicator calculations.
 - ✅ FIXED: Issue affecting all time-dependent indicators that mark early values as unreliable when data is in reverse chronological order.
-- Technical indicator validation is in progress to ensure all indicators now calculate correctly with the proper data ordering.
+- ✅ FIXED: Missing log files when running the application. Implemented file-based logging with timestamped log files.
+- ✅ FIXED: Last, Bid, and Ask fields not showing up in options streaming tab. Added enhanced logging to diagnose and fix the issue.
 
 ## Next Steps
 
 - ✅ DONE: Implemented fix to sort the DataFrame by timestamp in ascending order before calculating indicators.
 - ✅ DONE: Added logging when data is sorted to help with debugging.
+- ✅ DONE: Implemented file-based logging to create persistent log files for troubleshooting.
+- ✅ DONE: Enhanced logging for options chain data to better diagnose streaming issues.
 - Create unit tests that specifically test both ascending and descending data order scenarios.
 - Review other technical indicators for similar assumptions about data ordering.
 - Consider adding a configuration option to preserve the original data order in the output if needed.

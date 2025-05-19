@@ -9,6 +9,7 @@
 - [x] Validate technical indicators calculation for all timeframes
 - [x] Fix MACD calculation issue with reverse chronological data
 - [x] Fix options chain streaming to include Last, Bid, and Ask fields
+- [x] Implement file-based logging for troubleshooting
 - [ ] Implement proper error handling for all API calls
 - [ ] Add unit tests for critical components
 - [ ] Implement comprehensive candlestick pattern detection (IN PROGRESS)
@@ -22,7 +23,7 @@
 - [ ] Add visualization components for candlestick patterns
 - [ ] Enhance logging for FVG detection to improve transparency
 - [ ] Standardize approaches for handling early values across all indicators
-- [ ] Add warning logs for reverse chronological data detection
+- [x] Add warning logs for reverse chronological data detection
 - [ ] Create unit tests for both ascending and descending data order scenarios
 
 ## Low Priority

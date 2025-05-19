@@ -5,16 +5,28 @@ import time
 import logging
 import json # Added for JSON parsing
 import schwabdev # Import the main schwabdev library
+import os
+import datetime
 
-# Configure basic logging
+# Configure basic logging with both console and file handlers
 logger = logging.getLogger(__name__) # Use __name__ for module-specific logger
 if not logger.hasHandlers(): # Avoid adding multiple handlers if already configured
+    # Console handler
     handler = logging.StreamHandler()
-    # Added %(name)s to formatter for clarity on logger origin
     formatter = logging.Formatter("%(asctime)s - %(name)s - %(threadName)s - %(levelname)s - %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
+    
+    # File handler
+    log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, f"streaming_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    
 logger.setLevel(logging.DEBUG) # Set to DEBUG for verbose logging during diagnosis
+logger.info(f"Streaming manager logger initialized. Logging to console and file: {log_file}")
 
 # To get more detailed logs from schwabdev library itself, uncomment the following line:
 # logging.getLogger("schwabdev").setLevel(logging.DEBUG)
@@ -238,6 +250,13 @@ class StreamingManager:
                         
                         new_update_data["lastUpdated"] = time.time()
                         
+                        # Log the presence of last, bid, ask values for debugging
+                        if "lastPrice" in new_update_data or "bidPrice" in new_update_data or "askPrice" in new_update_data:
+                            logger.info(f"[MsgID:{current_message_id}] Received price data for {contract_key}: " +
+                                      f"Last: {new_update_data.get('lastPrice', 'N/A')}, " +
+                                      f"Bid: {new_update_data.get('bidPrice', 'N/A')}, " +
+                                      f"Ask: {new_update_data.get('askPrice', 'N/A')}")
+                        
                         logger.info(f"[MsgID:{current_message_id}] Processing update for key \"{contract_key}\". New data: {new_update_data}")
                         updated_keys_in_batch.append(contract_key)
                         
@@ -281,123 +300,77 @@ class StreamingManager:
                                 logger.error(f"[MsgID:{current_message_id}] {err_msg}")
                                 with self._lock:
                                     self.error_message = err_msg
-                                    self.status_message = f"Stream: Error - {self.error_message}"
-            elif "notify" in message_dict:
-                logger.info(f"[MsgID:{current_message_id}] Stream notify (heartbeat): {message_dict}")
+                                    self.status_message = f"Stream: Error - {err_msg}"
             else:
-                logger.warning(f"[MsgID:{current_message_id}] Unhandled message structure: {message_dict}")
-
+                logger.info(f"[MsgID:{current_message_id}] Unhandled message type: {message_dict}")
         except Exception as e:
             logger.error(f"[MsgID:{current_message_id}] Error in _handle_stream_message: {e}", exc_info=True)
-            with self._lock:
-                self.error_message = f"Message processing error: {e}"
-                if not self.status_message.startswith("Stream: Error"):
-                    self.status_message = f"Stream: Error - {self.error_message}"
 
-    def start_stream(self, option_keys_to_subscribe):
-        logger.info(f"start_stream called with {len(option_keys_to_subscribe)} keys: {list(option_keys_to_subscribe)[:5]}...") # Log only a few keys if many
-        keys_set = set(option_keys_to_subscribe)
-
-        if not keys_set:
-            logger.warning("start_stream called with no option keys. Stream will not be started.")
-            with self._lock:
-                self.status_message = "Stream: Idle - No keys to subscribe."
-            return False
-
-        stop_first = False
+    def start_streaming(self, option_keys_to_subscribe):
+        """Start streaming for the given option contract keys."""
         with self._lock:
             if self.is_running:
-                if not (self.current_subscriptions == keys_set and self.stream_thread and self.stream_thread.is_alive()):
-                    logger.info("Stream running with different state/subscriptions or thread issue. Marking for restart.")
-                    stop_first = True
-                else:
-                    logger.info("Stream is already running with the correct subscriptions. No action needed.")
-                    return True 
-
-        if stop_first:
-            logger.info("Stopping existing stream before starting new one...")
-            self._internal_stop_stream(wait_for_thread=True) 
-            logger.info("Existing stream stopped.")
-
-        logger.info("Proceeding to start/restart stream operation.")
-        with self._lock:
-            if self.stream_thread and self.stream_thread.is_alive():
-                 logger.error("CRITICAL: Attempting to start stream, but previous thread is still alive after stop attempt. Aborting start.")
-                 self.status_message = "Stream: Error - Failed to stop previous stream thread."
-                 return False
-
-            self.latest_data_store.clear()
-            self.current_subscriptions.clear() 
-            logger.info("Cleared latest_data_store and current_subscriptions for new stream.")
-
-            self.is_running = True 
-            self.error_message = None
-            self.status_message = "Stream: Starting worker..."
+                logger.info(f"start_streaming: Already running with {len(self.current_subscriptions)} subscriptions. Stopping first.")
+                self.stop_streaming()
             
-            self.stream_thread = threading.Thread(target=self._stream_worker, args=(tuple(keys_set),), name="SchwabStreamWorker")
-            self.stream_thread.daemon = True
-            self.stream_thread.start()
-            logger.info(f"SchwabStreamWorker thread initiated for {len(keys_set)} keys. Thread ID: {self.stream_thread.ident}. Status: {self.status_message}")
+            self.is_running = True
+            self.status_message = "Stream: Starting..."
+            self.error_message = None
+            self.latest_data_store = {} # Clear previous data
+        
+        logger.info(f"start_streaming: Creating new thread for {len(option_keys_to_subscribe)} keys.")
+        self.stream_thread = threading.Thread(
+            target=self._stream_worker,
+            args=(option_keys_to_subscribe,),
+            daemon=True,
+            name="StreamWorker"
+        )
+        self.stream_thread.start()
+        logger.info("start_streaming: Thread started.")
+        return True
+
+    def stop_streaming(self):
+        """Stop any active streaming."""
+        with self._lock:
+            if not self.is_running:
+                logger.info("stop_streaming: Not running, nothing to stop.")
+                return True
+            
+            self.is_running = False
+            self.status_message = "Stream: Stopping..."
+            logger.info("stop_streaming: Set is_running to False, thread should exit soon.")
+        
+        if self.stream_thread and self.stream_thread.is_alive():
+            logger.info("stop_streaming: Waiting for thread to finish (max 5s)...")
+            self.stream_thread.join(timeout=5.0)
+            if self.stream_thread.is_alive():
+                logger.warning("stop_streaming: Thread did not exit within timeout.")
+            else:
+                logger.info("stop_streaming: Thread exited successfully.")
+        
+        with self._lock:
+            self.stream_thread = None
+            self.current_subscriptions = set()
+            if self.status_message == "Stream: Stopping...":
+                self.status_message = "Stream: Stopped."
+        
         return True
 
     def get_status(self):
+        """Get current streaming status."""
         with self._lock:
-            status = self.status_message
-            error = self.error_message
-        # logger.debug(f"get_status() called. Returning status: \"{status}\", error: \"{error}\"") # Can be noisy
-        return status, error
+            return {
+                "is_running": self.is_running,
+                "status_message": self.status_message,
+                "error_message": self.error_message,
+                "subscription_count": len(self.current_subscriptions),
+                "data_store_size": len(self.latest_data_store)
+            }
 
-    def get_latest_data(self):
+    def get_latest_data(self, contract_key=None):
+        """Get latest data for a specific contract key or all data if key is None."""
         with self._lock:
-            data_copy = {k: dict(v) for k, v in self.latest_data_store.items()} # Return a deep copy
-        logger.debug(f"get_latest_data() called. Returning data store with {len(data_copy)} items. Sample keys: {list(data_copy.keys())[:3]}")
-        return data_copy
-
-    def _internal_stop_stream(self, wait_for_thread=True):
-        logger.info(f"_internal_stop_stream called. wait_for_thread={wait_for_thread}")
-        thread_to_join = None
-        initial_status_before_stop = ""
-
-        with self._lock:
-            initial_status_before_stop = self.status_message
-            if not self.is_running and not (self.stream_thread and self.stream_thread.is_alive()):
-                logger.info(f"Stream already stopped/not running. is_running={self.is_running}, thread_alive={(self.stream_thread and self.stream_thread.is_alive())}.")
-                if self.status_message not in ["Stream: Stopped.", "Stream: Idle", "Stream: Idle - No keys to subscribe.", "Stream: No symbols to subscribe."] and not self.status_message.startswith("Stream: Error"):
-                    self.status_message = "Stream: Stopped."
-                return
-
-            logger.info(f"Proceeding with _internal_stop_stream. Current is_running: {self.is_running}, thread: {self.stream_thread}")
-            self.is_running = False 
-            self.status_message = "Stream: Stopping..."
-            if self.stream_thread:
-                thread_to_join = self.stream_thread
-        
-        if wait_for_thread and thread_to_join and thread_to_join.is_alive():
-            logger.info(f"Waiting for stream worker thread (Name: {thread_to_join.name}, ID: {thread_to_join.ident}) to join...")
-            thread_to_join.join(timeout=10) 
-            if thread_to_join.is_alive():
-                logger.warning(f"Stream worker thread (ID: {thread_to_join.ident}) did not join after 10 seconds.")
+            if contract_key:
+                return self.latest_data_store.get(contract_key, {})
             else:
-                logger.info(f"Stream worker thread (ID: {thread_to_join.ident}) joined successfully.")
-        elif thread_to_join:
-             logger.info(f"Stream worker thread (ID: {thread_to_join.ident}) was not alive or wait_for_thread was false.")
-        else:
-            logger.info("_internal_stop_stream: No thread to join.")
-
-        with self._lock:
-            self.stream_thread = None 
-            self.current_subscriptions.clear()
-            # Do not clear latest_data_store on stop, so UI can still show last known data if stream is toggled
-            # self.latest_data_store.clear()
-            
-            if self.error_message and "Error" in initial_status_before_stop:
-                 self.status_message = f"Stream: Error - {self.error_message}"
-            elif self.status_message == "Stream: Stopping...":
-                 self.status_message = "Stream: Stopped."
-            logger.info(f"_internal_stop_stream: Resources cleaned. Final status: {self.status_message}")
-
-    def stop_stream(self):
-        logger.info("stop_stream() (public) called.")
-        self._internal_stop_stream(wait_for_thread=True)
-        logger.info("stop_stream() (public) completed.")
-
+                return self.latest_data_store.copy() # Return a copy to avoid thread safety issues

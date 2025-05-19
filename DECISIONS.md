@@ -2,6 +2,42 @@
 
 ## Technical Architecture Decisions
 
+### File-Based Logging Implementation
+
+- **Decision**: Implement file-based logging across all modules to create persistent log files.
+- **Rationale**: The original implementation only logged to console, making it difficult to troubleshoot issues when the application was running without direct console access.
+- **Alternatives Considered**:
+  - Continuing with console-only logging
+  - Using a third-party logging service
+  - Implementing a database-backed logging system
+- **Trade-offs**:
+  - File-based logging provides persistence without requiring external dependencies
+  - Local log files are easily accessible for troubleshooting
+  - Timestamp-based log filenames prevent overwriting previous logs
+  - Slight performance impact from disk I/O operations is acceptable for the diagnostic benefits
+- **Implementation**:
+  - Added file handlers to all loggers in dashboard_app.py, data_fetchers.py, and streaming_manager.py
+  - Created a logs directory to store all log files
+  - Used timestamp-based filenames to prevent overwriting
+  - Maintained console logging for immediate feedback during development
+
+### Enhanced Streaming Data Logging
+
+- **Decision**: Add detailed logging of streaming data updates to track field values in real-time.
+- **Rationale**: To diagnose issues with Last, Bid, and Ask fields not showing up in the options streaming tab.
+- **Alternatives Considered**:
+  - Adding temporary debug print statements
+  - Implementing a separate monitoring system
+  - Using browser-based debugging tools
+- **Trade-offs**:
+  - Comprehensive logging provides visibility into data flow without modifying core functionality
+  - Increased log volume is acceptable for troubleshooting critical issues
+  - Structured logging makes it easier to filter and analyze specific field updates
+- **Implementation**:
+  - Added logging of sample option data in get_options_chain_data
+  - Enhanced _handle_stream_message to log price field updates
+  - Added detailed logging in the options chain callback to verify data presence
+
 ### Options Chain Streaming Field Configuration
 
 - **Decision**: Update options chain streaming to include Last, Bid, and Ask price fields.
@@ -190,6 +226,42 @@
 
 ## Bug Fix Decisions
 
+### Missing Log Files Issue
+
+- **Decision**: Implement file-based logging with timestamped log files.
+- **Rationale**: The original implementation only logged to console, making it impossible to review logs after application execution.
+- **Alternatives Considered**:
+  - Using a third-party logging service
+  - Implementing a database-backed logging system
+  - Adding a UI-based log viewer
+- **Trade-offs**:
+  - File-based logging provides persistence without external dependencies
+  - Separate log files for each module improve organization and troubleshooting
+  - Timestamp-based filenames prevent overwriting previous logs
+  - Slight performance impact from disk I/O is acceptable for diagnostic benefits
+- **Implementation**:
+  - Added file handlers to all loggers in dashboard_app.py, data_fetchers.py, and streaming_manager.py
+  - Created a logs directory to store all log files
+  - Used timestamp-based filenames to prevent overwriting
+  - Maintained console logging for immediate feedback during development
+
+### Last, Bid, Ask Fields Not Showing in Options Streaming Tab
+
+- **Decision**: Enhance logging for options chain data to diagnose and fix the issue.
+- **Rationale**: The root cause was unclear, requiring detailed logging to trace data flow from API to UI.
+- **Alternatives Considered**:
+  - Adding temporary debug print statements
+  - Implementing a separate monitoring system
+  - Using browser-based debugging tools
+- **Trade-offs**:
+  - Enhanced logging provides visibility into data flow without modifying core functionality
+  - Structured logging makes it easier to filter and analyze specific field updates
+  - Permanent logging improvements benefit future troubleshooting
+- **Implementation**:
+  - Added logging of sample option data in get_options_chain_data
+  - Enhanced _handle_stream_message to log price field updates
+  - Added detailed logging in the options chain callback to verify data presence
+
 ### MACD Calculation with Reverse Chronological Data
 
 - **Decision**: Sort DataFrame by timestamp in ascending order before calculating technical indicators.
@@ -275,52 +347,17 @@
 
 ### Validation Framework
 
-- **Decision**: Create a validation framework to detect and fix column name mismatches.
-- **Rationale**: Provides a way to verify that terminal output matches technical indicators tab and helps identify similar issues in the future.
+- **Decision**: Create a validation framework to verify technical indicator calculations.
+- **Rationale**: Ensuring accurate calculation of indicators is critical for trading decisions and strategy development.
 - **Alternatives Considered**:
-  - Direct code fixes without validation
-  - Manual testing only
+  - Relying on visual inspection alone
+  - Using third-party validation tools
+  - Implementing automated testing without manual verification
 - **Trade-offs**:
-  - Validation approach allows detection and correction with automated testing
-  - More complex than direct fixes but provides better long-term maintainability
-  - Helps prevent regression of similar issues
-- **Implementation**: 
-  - Created validation scripts to parse terminal logs and compare with technical analysis results
-  - Added column name normalization function to fix mismatches
-  - Generated sample data for testing the validation process
-
-## Future Enhancement Decisions
-
-### Technical Indicator Enhancements
-
-- **Decision**: Consider implementing recommended enhancements for technical indicators.
-- **Rationale**: While current implementation is functioning correctly, several improvements could enhance usability and maintainability.
-- **Alternatives Considered**:
-  - Maintaining current implementation without changes
-  - Complete rewrite using third-party libraries
-- **Trade-offs**:
-  - Incremental improvements maintain compatibility while enhancing functionality
-  - Enhanced logging improves transparency without significant performance impact
-  - Standardizing early value handling improves code consistency and maintainability
-- **Potential Implementations**:
-  - Add more detailed logging for FVG detection
-  - Standardize approaches for handling early values across all indicators
-  - Add visualization aids for insufficient data vs. absent patterns
-  - Develop specific unit tests for edge cases
-
-### Performance Optimization
-
-- **Decision**: Consider vectorized operations for performance-critical calculations.
-- **Rationale**: Some technical indicators may become performance bottlenecks with large datasets.
-- **Alternatives Considered**:
-  - Using multiprocessing for parallel calculations
-  - Implementing critical sections in Cython or Numba
-- **Trade-offs**:
-  - Vectorized operations maintain code readability while improving performance
-  - More complex optimizations may reduce maintainability
-
-### Additional Technical Indicators
-
-- **Decision**: Design modular framework for adding new indicators.
-- **Rationale**: Trading strategies often require specialized indicators beyond the basic set.
-- **Implementation**: Each indicator is implemented as a separate function that accepts and returns a DataFrame.
+  - Manual cross-verification provides highest confidence but requires more effort
+  - Detailed code analysis helps understand edge cases and expected behavior
+  - Documentation of findings provides reference for future development
+- **Implementation**:
+  - Created validation script to compare expected vs. actual indicator values
+  - Generated sample data with known characteristics for testing
+  - Documented validation process and findings for future reference

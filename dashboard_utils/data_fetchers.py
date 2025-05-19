@@ -12,14 +12,25 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 TOKENS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "tokens.json")
 
-# Configure basic logging for this module if not already configured by app
+# Configure basic logging for this module with both console and file handlers
 logger = logging.getLogger(__name__)
 if not logger.hasHandlers():
+    # Console handler
     handler = logging.StreamHandler()
     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
+    
+    # File handler
+    log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, f"data_fetchers_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    
 logger.setLevel(logging.INFO)
+logger.info(f"Data fetchers logger initialized. Logging to console and file: {log_file}")
 
 def get_schwab_client():
     """Helper to initialize and return a Schwab client if tokens exist."""
@@ -224,6 +235,10 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
                 if col not in calls_df.columns:
                     calls_df[col] = None
             calls_df = calls_df[columns]
+            # Log the first row to verify Last, Bid, Ask values
+            logger.info(f"Sample call option data - Last: {calls_df['Last'].iloc[0] if 'Last' in calls_df.columns else 'N/A'}, " +
+                       f"Bid: {calls_df['Bid'].iloc[0] if 'Bid' in calls_df.columns else 'N/A'}, " +
+                       f"Ask: {calls_df['Ask'].iloc[0] if 'Ask' in calls_df.columns else 'N/A'}")
         else:
             calls_df = pd.DataFrame(columns=columns)
 
@@ -233,6 +248,10 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
                 if col not in puts_df.columns:
                     puts_df[col] = None
             puts_df = puts_df[columns]
+            # Log the first row to verify Last, Bid, Ask values
+            logger.info(f"Sample put option data - Last: {puts_df['Last'].iloc[0] if 'Last' in puts_df.columns else 'N/A'}, " +
+                       f"Bid: {puts_df['Bid'].iloc[0] if 'Bid' in puts_df.columns else 'N/A'}, " +
+                       f"Ask: {puts_df['Ask'].iloc[0] if 'Ask' in puts_df.columns else 'N/A'}")
         else:
             puts_df = pd.DataFrame(columns=columns)
 
@@ -298,13 +317,8 @@ if __name__ == "__main__":
             print(minute_df.tail())
             # Verify date range roughly
             if not minute_df.empty:
-                min_date_str = minute_df["Timestamp"].min()
-                max_date_str = minute_df["Timestamp"].max()
+                min_date_str = minute_df["timestamp"].min()
+                max_date_str = minute_df["timestamp"].max()
                 print(f"Data ranges from {min_date_str} to {max_date_str}")
         else:
-            print(f"No minute data returned for {symbol_to_test} for {days_to_test} days.")
-
-        # ... (rest of the test script for options can remain if needed)
-    else:
-        print("Failed to initialize Schwab client. Ensure .env and tokens.json are correct and valid.")
-
+            print("No minute data returned.")
