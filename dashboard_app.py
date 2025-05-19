@@ -56,7 +56,11 @@ def account_id_provider():
 client_instance, client_init_error = get_schwab_client()
 SCHWAB_CLIENT = client_instance  # Store only the client instance, not the tuple
 STREAMING_MANAGER = StreamingManager(schwab_client_provider, account_id_provider)
-app_logger.info("Global instances (Schwab client, StreamingManager) created.")
+
+# Cache for minute data and last update timestamps
+MINUTE_DATA_CACHE = {}  # Format: {symbol: {'data': DataFrame, 'last_update': timestamp}}
+TECH_INDICATORS_CACHE = {}  # Format: {symbol: {'1min': data, '15min': data, 'Hourly': data, 'Daily': data, 'last_update': timestamp}}
+app_logger.info("Global instances (Schwab client, StreamingManager, data caches) created.")
 
 initial_errors = []
 if client_init_error:
@@ -243,7 +247,83 @@ def update_error_log(error_messages):
         log_content = [html.P(f"{msg}") for msg in reversed(error_messages)] # Show newest first in display
         return log_content
     return "No new errors."
-    # Modified callback for Minute Data and Technical Indicators
+    # Add interval component for periodic data updates
+app.layout.children.append(dcc.Interval(
+    id='data-update-interval',
+    interval=60*1000,  # in milliseconds (1 minute)
+    n_intervals=0
+))
+
+# Callback for periodic data updates
+@app.callback(
+    Output("new-error-event-store", "data", allow_duplicate=True),
+    Input("data-update-interval", "n_intervals"),
+    State("selected-symbol-store", "data"),
+    prevent_initial_call=True
+)
+def update_data_periodically(n_intervals, selected_symbol):
+    if not selected_symbol or not n_intervals:
+        return dash.no_update
+        
+    app_logger.info(f"Periodic update triggered for {selected_symbol} (interval #{n_intervals})")
+    timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Check if we have cached data for this symbol
+    global MINUTE_DATA_CACHE, TECH_INDICATORS_CACHE, SCHWAB_CLIENT
+    
+    if selected_symbol not in MINUTE_DATA_CACHE or 'data' not in MINUTE_DATA_CACHE[selected_symbol]:
+        app_logger.info(f"No cached data for {selected_symbol}, skipping periodic update")
+        return dash.no_update
+        
+    # Get the last update timestamp
+    last_update = MINUTE_DATA_CACHE[selected_symbol].get('last_update')
+    if not last_update:
+        app_logger.info(f"No last update timestamp for {selected_symbol}, skipping periodic update")
+        return dash.no_update
+        
+    # Fetch only new data since last update
+    client_to_use = SCHWAB_CLIENT
+    if not client_to_use:
+        app_logger.error(f"Schwab client not initialized for periodic update")
+        return {"source": "PeriodicUpdate", "message": "Schwab client not initialized", "timestamp": timestamp_str}
+        
+    try:
+        app_logger.info(f"Fetching updates for {selected_symbol} since {last_update}")
+        new_df, error = get_minute_data(client_to_use, selected_symbol, days_history=1, since_timestamp=last_update)
+        
+        if error:
+            app_logger.error(f"Error fetching updates: {error}")
+            return {"source": "PeriodicUpdate", "message": f"Error fetching updates: {error}", "timestamp": timestamp_str}
+            
+        if new_df.empty:
+            app_logger.info(f"No new data available for {selected_symbol}")
+            return dash.no_update
+            
+        # Merge new data with cached data
+        cached_df = MINUTE_DATA_CACHE[selected_symbol]['data']
+        app_logger.info(f"Merging {len(new_df)} new rows with {len(cached_df)} cached rows")
+        
+        # Concatenate and remove duplicates
+        df = pd.concat([cached_df, new_df], ignore_index=False)
+        df = df.drop_duplicates(subset=["timestamp"])
+        df = df.sort_values(by="timestamp", ascending=False)
+        
+        # Update cache with merged data
+        MINUTE_DATA_CACHE[selected_symbol]['data'] = df
+        MINUTE_DATA_CACHE[selected_symbol]['last_update'] = datetime.datetime.now()
+        
+        # Update technical indicators if needed
+        if selected_symbol in TECH_INDICATORS_CACHE:
+            app_logger.info(f"Recalculating technical indicators with updated data")
+            # Technical indicators will be recalculated on next tab access
+            
+        app_logger.info(f"Successfully updated data for {selected_symbol}, now has {len(df)} rows")
+        return {"source": "PeriodicUpdate", "message": f"Successfully updated data with {len(new_df)} new rows", "timestamp": timestamp_str}
+    except Exception as e:
+        app_logger.error(f"Error in periodic update: {str(e)}", exc_info=True)
+        return {"source": "PeriodicUpdate", "message": f"Error in periodic update: {str(e)}", "timestamp": timestamp_str}
+
+# Modified callback for Minute Data and Technical Indicators - Initial Load
 @app.callback(
     Output("minute-data-table", "columns"),
     Output("minute-data-table", "data"),
@@ -267,6 +347,16 @@ def update_data_for_active_tab(selected_symbol, active_tab):
         minute_cols, minute_data = default_minute_cols, []
         tech_data_store = {}
         return minute_cols, minute_data, tech_data_store, error_event_to_send
+        
+    # Check if we already have cached data for this symbol
+    global MINUTE_DATA_CACHE, TECH_INDICATORS_CACHE
+    use_cached_data = False
+    since_timestamp = None
+    
+    if selected_symbol in MINUTE_DATA_CACHE and 'data' in MINUTE_DATA_CACHE[selected_symbol]:
+        use_cached_data = True
+        since_timestamp = MINUTE_DATA_CACHE[selected_symbol].get('last_update')
+        app_logger.info(f"Found cached data for {selected_symbol}, last updated at {since_timestamp}")
 
     global SCHWAB_CLIENT
     client_to_use = SCHWAB_CLIENT
@@ -288,17 +378,58 @@ def update_data_for_active_tab(selected_symbol, active_tab):
 
     if active_tab == "tab-minute-data":
         app_logger.info(f"UpdateDataTabs: Fetching minute data for {selected_symbol}...")
-        df, error = get_minute_data(client_to_use, selected_symbol, days_history=90)
-
-        if error:
-            error_msg = f"Data fetch error: {error}"
-            app_logger.error(f"UpdateDataTabs (MinuteData) for {selected_symbol}: {error_msg}")
-            error_event_to_send = {"source": f"MinData-Fetch-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
-            minute_cols, minute_data = default_minute_cols, []
-        elif df.empty:
-            app_logger.warning(f"UpdateDataTabs (MinuteData): No minute data returned for {selected_symbol}.")
-            minute_cols, minute_data = default_minute_cols, []
+        
+        # If we have cached data, only fetch new data since last update
+        if use_cached_data:
+            app_logger.info(f"Using cached data for {selected_symbol} and fetching updates since {since_timestamp}")
+            new_df, error = get_minute_data(client_to_use, selected_symbol, days_history=90, since_timestamp=since_timestamp)
+            
+            if error:
+                error_msg = f"Data fetch error for updates: {error}"
+                app_logger.error(f"UpdateDataTabs (MinuteData) for {selected_symbol}: {error_msg}")
+                error_event_to_send = {"source": f"MinData-Fetch-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
+                # Fall back to cached data if error fetching updates
+                df = MINUTE_DATA_CACHE[selected_symbol]['data']
+                app_logger.info(f"Falling back to cached data with {len(df)} rows")
+            elif new_df.empty:
+                app_logger.info(f"No new data since {since_timestamp} for {selected_symbol}")
+                df = MINUTE_DATA_CACHE[selected_symbol]['data']
+            else:
+                # Merge new data with cached data
+                cached_df = MINUTE_DATA_CACHE[selected_symbol]['data']
+                app_logger.info(f"Merging {len(new_df)} new rows with {len(cached_df)} cached rows")
+                
+                # Concatenate and remove duplicates
+                df = pd.concat([cached_df, new_df], ignore_index=False)
+                df = df.drop_duplicates(subset=["timestamp"])
+                df = df.sort_values(by="timestamp", ascending=False)
+                
+                # Update cache with merged data
+                MINUTE_DATA_CACHE[selected_symbol]['data'] = df
+                MINUTE_DATA_CACHE[selected_symbol]['last_update'] = datetime.datetime.now()
+                app_logger.info(f"Updated cache for {selected_symbol}, now has {len(df)} rows")
         else:
+            # No cached data, fetch full history
+            df, error = get_minute_data(client_to_use, selected_symbol, days_history=90)
+            
+            if error:
+                error_msg = f"Data fetch error: {error}"
+                app_logger.error(f"UpdateDataTabs (MinuteData) for {selected_symbol}: {error_msg}")
+                error_event_to_send = {"source": f"MinData-Fetch-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
+                minute_cols, minute_data = default_minute_cols, []
+            elif df.empty:
+                app_logger.warning(f"UpdateDataTabs (MinuteData): No minute data returned for {selected_symbol}.")
+                minute_cols, minute_data = default_minute_cols, []
+            else:
+                # Initialize cache for this symbol
+                MINUTE_DATA_CACHE[selected_symbol] = {
+                    'data': df,
+                    'last_update': datetime.datetime.now()
+                }
+                app_logger.info(f"Created new cache for {selected_symbol} with {len(df)} rows")
+        
+        # If we have data (either from cache or fresh fetch), process it
+        if 'df' in locals() and not df.empty:
             app_logger.info(f"UpdateDataTabs (MinuteData): Successfully fetched {len(df)} rows for {selected_symbol}.")
             if "timestamp" in df.columns and not isinstance(df.index, pd.DatetimeIndex):
                 try:
@@ -335,20 +466,56 @@ def update_data_for_active_tab(selected_symbol, active_tab):
 
     elif active_tab == "tab-tech-indicators":
         app_logger.info(f"UpdateDataTabs: Fetching technical indicators for {selected_symbol}...")
-        df, error = get_minute_data(client_to_use, selected_symbol, days_history=90)
         
         # Initialize tech_data_store as empty dict regardless of tab
         tech_data_store = {}
         
-        if error:
-            error_msg = f"Data fetch error for technical indicators: {error}"
-            app_logger.error(f"UpdateDataTabs (TechIndicators) for {selected_symbol}: {error_msg}")
-            error_event_to_send = {"source": f"TechInd-Fetch-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
-            return minute_cols, minute_data, tech_data_store, error_event_to_send
-        elif df.empty:
-            app_logger.warning(f"UpdateDataTabs (TechIndicators): No minute data returned for {selected_symbol}.")
-            return minute_cols, minute_data, tech_data_store, error_event_to_send
+        # Check if we have cached minute data for this symbol
+        if selected_symbol in MINUTE_DATA_CACHE and 'data' in MINUTE_DATA_CACHE[selected_symbol]:
+            # Use cached minute data
+            df = MINUTE_DATA_CACHE[selected_symbol]['data']
+            app_logger.info(f"Using cached minute data for {selected_symbol} with {len(df)} rows")
+            
+            # Check if we need to update the data
+            if use_cached_data and since_timestamp:
+                app_logger.info(f"Checking for updates since {since_timestamp}")
+                new_df, error = get_minute_data(client_to_use, selected_symbol, days_history=90, since_timestamp=since_timestamp)
+                
+                if error:
+                    error_msg = f"Data fetch error for technical indicator updates: {error}"
+                    app_logger.error(f"UpdateDataTabs (TechIndicators) for {selected_symbol}: {error_msg}")
+                    error_event_to_send = {"source": f"TechInd-Fetch-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
+                    # Continue with cached data
+                elif not new_df.empty:
+                    # Merge new data with cached data
+                    app_logger.info(f"Merging {len(new_df)} new rows with {len(df)} cached rows for technical indicators")
+                    df = pd.concat([df, new_df], ignore_index=False)
+                    df = df.drop_duplicates(subset=["timestamp"])
+                    df = df.sort_values(by="timestamp", ascending=False)
+                    
+                    # Update cache with merged data
+                    MINUTE_DATA_CACHE[selected_symbol]['data'] = df
+                    MINUTE_DATA_CACHE[selected_symbol]['last_update'] = datetime.datetime.now()
+                    app_logger.info(f"Updated minute data cache for technical indicators, now has {len(df)} rows")
         else:
+            # No cached data, fetch full history
+            df, error = get_minute_data(client_to_use, selected_symbol, days_history=90)
+            
+            if error:
+                error_msg = f"Data fetch error for technical indicators: {error}"
+                app_logger.error(f"UpdateDataTabs (TechIndicators) for {selected_symbol}: {error_msg}")
+                error_event_to_send = {"source": f"TechInd-Fetch-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
+                return minute_cols, minute_data, tech_data_store, error_event_to_send
+            elif df.empty:
+                app_logger.warning(f"UpdateDataTabs (TechIndicators): No minute data returned for {selected_symbol}.")
+                return minute_cols, minute_data, tech_data_store, error_event_to_send
+            else:
+                # Initialize cache for this symbol
+                MINUTE_DATA_CACHE[selected_symbol] = {
+                    'data': df,
+                    'last_update': datetime.datetime.now()
+                }
+                app_logger.info(f"Created new minute data cache for technical indicators with {len(df)} rows")
             app_logger.info(f"UpdateDataTabs (TechIndicators): Successfully fetched {len(df)} rows for {selected_symbol}.")
             
             # Ensure we have a proper DatetimeIndex

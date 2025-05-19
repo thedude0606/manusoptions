@@ -7,6 +7,7 @@ import json
 import pandas as pd
 import logging
 import time # For adding delays between API calls
+import math # For ceiling function
 from dotenv import load_dotenv
 import re # For contract key formatting
 
@@ -66,12 +67,26 @@ def get_schwab_client():
     except Exception as e:
         return None, f"Error initializing Schwab client: {str(e)}"
 
-def get_minute_data(client: schwabdev.Client, symbol: str, days_history: int = 1):
-    """Fetches 1-minute historical price data for the given symbol for the specified number of past days."""
+def get_minute_data(client: schwabdev.Client, symbol: str, days_history: int = 1, since_timestamp=None):
+    """
+    Fetches 1-minute historical price data for the given symbol.
+    
+    Args:
+        client: Schwab API client
+        symbol: Stock symbol to fetch data for
+        days_history: Number of days of history to fetch (used if since_timestamp is None)
+        since_timestamp: If provided, only fetch data since this timestamp
+        
+    Returns:
+        DataFrame with minute data, error message (if any)
+    """
     if not client:
         return pd.DataFrame(), "Schwab client not initialized for get_minute_data."
     
-    logger.info(f"Fetching {days_history} days of minute data for {symbol}.")
+    if since_timestamp:
+        logger.info(f"Fetching minute data for {symbol} since {since_timestamp}.")
+    else:
+        logger.info(f"Fetching {days_history} days of minute data for {symbol}.")
     all_candles_df = pd.DataFrame()
     
     # Schwab API limits minute data to 10 days per call for periodType="day"
@@ -82,6 +97,30 @@ def get_minute_data(client: schwabdev.Client, symbol: str, days_history: int = 1
     current_end_date = datetime.datetime.now()
     # Ensure we don't request future data if current_end_date is slightly ahead due to execution time
     current_end_date = min(current_end_date, datetime.datetime.now())
+    
+    # If we have a since_timestamp, use that instead of days_history for start date
+    if since_timestamp:
+        # Convert since_timestamp to datetime if it's a string
+        if isinstance(since_timestamp, str):
+            try:
+                since_timestamp = pd.to_datetime(since_timestamp)
+            except Exception as e:
+                logger.error(f"Error converting since_timestamp to datetime: {e}")
+                since_timestamp = None
+                
+        # If conversion successful, use it as the start date
+        if since_timestamp is not None:
+            # Add a small buffer to avoid missing data (e.g., 5 minutes)
+            buffer_minutes = 5
+            start_date = since_timestamp - datetime.timedelta(minutes=buffer_minutes)
+            # Calculate days_history based on the difference between now and since_timestamp
+            days_diff = (current_end_date - start_date).total_seconds() / (24 * 60 * 60)
+            days_history = max(1, min(90, math.ceil(days_diff)))  # Ensure between 1 and 90 days
+            logger.info(f"Calculated {days_history} days of history based on since_timestamp {since_timestamp}")
+        else:
+            logger.warning(f"Invalid since_timestamp provided, falling back to {days_history} days of history")
+    else:
+        logger.info(f"No since_timestamp provided, using {days_history} days of history")
 
     # Iterate backwards in chunks
     for i in range(0, days_history, max_days_per_call):
