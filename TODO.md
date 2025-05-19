@@ -8,6 +8,7 @@
 - [x] Update CSV export functionality to include full historical data
 - [x] Validate technical indicators calculation for all timeframes
 - [x] Fix MACD calculation issue with reverse chronological data
+- [x] Fix options chain streaming to include Last, Bid, and Ask fields
 - [ ] Implement proper error handling for all API calls
 - [ ] Add unit tests for critical components
 - [ ] Implement comprehensive candlestick pattern detection (IN PROGRESS)

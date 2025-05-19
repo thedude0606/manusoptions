@@ -58,6 +58,10 @@
 - Discovered that the MACD calculation code incorrectly marks recent values as NaN when data is in reverse order.
 - Developed detailed documentation explaining the MACD calculation issue and recommended solutions.
 - Created a fix proposal to sort the DataFrame by timestamp in ascending order before calculating indicators.
+- Identified issue with options chain streaming where Last, Bid, and Ask fields were blank in the UI.
+- Investigated the streaming field subscription in fetch_options_chain.py and found that these fields were not being requested.
+- Fixed the options chain streaming by updating STREAMING_OPTION_FIELDS_REQUEST to include field codes for Last (4), Bid (2), and Ask (3).
+- Updated STREAMING_FIELD_MAPPING to include the new fields with appropriate names (LastPrice, BidPrice, AskPrice).
 
 ## Current Work in Progress
 

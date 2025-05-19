@@ -2,6 +2,23 @@
 
 ## Technical Architecture Decisions
 
+### Options Chain Streaming Field Configuration
+
+- **Decision**: Update options chain streaming to include Last, Bid, and Ask price fields.
+- **Rationale**: These fields are essential for options trading decisions but were missing from the original streaming configuration, causing blank values in the UI.
+- **Alternatives Considered**:
+  - Keeping the limited field set to reduce data volume
+  - Using periodic polling instead of streaming for these fields
+  - Fetching these values on-demand when users interact with specific options
+- **Trade-offs**:
+  - Including more fields increases data volume but provides critical price information
+  - Streaming approach ensures real-time updates for time-sensitive trading decisions
+  - Consistent field mapping between fetch_options_chain.py and StreamingManager improves maintainability
+- **Implementation**:
+  - Added field codes 2 (Bid), 3 (Ask), and 4 (Last) to STREAMING_OPTION_FIELDS_REQUEST
+  - Updated STREAMING_FIELD_MAPPING to include these fields with appropriate names
+  - Ensured naming consistency with StreamingManager's field mapping
+
 ### Technical Indicators Implementation
 
 - **Decision**: Implement technical indicators using pandas DataFrame operations.

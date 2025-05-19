@@ -40,9 +40,12 @@ STREAMING_SYMBOLS = ["AAPL"]  # List of underlying symbols to stream (e.g., ["AA
 STREAMING_FILTER_MIN_OPEN_INTEREST = 1  # Minimum open interest required
 STREAMING_FILTER_DTE = 0  # Target Days To Expiration (e.g., 0 for 0DTE). Set to None to disable DTE filter.
 
-STREAMING_OPTION_FIELDS_REQUEST = "0,9,10,20,27,28,29,30,31,32"
+STREAMING_OPTION_FIELDS_REQUEST = "0,2,3,4,9,10,20,27,28,29,30,31,32"
 STREAMING_FIELD_MAPPING = {
     0: "ContractKey",
+    2: "BidPrice",
+    3: "AskPrice",
+    4: "LastPrice",
     9: "OpenInterest",
     10: "Volatility",
     20: "StrikePrice", 
