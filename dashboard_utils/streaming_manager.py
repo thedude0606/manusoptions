@@ -399,119 +399,205 @@ class StreamingManager:
                         logger.info(f"[MsgID:{current_message_id}] Processing update for key \"{contract_key}\". New data: {new_update_data}")
                         updated_keys_in_batch.append(contract_key)
                         
+                        # Update the data store with the new data
                         with self._lock:
-                            # Get existing record or an empty dict if it's a new key
-                            existing_record = self.latest_data_store.get(contract_key, {})
-                            # Merge new update into existing record
-                            existing_record.update(new_update_data)
-                            # Store the merged record back
-                            self.latest_data_store[contract_key] = existing_record
-                            
-                            logger.debug(f"[MsgID:{current_message_id}] Data for key \"{contract_key}\" merged/stored. Full record: {existing_record}. Store size: {len(self.latest_data_store)}.")
-
-                            current_status = self.status_message
-                            if not current_status.startswith("Stream: Error") and \
-                               (not current_status.startswith("Stream: Actively receiving data") or \
-                                f"for {len(self.current_subscriptions)} contracts" not in current_status or \
-                                f"Store size: {len(self.latest_data_store)}" not in current_status):
-                                self.status_message = f"Stream: Actively receiving data for {len(self.current_subscriptions)} contracts. Store size: {len(self.latest_data_store)}."
-                                logger.info(f"[MsgID:{current_message_id}] Status updated: {self.status_message}")
+                            if contract_key in self.latest_data_store:
+                                # Update existing data
+                                self.latest_data_store[contract_key].update(new_update_data)
+                                logger.debug(f"[MsgID:{current_message_id}] Updated existing data for {contract_key}")
+                            else:
+                                # Create new entry
+                                self.latest_data_store[contract_key] = new_update_data
+                                logger.debug(f"[MsgID:{current_message_id}] Created new data entry for {contract_key}")
                 
                 if updated_keys_in_batch:
-                     logger.info(f"[MsgID:{current_message_id}] Batch processed. Updated keys: {updated_keys_in_batch}. Store size: {len(self.latest_data_store)}. Sample: {list(self.latest_data_store.keys())[:3]}")
+                    logger.info(f"[MsgID:{current_message_id}] Updated {len(updated_keys_in_batch)} contracts in this batch.")
                 else:
-                    logger.info(f"[MsgID:{current_message_id}] Batch processed. No new option data keys updated. Store size: {len(self.latest_data_store)}.")
-
-            elif "response" in message_dict or "responses" in message_dict:
-                logger.info(f"[MsgID:{current_message_id}] Stream admin/response: {message_dict}")
-                responses_list = message_dict.get("response", []) or message_dict.get("responses", []) # Handle both singular and plural
-                if isinstance(responses_list, list):
-                    for resp_item in responses_list:
-                        if isinstance(resp_item, dict) and resp_item.get("service") == "LEVELONE_OPTIONS" and resp_item.get("command") == "ADD":
-                            if resp_item.get("content", {}).get("code") == 0: # Check code within content
-                                logger.info(f"[MsgID:{current_message_id}] Subscription ADD successful for LEVELONE_OPTIONS.")
-                                with self._lock:
-                                     self.status_message = f"Stream: Subscription confirmed for {len(self.current_subscriptions)} contracts. Waiting for data..."
-                            else:
-                                code = resp_item.get("content", {}).get("code", "N/A")
-                                msg = resp_item.get("content", {}).get("msg", "N/A")
-                                err_msg = f"Subscription ADD failed for LEVELONE_OPTIONS. Code: {code}, Msg: {msg}"
-                                logger.error(f"[MsgID:{current_message_id}] {err_msg}")
-                                with self._lock:
-                                    self.error_message = err_msg
-                                    self.status_message = f"Stream: Error - {err_msg}"
+                    logger.warning(f"[MsgID:{current_message_id}] No contracts were updated in this batch.")
+            
+            elif "notify" in message_dict:
+                notify_items = message_dict.get("notify", [])
+                logger.info(f"[MsgID:{current_message_id}] Received \"notify\" message with {len(notify_items)} items.")
+                
+                for notify_index, notify_item in enumerate(notify_items):
+                    if not isinstance(notify_item, dict):
+                        logger.warning(f"[MsgID:{current_message_id}] Skipping non-dict notify item #{notify_index}: {notify_item}")
+                        continue
+                    
+                    heartbeat = notify_item.get("heartbeat")
+                    if heartbeat is not None:
+                        logger.debug(f"[MsgID:{current_message_id}] Received heartbeat: {heartbeat}")
+                        continue
+                    
+                    service = notify_item.get("service")
+                    if service:
+                        logger.info(f"[MsgID:{current_message_id}] Received service notification for {service}")
+                    
+                    command = notify_item.get("command")
+                    if command:
+                        logger.info(f"[MsgID:{current_message_id}] Received command notification: {command}")
+            
+            elif "response" in message_dict:
+                response_items = message_dict.get("response", [])
+                logger.info(f"[MsgID:{current_message_id}] Received \"response\" message with {len(response_items)} items.")
+                
+                for response_index, response_item in enumerate(response_items):
+                    if not isinstance(response_item, dict):
+                        logger.warning(f"[MsgID:{current_message_id}] Skipping non-dict response item #{response_index}: {response_item}")
+                        continue
+                    
+                    service = response_item.get("service")
+                    command = response_item.get("command")
+                    content = response_item.get("content")
+                    
+                    logger.info(f"[MsgID:{current_message_id}] Response for service={service}, command={command}")
+                    if content:
+                        logger.debug(f"[MsgID:{current_message_id}] Response content: {content}")
+            
             else:
-                logger.info(f"[MsgID:{current_message_id}] Unhandled message type: {message_dict}")
+                logger.warning(f"[MsgID:{current_message_id}] Unrecognized message format, no 'data', 'notify', or 'response' key found.")
+        
         except Exception as e:
-            logger.error(f"[MsgID:{current_message_id}] Error in _handle_stream_message: {e}", exc_info=True)
-            # Log the full traceback to the raw stream log
-            self.raw_stream_logger.error(f"[MsgID:{current_message_id}] EXCEPTION: {traceback.format_exc()}")
+            logger.error(f"[MsgID:{current_message_id}] Error processing stream message: {e}", exc_info=True)
 
     def start_streaming(self, option_keys_to_subscribe):
-        """Start streaming for the given option contract keys."""
+        """
+        Start streaming data for the specified option keys.
+        
+        Args:
+            option_keys_to_subscribe: List or set of option contract keys to subscribe to.
+        
+        Returns:
+            bool: True if streaming started successfully, False otherwise.
+        """
+        logger.info(f"start_streaming called with {len(option_keys_to_subscribe)} keys.")
+        
         with self._lock:
             if self.is_running:
-                logger.info(f"start_streaming: Already running with {len(self.current_subscriptions)} subscriptions. Stopping first.")
-                self.stop_streaming()
+                logger.warning("start_streaming: Stream is already running. Call stop_streaming() first.")
+                return False
+            
+            if not option_keys_to_subscribe:
+                logger.warning("start_streaming: No option keys provided.")
+                self.error_message = "No option keys provided for streaming."
+                return False
             
             self.is_running = True
             self.status_message = "Stream: Starting..."
             self.error_message = None
-            self.latest_data_store = {} # Clear previous data
         
-        logger.info(f"start_streaming: Creating new thread for {len(option_keys_to_subscribe)} keys.")
-        self.stream_thread = threading.Thread(
-            target=self._stream_worker,
-            args=(option_keys_to_subscribe,),
-            daemon=True,
-            name="StreamWorker"
-        )
-        self.stream_thread.start()
-        logger.info("start_streaming: Thread started.")
-        return True
+        try:
+            # Convert to tuple for thread safety (immutable)
+            option_keys_tuple = tuple(option_keys_to_subscribe)
+            
+            # Start the stream worker in a new thread
+            self.stream_thread = threading.Thread(
+                target=self._stream_worker,
+                args=(option_keys_tuple,),
+                daemon=True,
+                name="StreamWorker"
+            )
+            self.stream_thread.start()
+            logger.info(f"start_streaming: Started stream worker thread for {len(option_keys_tuple)} keys.")
+            return True
+        
+        except Exception as e:
+            logger.error(f"start_streaming: Error starting stream worker thread: {e}", exc_info=True)
+            with self._lock:
+                self.is_running = False
+                self.error_message = f"Error starting stream: {e}"
+                self.status_message = f"Stream: Error - {self.error_message}"
+            return False
 
     def stop_streaming(self):
-        """Stop any active streaming."""
+        """
+        Stop the current streaming session.
+        
+        Returns:
+            bool: True if stop signal was sent, False if no stream was running.
+        """
+        logger.info("stop_streaming called.")
+        
         with self._lock:
             if not self.is_running:
-                logger.info("stop_streaming: Not running, nothing to stop.")
-                return True
+                logger.warning("stop_streaming: Stream is not running.")
+                return False
             
             self.is_running = False
             self.status_message = "Stream: Stopping..."
-            logger.info("stop_streaming: Set is_running to False, thread should exit soon.")
-        
-        if self.stream_thread and self.stream_thread.is_alive():
-            logger.info("stop_streaming: Waiting for thread to finish (max 5s)...")
-            self.stream_thread.join(timeout=5.0)
-            if self.stream_thread.is_alive():
-                logger.warning("stop_streaming: Thread did not exit within timeout.")
-            else:
-                logger.info("stop_streaming: Thread exited successfully.")
-        
-        with self._lock:
-            self.stream_thread = None
-            self.current_subscriptions = set()
-            if self.status_message == "Stream: Stopping...":
-                self.status_message = "Stream: Stopped."
-        
-        return True
+            logger.info("stop_streaming: Set is_running to False. Worker thread should exit soon.")
+            return True
 
-    def get_status(self):
-        """Get current streaming status."""
+    def get_streaming_status(self):
+        """
+        Get the current status of the streaming session.
+        
+        Returns:
+            dict: Status information including running state, error message, and subscription count.
+        """
         with self._lock:
             return {
                 "is_running": self.is_running,
                 "status_message": self.status_message,
                 "error_message": self.error_message,
                 "subscription_count": len(self.current_subscriptions),
-                "data_store_size": len(self.latest_data_store)
+                "data_count": len(self.latest_data_store),
+                "last_update": time.time()
             }
 
-    def get_latest_data(self, contract_key=None):
-        """Get latest data for a specific contract key or all data if key is None."""
+    def get_option_data(self, contract_key=None):
+        """
+        Get the latest data for a specific option contract or all contracts.
+        
+        Args:
+            contract_key: Optional. The specific contract key to get data for.
+                         If None, returns data for all subscribed contracts.
+        
+        Returns:
+            dict or list: Latest data for the specified contract or all contracts.
+        """
         with self._lock:
             if contract_key:
+                # Return data for a specific contract
                 return self.latest_data_store.get(contract_key, {})
             else:
-                return self.latest_data_store.copy() # Return a copy to avoid thread safety issues
+                # Return data for all contracts
+                return self.latest_data_store.copy()
+
+    def get_options_dataframe(self, contract_keys=None):
+        """
+        Get the latest data for specified option contracts as a DataFrame.
+        
+        Args:
+            contract_keys: Optional. List of contract keys to get data for.
+                          If None, returns data for all subscribed contracts.
+        
+        Returns:
+            pandas.DataFrame: Latest data for the specified contracts.
+        """
+        import pandas as pd
+        
+        with self._lock:
+            if not self.latest_data_store:
+                logger.warning("get_options_dataframe: No data available.")
+                return pd.DataFrame()
+            
+            if contract_keys:
+                # Filter to only the specified keys
+                data_to_convert = {k: v for k, v in self.latest_data_store.items() if k in contract_keys}
+            else:
+                # Use all available data
+                data_to_convert = self.latest_data_store.copy()
+            
+            if not data_to_convert:
+                logger.warning("get_options_dataframe: No matching data found for specified keys.")
+                return pd.DataFrame()
+            
+            # Convert to DataFrame
+            try:
+                df = pd.DataFrame.from_dict(data_to_convert, orient='index')
+                logger.info(f"get_options_dataframe: Created DataFrame with {len(df)} rows and {len(df.columns)} columns.")
+                return df
+            except Exception as e:
+                logger.error(f"get_options_dataframe: Error creating DataFrame: {e}", exc_info=True)
+                return pd.DataFrame()

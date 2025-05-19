@@ -1,37 +1,40 @@
-# TODO List
+# Project TODO List
 
-## High Priority
-- [x] Set up basic dashboard structure
-- [x] Implement data fetching from Schwab API
-- [x] Create technical indicators calculation module
-- [x] Modify technical indicators tab to display full historical series
-- [x] Update CSV export functionality to include full historical data
-- [x] Validate technical indicators calculation for all timeframes
-- [x] Fix MACD calculation issue with reverse chronological data
-- [x] Fix options chain streaming to include Last, Bid, and Ask fields
-- [x] Implement file-based logging for troubleshooting
-- [x] Fix contract key formatting for options streaming compatibility
-- [ ] Implement proper error handling for all API calls
-- [ ] Add unit tests for critical components
-- [ ] Implement comprehensive candlestick pattern detection (IN PROGRESS)
-- [ ] Integrate candlestick patterns with technical indicators chart
+## High Priority Tasks
 
-## Medium Priority
-- [ ] Improve UI/UX of the dashboard
-- [ ] Add more technical indicators
-- [ ] Implement caching mechanism for frequently accessed data
-- [ ] Add user preferences for default settings
-- [ ] Add visualization components for candlestick patterns
-- [ ] Enhance logging for FVG detection to improve transparency
-- [ ] Standardize approaches for handling early values across all indicators
-- [x] Add warning logs for reverse chronological data detection
-- [ ] Create unit tests for both ascending and descending data order scenarios
-- [x] Add comprehensive debug logging for streaming API responses
+- [x] Fix Last, Bid, Ask values not showing in options streaming tab
+- [x] Fix logging system to properly create log files
+- [x] Enhance raw stream message logging for debugging
+- [ ] Implement additional filtering options for options chain display
+- [ ] Add visualization components for technical indicators
+- [ ] Optimize streaming data updates to reduce UI lag
 
-## Low Priority
-- [ ] Create documentation for API usage
-- [ ] Optimize performance for large datasets
-- [ ] Add visualization aids to help users understand when indicators have insufficient data
-- [ ] Enhance candlestick pattern detection with machine learning
-- [ ] Develop unit tests specifically for edge cases in technical indicators
-- [ ] Add configuration option to preserve original data order in output if needed
+## Medium Priority Tasks
+
+- [ ] Enhance error reporting in the UI
+- [ ] Implement caching for frequently accessed data
+- [ ] Add user preferences for dashboard customization
+- [ ] Improve mobile responsiveness of the dashboard
+
+## Low Priority Tasks
+
+- [ ] Add export functionality for all data tables
+- [ ] Implement dark mode theme
+- [ ] Create user documentation
+- [ ] Add additional technical indicators
+
+## Dependencies
+
+- Filtering options depend on stable options chain data display
+- Visualization components depend on reliable technical indicator calculations
+- UI enhancements depend on core functionality stability
+
+## Completed Tasks
+
+- [x] Initial project setup with Dash framework
+- [x] Authentication with Schwab API
+- [x] Basic dashboard layout with tabs
+- [x] Minute data fetching and display
+- [x] Technical indicator calculation and display
+- [x] Options chain data fetching via REST API
+- [x] Streaming infrastructure for real-time options data
