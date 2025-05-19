@@ -10,13 +10,11 @@ import json # For pretty printing dicts in logs
 import re # For parsing option key
 import base64 # For CSV download
 import io # For CSV download
-
 # Import utility functions
 from dashboard_utils.data_fetchers import get_schwab_client, get_minute_data, get_options_chain_data, get_option_contract_keys
 from dashboard_utils.streaming_manager import StreamingManager
 # Import technical analysis functions
 from technical_analysis import aggregate_candles, calculate_all_technical_indicators
-
 # Configure logging for the app with both console and file handlers
 app_logger = logging.getLogger(__name__)
 if not app_logger.hasHandlers():
@@ -37,6 +35,28 @@ if not app_logger.hasHandlers():
 app_logger.setLevel(logging.INFO)
 app_logger.info(f"App logger initialized. Logging to console and file: {log_file}")
 
+# Global cache for minute data and technical indicators
+# Structure:
+# {
+#     'SYMBOL': {
+#         'data': pandas_dataframe,
+#         'last_update': datetime_object,
+#         'timeframe_data': {
+#             '1min': dataframe_or_records,
+#             '5min': dataframe_or_records,
+#             # other timeframes
+#         }
+#     }
+# }
+MINUTE_DATA_CACHE = {}
+
+# Cache configuration
+CACHE_CONFIG = {
+    'max_age_hours': 24,  # Maximum age of cached data before forcing a full refresh
+    'update_interval_seconds': 30,  # Interval for periodic updates
+    'buffer_minutes': 5,  # Buffer time to avoid gaps in data
+}
+
 # Initialize the Dash app BEFORE defining layout or callbacks
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
 app.title = "Trading Dashboard"
@@ -48,447 +68,340 @@ def schwab_client_provider():
     client, _ = get_schwab_client()
     return client
 
-def account_id_provider():
-    """Provides the account ID (account hash for streaming), if available."""
-    return os.getenv("SCHWAB_ACCOUNT_HASH")
-
-# --- Global Instances --- 
-client_instance, client_init_error = get_schwab_client()
-SCHWAB_CLIENT = client_instance  # Store only the client instance, not the tuple
-STREAMING_MANAGER = StreamingManager(schwab_client_provider, account_id_provider)
-
-# Cache for minute data and last update timestamps
-MINUTE_DATA_CACHE = {}  # Format: {symbol: {'data': DataFrame, 'last_update': timestamp}}
-TECH_INDICATORS_CACHE = {}  # Format: {symbol: {'1min': data, '15min': data, 'Hourly': data, 'Daily': data, 'last_update': timestamp}}
-app_logger.info("Global instances (Schwab client, StreamingManager, data caches) created.")
-
-initial_errors = []
-if client_init_error:
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    initial_errors.append(f"{timestamp}: REST Client Init: {client_init_error}")
-    app_logger.error(f"Initial REST Client Error: {client_init_error}")
-
-if not account_id_provider():
-    app_logger.info("SCHWAB_ACCOUNT_HASH is not set in .env. This is only required for account-specific data streams.")
-
-# --- App Layout --- 
+# --- Layout ---
 app.layout = html.Div([
-    html.H1("Trading Dashboard"),
-    
+    # Header
     html.Div([
-        dcc.Input(id="symbol-input", type="text", placeholder="Enter comma-separated symbols (e.g., AAPL,MSFT)", style={"width": "50%"}),
-        html.Button("Process Symbols", id="process-symbols-button", n_clicks=0),
-        dcc.Dropdown(id="symbol-filter-dropdown", placeholder="Filter by Symbol", style={"width": "30%", "display": "none"})
-    ], style={"marginBottom": "20px"}),
+        html.H1("Trading Dashboard", className="app-header"),
+        html.Div([
+            dcc.Input(id="symbol-input", type="text", placeholder="Enter Symbol", value="AAPL", className="symbol-input"),
+            html.Button("Load", id="load-button", n_clicks=0, className="load-button"),
+            html.Button("Refresh", id="refresh-button", n_clicks=0, className="refresh-button"),
+            html.Div(id="status-message", className="status-message")
+        ], className="header-controls"),
+    ], className="header-container"),
     
-    dcc.Tabs(id="tabs-main", value="tab-minute-data", children=[
-        dcc.Tab(label="Minute Streaming Data", value="tab-minute-data", children=[
-            html.Div(id="minute-data-content", children=[
+    # Store components for data
+    dcc.Store(id="selected-symbol-store"),
+    dcc.Store(id="minute-data-store"),
+    dcc.Store(id="tech-indicators-store"),
+    dcc.Store(id="options-chain-store"),
+    dcc.Store(id="error-store"),
+    
+    # Interval component for periodic updates
+    dcc.Interval(
+        id='update-interval',
+        interval=CACHE_CONFIG['update_interval_seconds'] * 1000,  # in milliseconds
+        n_intervals=0
+    ),
+    
+    # Tabs
+    dcc.Tabs([
+        # Minute Data Tab
+        dcc.Tab(label="Minute Data", children=[
+            html.Div([
                 html.Div([
-                    html.H4(id="minute-data-header", style={"display": "inline-block", "marginRight": "20px"}),
-                    html.Button("Export to CSV", id="export-minute-data-button", n_clicks=0, 
-                               style={"backgroundColor": "#4CAF50", "color": "white", "border": "none", 
-                                      "padding": "10px 15px", "borderRadius": "4px", "cursor": "pointer"})
-                ]),
-                dash_table.DataTable(
-                    id="minute-data-table", 
-                    columns=[], 
-                    data=[],
-                    page_size=15, 
-                    style_table={"overflowX": "auto"}
-                ),
-                dcc.Download(id="download-minute-data-csv")
-            ])
+                    html.Button("Export to CSV", id="export-minute-data-button", n_clicks=0, className="export-button"),
+                    dcc.Download(id="download-minute-data-csv")
+                ], className="tab-controls"),
+                html.Div(id="minute-data-loading", children=[
+                    dcc.Loading(
+                        id="minute-data-loading-spinner",
+                        type="circle",
+                        children=html.Div(id="minute-data-container", children=[
+                            dash_table.DataTable(
+                                id="minute-data-table",
+                                page_size=15,
+                                style_table={'overflowX': 'auto'},
+                                style_cell={
+                                    'textAlign': 'left',
+                                    'padding': '5px',
+                                    'minWidth': '80px', 'width': '80px', 'maxWidth': '120px',
+                                    'whiteSpace': 'normal'
+                                },
+                                style_header={
+                                    'backgroundColor': 'rgb(230, 230, 230)',
+                                    'fontWeight': 'bold'
+                                }
+                            )
+                        ])
+                    )
+                ])
+            ], className="tab-content")
         ]),
-        dcc.Tab(label="Technical Indicators", value="tab-tech-indicators", children=[
-            html.Div(id="tech-indicators-content", children=[
+        
+        # Technical Indicators Tab
+        dcc.Tab(label="Technical Indicators", children=[
+            html.Div([
                 html.Div([
-                    html.H4(id="tech-indicators-header", style={"display": "inline-block", "marginRight": "20px"}),
-                    html.Button("Export to CSV", id="export-tech-indicators-button", n_clicks=0, 
-                               style={"backgroundColor": "#4CAF50", "color": "white", "border": "none", 
-                                      "padding": "10px 15px", "borderRadius": "4px", "cursor": "pointer"})
-                ]),
-                html.Div([
-                    html.Label("Select Timeframe:"),
                     dcc.Dropdown(
                         id="tech-indicators-timeframe-dropdown",
                         options=[
                             {"label": "1 Minute", "value": "1min"},
+                            {"label": "5 Minutes", "value": "5min"},
                             {"label": "15 Minutes", "value": "15min"},
-                            {"label": "Hourly", "value": "Hourly"},
-                            {"label": "Daily", "value": "Daily"}
+                            {"label": "30 Minutes", "value": "30min"},
+                            {"label": "1 Hour", "value": "1hour"},
+                            {"label": "4 Hours", "value": "4hour"},
+                            {"label": "1 Day", "value": "1day"}
                         ],
                         value="1min",
-                        style={"width": "200px", "marginBottom": "10px"}
+                        clearable=False,
+                        className="timeframe-dropdown"
+                    ),
+                    html.Button("Export to CSV", id="export-tech-indicators-button", n_clicks=0, className="export-button"),
+                    dcc.Download(id="download-tech-indicators-csv")
+                ], className="tab-controls"),
+                html.Div(id="tech-indicators-loading", children=[
+                    dcc.Loading(
+                        id="tech-indicators-loading-spinner",
+                        type="circle",
+                        children=html.Div(id="tech-indicators-container", children=[
+                            dash_table.DataTable(
+                                id="tech-indicators-table",
+                                page_size=15,
+                                style_table={'overflowX': 'auto'},
+                                style_cell={
+                                    'textAlign': 'left',
+                                    'padding': '5px',
+                                    'minWidth': '80px', 'width': '80px', 'maxWidth': '120px',
+                                    'whiteSpace': 'normal'
+                                },
+                                style_header={
+                                    'backgroundColor': 'rgb(230, 230, 230)',
+                                    'fontWeight': 'bold'
+                                }
+                            )
+                        ])
                     )
-                ]),
-                dash_table.DataTable(
-                    id="tech-indicators-table", 
-                    columns=[], 
-                    data=[],
-                    page_size=15,
-                    style_table={"overflowX": "auto"}
-                ),
-                dcc.Download(id="download-tech-indicators-csv")
-            ])
-        ]),
-        dcc.Tab(label="Options Chain (Stream)", value="tab-options-chain", children=[
-            html.Div(id="options-chain-content", children=[
-                html.H4(id="options-chain-header"),
-                html.Div(id="options-chain-stream-status", style={"marginBottom": "10px", "padding": "5px", "border": "1px solid lightgrey"}),
-                html.Div([
-                    html.Div([html.H5("Calls"), dash_table.DataTable(id="options-calls-table", columns=[], data=[], page_size=10, style_table={"overflowX": "auto"}, sort_action="native") ], style={"width": "49%", "display": "inline-block", "verticalAlign": "top", "marginRight": "1%"}),
-                    html.Div([html.H5("Puts"), dash_table.DataTable(id="options-puts-table", columns=[], data=[], page_size=10, style_table={"overflowX": "auto"}, sort_action="native") ], style={"width": "49%", "display": "inline-block", "float": "right", "verticalAlign": "top"})
                 ])
-            ]),
-            dcc.Interval(id="options-chain-interval", interval=2*1000, n_intervals=0) 
+            ], className="tab-content")
         ]),
-    ]),
-    
-    dcc.Store(id="processed-symbols-store"),
-    dcc.Store(id="selected-symbol-store"),
-    dcc.Store(id="error-message-store", data=initial_errors), # Main store for all errors, populated by a single callback
-    dcc.Store(id="new-error-event-store"), # Intermediate store for individual error events
-    dcc.Store(id="current-option-keys-store", data=[]),
-    dcc.Store(id="minute-data-store", data=None),  # Store for minute data to be exported
-    dcc.Store(id="tech-indicators-store", data={}),  # Store for technical indicators data to be exported (modified to store all timeframes)
-
-    html.Div(id="error-log-display", children="No errors yet." if not initial_errors else [html.P(err) for err in initial_errors], style={"marginTop": "20px", "border": "1px solid #ccc", "padding": "10px", "height": "100px", "overflowY": "scroll", "whiteSpace": "pre-wrap"})
-])
-app_logger.info("App layout defined.")
-
-# --- Callbacks --- 
-
-@app.callback(
-    Output("processed-symbols-store", "data"),
-    Output("symbol-filter-dropdown", "options"),
-    Output("symbol-filter-dropdown", "style"),
-    Output("symbol-filter-dropdown", "value"),
-    Input("process-symbols-button", "n_clicks"),
-    State("symbol-input", "value")
-)
-def process_symbols(n_clicks, input_value):
-    app_logger.debug(f"CB_process_symbols: n_clicks={n_clicks}, input_value=\"{input_value}\"")
-    if n_clicks > 0 and input_value:
-        symbols = sorted(list(set([s.strip().upper() for s in input_value.split(",") if s.strip()])))
-        if not symbols:
-            return dash.no_update, [], {"width": "30%", "display": "none"}, None
         
-        options = [{"label": sym, "value": sym} for sym in symbols]
-        default_selected_symbol = symbols[0] if len(symbols) == 1 else None
-        app_logger.info(f"CB_process_symbols: Processed symbols: {symbols}")
-        return symbols, options, {"width": "30%", "display": "inline-block", "marginLeft": "10px"}, default_selected_symbol
+        # Options Chain Tab
+        dcc.Tab(label="Options Chain", children=[
+            html.Div([
+                html.Div([
+                    dcc.Dropdown(
+                        id="expiration-date-dropdown",
+                        placeholder="Select Expiration Date",
+                        className="expiration-dropdown"
+                    ),
+                    html.Div(id="options-chain-status", className="options-status")
+                ], className="tab-controls"),
+                html.Div(id="options-chain-loading", children=[
+                    dcc.Loading(
+                        id="options-chain-loading-spinner",
+                        type="circle",
+                        children=html.Div(id="options-chain-container", children=[
+                            html.Div([
+                                html.Div([
+                                    html.H3("Calls"),
+                                    dash_table.DataTable(
+                                        id="calls-table",
+                                        page_size=15,
+                                        style_table={'overflowX': 'auto'},
+                                        style_cell={
+                                            'textAlign': 'left',
+                                            'padding': '5px',
+                                            'minWidth': '80px', 'width': '80px', 'maxWidth': '120px',
+                                            'whiteSpace': 'normal'
+                                        },
+                                        style_header={
+                                            'backgroundColor': 'rgb(230, 230, 230)',
+                                            'fontWeight': 'bold'
+                                        }
+                                    )
+                                ], className="calls-container"),
+                                html.Div([
+                                    html.H3("Puts"),
+                                    dash_table.DataTable(
+                                        id="puts-table",
+                                        page_size=15,
+                                        style_table={'overflowX': 'auto'},
+                                        style_cell={
+                                            'textAlign': 'left',
+                                            'padding': '5px',
+                                            'minWidth': '80px', 'width': '80px', 'maxWidth': '120px',
+                                            'whiteSpace': 'normal'
+                                        },
+                                        style_header={
+                                            'backgroundColor': 'rgb(230, 230, 230)',
+                                            'fontWeight': 'bold'
+                                        }
+                                    )
+                                ], className="puts-container")
+                            ], className="options-tables-container")
+                        ])
+                    )
+                ])
+            ], className="tab-content")
+        ])
+    ], id="tabs", className="tabs-container"),
     
-    # Use ctx instead of dash.callback_context for brevity if imported as `from dash import ctx`
-    # callback_context = dash.callback_context 
-    if not ctx.triggered or ctx.triggered[0]["prop_id"] == ".": # Initial call or no trigger
-        app_logger.debug("CB_process_symbols: Initial call or no trigger, no update.")
-        return dash.no_update, [], {"width": "30%", "display": "none"}, None
-    app_logger.debug("CB_process_symbols: No valid conditions met, returning no update for symbols.")
-    return [], [], {"width": "30%", "display": "none"}, None # Reset if button not clicked but triggered
+    # Error display
+    html.Div(id="error-display", className="error-display")
+], className="app-container")
 
+# --- Callbacks ---
+
+# Error Store Callback
+@app.callback(
+    Output("error-display", "children"),
+    Input("error-store", "data")
+)
+def update_error_display(error_data):
+    if error_data:
+        source = error_data.get("source", "Unknown")
+        message = error_data.get("message", "An unknown error occurred")
+        timestamp = error_data.get("timestamp", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        
+        return html.Div([
+            html.H4(f"Error in {source}"),
+            html.P(message),
+            html.P(f"Time: {timestamp}", className="error-timestamp")
+        ], className="error-message")
+    
+    return ""
+
+# Symbol Selection Callback
 @app.callback(
     Output("selected-symbol-store", "data"),
-    Input("symbol-filter-dropdown", "value")
-)
-def update_selected_symbol(selected_symbol):
-    app_logger.debug(f"CB_update_selected_symbol: Selected symbol from dropdown: {selected_symbol}")
-    if selected_symbol:
-        return selected_symbol
-    return dash.no_update
-
-@app.callback(
-    Output("minute-data-header", "children"),
-    Output("tech-indicators-header", "children"),
-    Output("options-chain-header", "children"),
-    Input("selected-symbol-store", "data")
-)
-def update_tab_headers(selected_symbol):
-    app_logger.debug(f"CB_update_tab_headers: Selected symbol: {selected_symbol}")
-    if selected_symbol:
-        minute_header = f"Minute Data for {selected_symbol} (up to 90 days)"
-        tech_header = f"Technical Indicators for {selected_symbol}"
-        options_header = f"Options Chain for {selected_symbol} (Streaming)"
-        return minute_header, tech_header, options_header
-    return "Select a symbol to view data", "Select a symbol to view data", "Select a symbol to view data (Streaming)"
-
-# New callback to consolidate errors from various sources into the main error-message-store
-@app.callback(
-    Output("error-message-store", "data"),
-    Input("new-error-event-store", "data"),
-    State("error-message-store", "data"),
+    Input("load-button", "n_clicks"),
+    State("symbol-input", "value"),
     prevent_initial_call=True
 )
-def consolidate_errors(new_error_event, current_error_list):
-    app_logger.debug(f"CB_consolidate_errors: New event: {new_error_event}, Current errors count: {len(current_error_list if current_error_list else [])}")
-    if not new_error_event or not isinstance(new_error_event, dict):
-        app_logger.debug("CB_consolidate_errors: No new valid error event.")
-        return dash.no_update
+def update_selected_symbol(n_clicks, symbol_input):
+    if n_clicks > 0 and symbol_input:
+        symbol = symbol_input.strip().upper()
+        app_logger.info(f"Symbol selected: {symbol}")
+        return symbol
+    return dash.no_update
 
-    updated_error_list = list(current_error_list) if current_error_list else []
-    
-    source = new_error_event.get("source", "UnknownSource")
-    message = new_error_event.get("message", "An unspecified error occurred.")
-    timestamp = new_error_event.get("timestamp", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    
-    formatted_error_message = f"{timestamp}: {source}: {message}"
-    app_logger.info(f"CB_consolidate_errors: Adding error: {formatted_error_message}")
-    
-    updated_error_list.insert(0, formatted_error_message)
-    return updated_error_list[:20] # Keep last 20 errors
-
+# Refresh Button Callback
 @app.callback(
-    Output("error-log-display", "children"),
-    Input("error-message-store", "data")
-)
-def update_error_log(error_messages):
-    app_logger.debug(f"CB_update_error_log: Updating display with {len(error_messages if error_messages else [])} errors.")
-    if error_messages:
-        log_content = [html.P(f"{msg}") for msg in reversed(error_messages)] # Show newest first in display
-        return log_content
-    return "No new errors."
-    # Add interval component for periodic data updates
-app.layout.children.append(dcc.Interval(
-    id='data-update-interval',
-    interval=60*1000,  # in milliseconds (1 minute)
-    n_intervals=0
-))
-
-# Callback for periodic data updates
-@app.callback(
-    Output("new-error-event-store", "data", allow_duplicate=True),
-    Input("data-update-interval", "n_intervals"),
+    Output("refresh-button", "n_clicks"),
+    Input("refresh-button", "n_clicks"),
     State("selected-symbol-store", "data"),
     prevent_initial_call=True
 )
-def update_data_periodically(n_intervals, selected_symbol):
-    if not selected_symbol or not n_intervals:
-        return dash.no_update
+def handle_refresh_click(n_clicks, selected_symbol):
+    if n_clicks > 0 and selected_symbol:
+        app_logger.info(f"Manual refresh requested for {selected_symbol}")
         
-    app_logger.info(f"Periodic update triggered for {selected_symbol} (interval #{n_intervals})")
-    timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # Clear cache for this symbol to force a full refresh
+        if selected_symbol in MINUTE_DATA_CACHE:
+            del MINUTE_DATA_CACHE[selected_symbol]
+            app_logger.info(f"Cleared cache for {selected_symbol} due to manual refresh")
+        
+        # n_clicks will be reset to 0 by the return value
+        return 0
     
-    # Check if we have cached data for this symbol
-    global MINUTE_DATA_CACHE, TECH_INDICATORS_CACHE, SCHWAB_CLIENT
-    
-    if selected_symbol not in MINUTE_DATA_CACHE or 'data' not in MINUTE_DATA_CACHE[selected_symbol]:
-        app_logger.info(f"No cached data for {selected_symbol}, skipping periodic update")
-        return dash.no_update
-        
-    # Get the last update timestamp
-    last_update = MINUTE_DATA_CACHE[selected_symbol].get('last_update')
-    if not last_update:
-        app_logger.info(f"No last update timestamp for {selected_symbol}, skipping periodic update")
-        return dash.no_update
-        
-    # Fetch only new data since last update
-    client_to_use = SCHWAB_CLIENT
-    if not client_to_use:
-        app_logger.error(f"Schwab client not initialized for periodic update")
-        return {"source": "PeriodicUpdate", "message": "Schwab client not initialized", "timestamp": timestamp_str}
-        
-    try:
-        app_logger.info(f"Fetching updates for {selected_symbol} since {last_update}")
-        new_df, error = get_minute_data(client_to_use, selected_symbol, days_history=1, since_timestamp=last_update)
-        
-        if error:
-            app_logger.error(f"Error fetching updates: {error}")
-            return {"source": "PeriodicUpdate", "message": f"Error fetching updates: {error}", "timestamp": timestamp_str}
-            
-        if new_df.empty:
-            app_logger.info(f"No new data available for {selected_symbol}")
-            return dash.no_update
-            
-        # Merge new data with cached data
-        cached_df = MINUTE_DATA_CACHE[selected_symbol]['data']
-        app_logger.info(f"Merging {len(new_df)} new rows with {len(cached_df)} cached rows")
-        
-        # Concatenate and remove duplicates
-        df = pd.concat([cached_df, new_df], ignore_index=False)
-        df = df.drop_duplicates(subset=["timestamp"])
-        df = df.sort_values(by="timestamp", ascending=False)
-        
-        # Update cache with merged data
-        MINUTE_DATA_CACHE[selected_symbol]['data'] = df
-        MINUTE_DATA_CACHE[selected_symbol]['last_update'] = datetime.datetime.now()
-        
-        # Update technical indicators if needed
-        if selected_symbol in TECH_INDICATORS_CACHE:
-            app_logger.info(f"Recalculating technical indicators with updated data")
-            # Technical indicators will be recalculated on next tab access
-            
-        app_logger.info(f"Successfully updated data for {selected_symbol}, now has {len(df)} rows")
-        return {"source": "PeriodicUpdate", "message": f"Successfully updated data with {len(new_df)} new rows", "timestamp": timestamp_str}
-    except Exception as e:
-        app_logger.error(f"Error in periodic update: {str(e)}", exc_info=True)
-        return {"source": "PeriodicUpdate", "message": f"Error in periodic update: {str(e)}", "timestamp": timestamp_str}
+    return dash.no_update
 
-# Modified callback for Minute Data and Technical Indicators - Initial Load
+# Periodic Update Callback
 @app.callback(
-    Output("minute-data-table", "columns"),
-    Output("minute-data-table", "data"),
-    Output("tech-indicators-store", "data"),  # Store technical indicators data for all timeframes
-    Output("new-error-event-store", "data", allow_duplicate=True), # Added allow_duplicate=True
-    Input("selected-symbol-store", "data"),
-    Input("tabs-main", "value"), # To know which tab is active
+    Output("update-interval", "disabled"),
+    Input("update-interval", "n_intervals"),
+    State("selected-symbol-store", "data"),
     prevent_initial_call=True
 )
-def update_data_for_active_tab(selected_symbol, active_tab):
-    app_logger.info(f"CB_update_data_for_active_tab: Symbol: {selected_symbol}, Active Tab: {active_tab}")
-
-    minute_cols, minute_data = dash.no_update, dash.no_update
-    tech_data_store = dash.no_update
-    error_event_to_send = dash.no_update
-
-    default_minute_cols = [{"name": i, "id": i} for i in ["Timestamp", "Open", "High", "Low", "Close", "Volume"]]
-
-    if not selected_symbol:
-        app_logger.debug("CB_update_data_for_active_tab: No selected symbol. Clearing tables.")
-        minute_cols, minute_data = default_minute_cols, []
-        tech_data_store = {}
-        return minute_cols, minute_data, tech_data_store, error_event_to_send
+def handle_periodic_update(n_intervals, selected_symbol):
+    if n_intervals > 0 and selected_symbol:
+        app_logger.info(f"Periodic update triggered for {selected_symbol} (interval #{n_intervals})")
         
-    # Check if we already have cached data for this symbol
-    global MINUTE_DATA_CACHE, TECH_INDICATORS_CACHE
-    use_cached_data = False
-    since_timestamp = None
-    
-    if selected_symbol in MINUTE_DATA_CACHE and 'data' in MINUTE_DATA_CACHE[selected_symbol]:
-        use_cached_data = True
-        since_timestamp = MINUTE_DATA_CACHE[selected_symbol].get('last_update')
-        app_logger.info(f"Found cached data for {selected_symbol}, last updated at {since_timestamp}")
+        # Check if we have cached data for this symbol
+        if selected_symbol in MINUTE_DATA_CACHE:
+            # Trigger data update (actual update will happen in the data tabs callback)
+            # This is just to log that the interval fired
+            app_logger.info(f"Periodic update will refresh data for {selected_symbol}")
+        
+    # Always keep the interval enabled
+    return False
 
-    global SCHWAB_CLIENT
-    client_to_use = SCHWAB_CLIENT
+# Data Tabs Update Callback
+@app.callback(
+    [Output("minute-data-table", "columns"),
+     Output("minute-data-table", "data"),
+     Output("tech-indicators-store", "data"),
+     Output("error-store", "data")],
+    [Input("selected-symbol-store", "data"),
+     Input("update-interval", "n_intervals"),
+     Input("refresh-button", "n_clicks")],
+    prevent_initial_call=True
+)
+def update_data_tabs(selected_symbol, n_intervals, refresh_n_clicks):
+    trigger = ctx.triggered_id
     timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+    error_event_to_send = None
+    
+    if not selected_symbol:
+        return [], [], {}, error_event_to_send
+    
+    app_logger.info(f"UpdateDataTabs: Triggered by {trigger} for {selected_symbol}")
+    
+    # Get Schwab client
+    client_to_use = schwab_client_provider()
     if not client_to_use:
-        app_logger.info(f"UpdateDataTabs: Schwab client not initialized for {selected_symbol}. Attempting reinit.")
-        client_instance, client_err = get_schwab_client()
-        if client_err:
-            error_msg = f"Client re-init failed: {client_err}"
-            app_logger.error(f"UpdateDataTabs: {error_msg}")
-            error_event_to_send = {"source": "UpdateDataTabs-Client", "message": error_msg, "timestamp": timestamp_str}
-            minute_cols, minute_data = default_minute_cols, []
-            tech_data_store = {}
-            return minute_cols, minute_data, tech_data_store, error_event_to_send
-        SCHWAB_CLIENT = client_instance  # Store only the client instance, not the tuple
-        client_to_use = client_instance
-        app_logger.info(f"UpdateDataTabs: Schwab client reinitialized successfully for {selected_symbol}.")
-
-    if active_tab == "tab-minute-data":
-        app_logger.info(f"UpdateDataTabs: Fetching minute data for {selected_symbol}...")
+        error_msg = "Schwab client initialization failed. Please check authentication."
+        app_logger.error(f"UpdateDataTabs for {selected_symbol}: {error_msg}")
+        error_event_to_send = {"source": f"ClientInit-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
+        return [], [], {}, error_event_to_send
+    
+    # Initialize variables for minute data
+    minute_cols = []
+    minute_data = []
+    tech_data_store = {}
+    
+    # Check if we have cached data for this symbol
+    if selected_symbol in MINUTE_DATA_CACHE and trigger != "refresh-button":
+        cache_entry = MINUTE_DATA_CACHE[selected_symbol]
+        df = cache_entry['data']
+        last_update = cache_entry['last_update']
         
-        # If we have cached data, only fetch new data since last update
-        if use_cached_data:
-            app_logger.info(f"Using cached data for {selected_symbol} and fetching updates since {since_timestamp}")
-            new_df, error = get_minute_data(client_to_use, selected_symbol, days_history=90, since_timestamp=since_timestamp)
-            
-            if error:
-                error_msg = f"Data fetch error for updates: {error}"
-                app_logger.error(f"UpdateDataTabs (MinuteData) for {selected_symbol}: {error_msg}")
-                error_event_to_send = {"source": f"MinData-Fetch-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
-                # Fall back to cached data if error fetching updates
-                df = MINUTE_DATA_CACHE[selected_symbol]['data']
-                app_logger.info(f"Falling back to cached data with {len(df)} rows")
-            elif new_df.empty:
-                app_logger.info(f"No new data since {since_timestamp} for {selected_symbol}")
-                df = MINUTE_DATA_CACHE[selected_symbol]['data']
-            else:
-                # Merge new data with cached data
-                cached_df = MINUTE_DATA_CACHE[selected_symbol]['data']
-                app_logger.info(f"Merging {len(new_df)} new rows with {len(cached_df)} cached rows")
-                
-                # Concatenate and remove duplicates
-                df = pd.concat([cached_df, new_df], ignore_index=False)
-                df = df.drop_duplicates(subset=["timestamp"])
-                df = df.sort_values(by="timestamp", ascending=False)
-                
-                # Update cache with merged data
-                MINUTE_DATA_CACHE[selected_symbol]['data'] = df
-                MINUTE_DATA_CACHE[selected_symbol]['last_update'] = datetime.datetime.now()
-                app_logger.info(f"Updated cache for {selected_symbol}, now has {len(df)} rows")
-        else:
-            # No cached data, fetch full history
+        # Check if cache is too old (force full refresh if older than max_age_hours)
+        cache_age_hours = (datetime.datetime.now() - last_update).total_seconds() / 3600
+        if cache_age_hours > CACHE_CONFIG['max_age_hours']:
+            app_logger.info(f"Cache for {selected_symbol} is {cache_age_hours:.2f} hours old (max: {CACHE_CONFIG['max_age_hours']}). Forcing full refresh.")
+            # Clear cache for this symbol
+            del MINUTE_DATA_CACHE[selected_symbol]
+            # Fetch full history
             df, error = get_minute_data(client_to_use, selected_symbol, days_history=90)
             
             if error:
                 error_msg = f"Data fetch error: {error}"
-                app_logger.error(f"UpdateDataTabs (MinuteData) for {selected_symbol}: {error_msg}")
-                error_event_to_send = {"source": f"MinData-Fetch-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
-                minute_cols, minute_data = default_minute_cols, []
+                app_logger.error(f"UpdateDataTabs for {selected_symbol}: {error_msg}")
+                error_event_to_send = {"source": f"DataFetch-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
+                return [], [], {}, error_event_to_send
             elif df.empty:
-                app_logger.warning(f"UpdateDataTabs (MinuteData): No minute data returned for {selected_symbol}.")
-                minute_cols, minute_data = default_minute_cols, []
+                app_logger.warning(f"UpdateDataTabs: No minute data returned for {selected_symbol}.")
+                return [], [], {}, error_event_to_send
             else:
                 # Initialize cache for this symbol
                 MINUTE_DATA_CACHE[selected_symbol] = {
                     'data': df,
-                    'last_update': datetime.datetime.now()
+                    'last_update': datetime.datetime.now(),
+                    'timeframe_data': {}
                 }
-                app_logger.info(f"Created new cache for {selected_symbol} with {len(df)} rows")
-        
-        # If we have data (either from cache or fresh fetch), process it
-        if 'df' in locals() and not df.empty:
-            app_logger.info(f"UpdateDataTabs (MinuteData): Successfully fetched {len(df)} rows for {selected_symbol}.")
-            if "timestamp" in df.columns and not isinstance(df.index, pd.DatetimeIndex):
-                try:
-                    df["timestamp"] = pd.to_datetime(df["timestamp"])
-                    df = df.set_index("timestamp")
-                except Exception as e:
-                    error_msg = f"Failed to convert 'timestamp' to DatetimeIndex: {e}"
-                    app_logger.error(f"UpdateDataTabs (MinuteData-Format) for {selected_symbol}: {error_msg}")
-                    error_event_to_send = {"source": f"MinData-Format-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
-                    minute_cols, minute_data = default_minute_cols, []
-
-            elif not isinstance(df.index, pd.DatetimeIndex):
-                error_msg = "Index is not DatetimeIndex after fetch."
-                app_logger.error(f"UpdateDataTabs (MinuteData-Format) for {selected_symbol}: {error_msg}")
-                error_event_to_send = {"source": f"MinData-Format-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
-                minute_cols, minute_data = default_minute_cols, []
-            
-            # Ensure column names are standardized for display
-            df_for_display = df.copy()
-            df_for_display.index.name = "Timestamp"  # Capitalize for display
-            df_for_display = df_for_display.reset_index()
-            
-            # Format timestamp for display
-            df_for_display["Timestamp"] = df_for_display["Timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
-            
-            # Capitalize column names for display
-            df_for_display.columns = [col.capitalize() if col != "Timestamp" else col for col in df_for_display.columns]
-            
-            # Prepare data for table
-            minute_data = df_for_display.to_dict("records")
-            minute_cols = [{"name": col, "id": col} for col in df_for_display.columns]
-            
-            app_logger.info(f"UpdateDataTabs (MinuteData): Prepared {len(minute_data)} rows for display.")
-
-    elif active_tab == "tab-tech-indicators":
-        app_logger.info(f"UpdateDataTabs: Fetching technical indicators for {selected_symbol}...")
-        
-        # Initialize tech_data_store as empty dict regardless of tab
-        tech_data_store = {}
-        
-        # Check if we have cached minute data for this symbol
-        if selected_symbol in MINUTE_DATA_CACHE and 'data' in MINUTE_DATA_CACHE[selected_symbol]:
-            # Use cached minute data
-            df = MINUTE_DATA_CACHE[selected_symbol]['data']
-            app_logger.info(f"Using cached minute data for {selected_symbol} with {len(df)} rows")
-            
-            # Check if we need to update the data
-            if use_cached_data and since_timestamp:
-                app_logger.info(f"Checking for updates since {since_timestamp}")
-                new_df, error = get_minute_data(client_to_use, selected_symbol, days_history=90, since_timestamp=since_timestamp)
+                app_logger.info(f"Created new minute data cache with {len(df)} rows after max age refresh")
+        else:
+            # Cache is still valid, check if we need to fetch incremental updates
+            if trigger == "update-interval" or trigger == "selected-symbol-store":
+                # Calculate time since last update
+                since_timestamp = last_update - datetime.timedelta(minutes=CACHE_CONFIG['buffer_minutes'])
+                
+                # Fetch only new data since last update
+                app_logger.info(f"Fetching incremental data for {selected_symbol} since {since_timestamp}")
+                new_df, error = get_minute_data(client_to_use, selected_symbol, days_history=1, since_timestamp=since_timestamp)
                 
                 if error:
-                    error_msg = f"Data fetch error for technical indicator updates: {error}"
-                    app_logger.error(f"UpdateDataTabs (TechIndicators) for {selected_symbol}: {error_msg}")
-                    error_event_to_send = {"source": f"TechInd-Fetch-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
+                    error_msg = f"Data fetch error for incremental update: {error}"
+                    app_logger.error(f"UpdateDataTabs for {selected_symbol}: {error_msg}")
+                    error_event_to_send = {"source": f"IncrementalFetch-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
                     # Continue with cached data
                 elif not new_df.empty:
                     # Merge new data with cached data
-                    app_logger.info(f"Merging {len(new_df)} new rows with {len(df)} cached rows for technical indicators")
+                    app_logger.info(f"Merging {len(new_df)} new rows with {len(df)} cached rows")
                     df = pd.concat([df, new_df], ignore_index=False)
                     df = df.drop_duplicates(subset=["timestamp"])
                     df = df.sort_values(by="timestamp", ascending=False)
@@ -496,50 +409,111 @@ def update_data_for_active_tab(selected_symbol, active_tab):
                     # Update cache with merged data
                     MINUTE_DATA_CACHE[selected_symbol]['data'] = df
                     MINUTE_DATA_CACHE[selected_symbol]['last_update'] = datetime.datetime.now()
-                    app_logger.info(f"Updated minute data cache for technical indicators, now has {len(df)} rows")
+                    app_logger.info(f"Updated minute data cache, now has {len(df)} rows")
+    else:
+        # No cached data or refresh button clicked, fetch full history
+        app_logger.info(f"No cache or refresh requested for {selected_symbol}. Fetching full history.")
+        df, error = get_minute_data(client_to_use, selected_symbol, days_history=90)
+        
+        if error:
+            error_msg = f"Data fetch error: {error}"
+            app_logger.error(f"UpdateDataTabs for {selected_symbol}: {error_msg}")
+            error_event_to_send = {"source": f"DataFetch-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
+            return [], [], {}, error_event_to_send
+        elif df.empty:
+            app_logger.warning(f"UpdateDataTabs: No minute data returned for {selected_symbol}.")
+            return [], [], {}, error_event_to_send
         else:
-            # No cached data, fetch full history
-            df, error = get_minute_data(client_to_use, selected_symbol, days_history=90)
-            
-            if error:
-                error_msg = f"Data fetch error for technical indicators: {error}"
-                app_logger.error(f"UpdateDataTabs (TechIndicators) for {selected_symbol}: {error_msg}")
-                error_event_to_send = {"source": f"TechInd-Fetch-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
-                return minute_cols, minute_data, tech_data_store, error_event_to_send
-            elif df.empty:
-                app_logger.warning(f"UpdateDataTabs (TechIndicators): No minute data returned for {selected_symbol}.")
-                return minute_cols, minute_data, tech_data_store, error_event_to_send
-            else:
-                # Initialize cache for this symbol
-                MINUTE_DATA_CACHE[selected_symbol] = {
-                    'data': df,
-                    'last_update': datetime.datetime.now()
-                }
-                app_logger.info(f"Created new minute data cache for technical indicators with {len(df)} rows")
-            app_logger.info(f"UpdateDataTabs (TechIndicators): Successfully fetched {len(df)} rows for {selected_symbol}.")
+            # Initialize cache for this symbol
+            MINUTE_DATA_CACHE[selected_symbol] = {
+                'data': df,
+                'last_update': datetime.datetime.now(),
+                'timeframe_data': {}
+            }
+            app_logger.info(f"Created new minute data cache with {len(df)} rows")
+    
+    # Prepare minute data for display
+    if not df.empty:
+        app_logger.info(f"UpdateDataTabs: Preparing minute data for display ({len(df)} rows)")
+        
+        # Create a copy for display to avoid modifying the cached dataframe
+        df_for_display = df.copy()
+        
+        # Format timestamp for display
+        if "timestamp" in df_for_display.columns:
+            df_for_display["timestamp"] = pd.to_datetime(df_for_display["timestamp"]).dt.strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Sort by timestamp descending for display (most recent first)
+        if "timestamp" in df_for_display.columns:
+            df_for_display = df_for_display.sort_values(by="timestamp", ascending=False)
+        
+        # Format numeric columns
+        for col in df_for_display.columns:
+            if col != "timestamp" and pd.api.types.is_numeric_dtype(df_for_display[col]):
+                df_for_display[col] = df_for_display[col].round(2)
+        
+        # Prepare data for Dash table
+        minute_data = df_for_display.to_dict("records")
+        minute_cols = [{"name": col, "id": col} for col in df_for_display.columns]
+        
+        app_logger.info(f"UpdateDataTabs: Minute data prepared with {len(minute_data)} rows and {len(minute_cols)} columns")
+    
+    # Calculate technical indicators for different timeframes
+    # Only recalculate if we have new data or if timeframe_data is empty
+    if not df.empty:
+        # Check if we need to recalculate technical indicators
+        recalculate_indicators = False
+        
+        # If we don't have timeframe data in cache or we have new data, recalculate
+        if 'timeframe_data' not in MINUTE_DATA_CACHE[selected_symbol] or not MINUTE_DATA_CACHE[selected_symbol]['timeframe_data']:
+            recalculate_indicators = True
+            app_logger.info(f"Recalculating all technical indicators (no cached indicators)")
+        elif trigger == "update-interval" and not new_df.empty:
+            recalculate_indicators = True
+            app_logger.info(f"Recalculating technical indicators due to new data")
+        elif trigger == "refresh-button":
+            recalculate_indicators = True
+            app_logger.info(f"Recalculating technical indicators due to manual refresh")
+        
+        if recalculate_indicators:
+            app_logger.info(f"UpdateDataTabs: Calculating technical indicators for {selected_symbol}...")
             
             # Ensure we have a proper DatetimeIndex
-            if "timestamp" in df.columns and not isinstance(df.index, pd.DatetimeIndex):
+            df_for_ta = df.copy()
+            if "timestamp" in df_for_ta.columns and not isinstance(df_for_ta.index, pd.DatetimeIndex):
                 try:
-                    df["timestamp"] = pd.to_datetime(df["timestamp"])
-                    df = df.set_index("timestamp")
+                    df_for_ta["timestamp"] = pd.to_datetime(df_for_ta["timestamp"])
+                    df_for_ta = df_for_ta.set_index("timestamp")
                 except Exception as e:
                     error_msg = f"Failed to convert 'timestamp' to DatetimeIndex for tech indicators: {e}"
                     app_logger.error(f"UpdateDataTabs (TechInd-Format) for {selected_symbol}: {error_msg}")
                     error_event_to_send = {"source": f"TechInd-Format-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
-                    tech_data_store = {}
-                    return minute_cols, minute_data, tech_data_store, error_event_to_send
+                    return minute_cols, minute_data, {}, error_event_to_send
             
             # Ensure column names are lowercase for technical analysis functions
-            df.columns = [col.lower() for col in df.columns]
+            df_for_ta.columns = [col.lower() for col in df_for_ta.columns]
             
-            # Calculate technical indicators for different timeframes
+            # Initialize timeframe data dictionary if not exists
+            if 'timeframe_data' not in MINUTE_DATA_CACHE[selected_symbol]:
+                MINUTE_DATA_CACHE[selected_symbol]['timeframe_data'] = {}
+            
+            # Calculate for each timeframe
+            timeframes = {
+                "1min": "1min",
+                "5min": "5min",
+                "15min": "15min",
+                "30min": "30min",
+                "1hour": "1H",
+                "4hour": "4H",
+                "1day": "1D"
+            }
+            
             tech_data_by_timeframe = {}
             
             try:
                 # 1-minute (original data)
-                app_logger.info(f"UpdateDataTabs (TechIndicators): Calculating 1-minute indicators for {selected_symbol}...")
-                indicators_1min = calculate_all_technical_indicators(df, symbol=selected_symbol)
+                app_logger.info(f"UpdateDataTabs: Calculating 1-minute indicators for {selected_symbol}...")
+                indicators_1min = calculate_all_technical_indicators(df_for_ta, symbol=selected_symbol)
                 if isinstance(indicators_1min, pd.DataFrame) and not indicators_1min.empty:
                     # Format for display and storage
                     indicators_1min_display = indicators_1min.copy()
@@ -547,255 +521,217 @@ def update_data_for_active_tab(selected_symbol, active_tab):
                     indicators_1min_display = indicators_1min_display.reset_index()
                     indicators_1min_display["Timestamp"] = indicators_1min_display["Timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
                     tech_data_by_timeframe["1min"] = indicators_1min_display.to_dict("records")
-                    app_logger.info(f"UpdateDataTabs (TechIndicators): Prepared {len(tech_data_by_timeframe['1min'])} 1-minute indicator rows.")
+                    app_logger.info(f"UpdateDataTabs: Prepared {len(tech_data_by_timeframe['1min'])} 1-minute indicator rows.")
                 else:
-                    app_logger.warning(f"UpdateDataTabs (TechIndicators): No valid 1-minute indicators calculated for {selected_symbol}.")
-                    tech_data_by_timeframe["1min"] = []
+                    app_logger.warning(f"UpdateDataTabs: No valid 1-minute indicators calculated for {selected_symbol}.")
                 
-                # 15-minute aggregation
-                app_logger.info(f"UpdateDataTabs (TechIndicators): Calculating 15-minute indicators for {selected_symbol}...")
-                df_15min = aggregate_candles(df, "15min")
-                indicators_15min = calculate_all_technical_indicators(df_15min, symbol=f"{selected_symbol}_15min")
-                if isinstance(indicators_15min, pd.DataFrame) and not indicators_15min.empty:
-                    indicators_15min_display = indicators_15min.copy()
-                    indicators_15min_display.index.name = "Timestamp"
-                    indicators_15min_display = indicators_15min_display.reset_index()
-                    indicators_15min_display["Timestamp"] = indicators_15min_display["Timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
-                    tech_data_by_timeframe["15min"] = indicators_15min_display.to_dict("records")
-                    app_logger.info(f"UpdateDataTabs (TechIndicators): Prepared {len(tech_data_by_timeframe['15min'])} 15-minute indicator rows.")
-                else:
-                    app_logger.warning(f"UpdateDataTabs (TechIndicators): No valid 15-minute indicators calculated for {selected_symbol}.")
-                    tech_data_by_timeframe["15min"] = []
+                # Other timeframes
+                for timeframe_key, resample_rule in timeframes.items():
+                    if timeframe_key == "1min":
+                        continue  # Already calculated above
+                    
+                    app_logger.info(f"UpdateDataTabs: Calculating {timeframe_key} indicators for {selected_symbol}...")
+                    
+                    # Resample to the target timeframe
+                    resampled_df = aggregate_candles(df_for_ta, rule=resample_rule)
+                    
+                    if not resampled_df.empty:
+                        # Calculate indicators on the resampled data
+                        indicators_df = calculate_all_technical_indicators(resampled_df, symbol=f"{selected_symbol}_{timeframe_key}")
+                        
+                        if isinstance(indicators_df, pd.DataFrame) and not indicators_df.empty:
+                            # Format for display and storage
+                            indicators_display = indicators_df.copy()
+                            indicators_display.index.name = "Timestamp"
+                            indicators_display = indicators_display.reset_index()
+                            indicators_display["Timestamp"] = indicators_display["Timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
+                            tech_data_by_timeframe[timeframe_key] = indicators_display.to_dict("records")
+                            app_logger.info(f"UpdateDataTabs: Prepared {len(tech_data_by_timeframe[timeframe_key])} {timeframe_key} indicator rows.")
+                        else:
+                            app_logger.warning(f"UpdateDataTabs: No valid {timeframe_key} indicators calculated for {selected_symbol}.")
+                    else:
+                        app_logger.warning(f"UpdateDataTabs: Resampling to {timeframe_key} resulted in empty DataFrame for {selected_symbol}.")
                 
-                # Hourly aggregation
-                app_logger.info(f"UpdateDataTabs (TechIndicators): Calculating hourly indicators for {selected_symbol}...")
-                df_hourly = aggregate_candles(df, "1H")
-                indicators_hourly = calculate_all_technical_indicators(df_hourly, symbol=f"{selected_symbol}_hourly")
-                if isinstance(indicators_hourly, pd.DataFrame) and not indicators_hourly.empty:
-                    indicators_hourly_display = indicators_hourly.copy()
-                    indicators_hourly_display.index.name = "Timestamp"
-                    indicators_hourly_display = indicators_hourly_display.reset_index()
-                    indicators_hourly_display["Timestamp"] = indicators_hourly_display["Timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
-                    tech_data_by_timeframe["Hourly"] = indicators_hourly_display.to_dict("records")
-                    app_logger.info(f"UpdateDataTabs (TechIndicators): Prepared {len(tech_data_by_timeframe['Hourly'])} hourly indicator rows.")
-                else:
-                    app_logger.warning(f"UpdateDataTabs (TechIndicators): No valid hourly indicators calculated for {selected_symbol}.")
-                    tech_data_by_timeframe["Hourly"] = []
+                # Update cache with calculated indicators
+                MINUTE_DATA_CACHE[selected_symbol]['timeframe_data'] = tech_data_by_timeframe
+                app_logger.info(f"Updated technical indicators cache for {selected_symbol} with {len(tech_data_by_timeframe)} timeframes")
                 
-                # Daily aggregation
-                app_logger.info(f"UpdateDataTabs (TechIndicators): Calculating daily indicators for {selected_symbol}...")
-                df_daily = aggregate_candles(df, "1D")
-                indicators_daily = calculate_all_technical_indicators(df_daily, symbol=f"{selected_symbol}_daily")
-                if isinstance(indicators_daily, pd.DataFrame) and not indicators_daily.empty:
-                    indicators_daily_display = indicators_daily.copy()
-                    indicators_daily_display.index.name = "Timestamp"
-                    indicators_daily_display = indicators_daily_display.reset_index()
-                    indicators_daily_display["Timestamp"] = indicators_daily_display["Timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
-                    tech_data_by_timeframe["Daily"] = indicators_daily_display.to_dict("records")
-                    app_logger.info(f"UpdateDataTabs (TechIndicators): Prepared {len(tech_data_by_timeframe['Daily'])} daily indicator rows.")
-                else:
-                    app_logger.warning(f"UpdateDataTabs (TechIndicators): No valid daily indicators calculated for {selected_symbol}.")
-                    tech_data_by_timeframe["Daily"] = []
-                
+                # Set the return value
                 tech_data_store = tech_data_by_timeframe
-                app_logger.info(f"UpdateDataTabs (TechIndicators): Technical indicators calculated for all timeframes.")
                 
             except Exception as e:
                 error_msg = f"Error calculating technical indicators: {str(e)}"
-                app_logger.error(f"UpdateDataTabs (TechIndicators) for {selected_symbol}: {error_msg}", exc_info=True)
+                app_logger.exception(f"UpdateDataTabs (TechInd-Calc) for {selected_symbol}: {error_msg}")
                 error_event_to_send = {"source": f"TechInd-Calc-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
-                tech_data_store = {}
+                # Continue with any indicators we were able to calculate
+                tech_data_store = tech_data_by_timeframe
+        else:
+            # Use cached technical indicators
+            app_logger.info(f"Using cached technical indicators for {selected_symbol}")
+            tech_data_store = MINUTE_DATA_CACHE[selected_symbol]['timeframe_data']
     
     return minute_cols, minute_data, tech_data_store, error_event_to_send
 
+# Technical Indicators Table Update Callback
 @app.callback(
-    Output("tech-indicators-table", "columns"),
-    Output("tech-indicators-table", "data"),
-    Output("new-error-event-store", "data", allow_duplicate=True),
-    Input("tech-indicators-store", "data"),
-    Input("tech-indicators-timeframe-dropdown", "value")
+    [Output("tech-indicators-table", "columns"),
+     Output("tech-indicators-table", "data")],
+    [Input("tech-indicators-store", "data"),
+     Input("tech-indicators-timeframe-dropdown", "value")]
 )
 def update_tech_indicators_table(tech_data_store, selected_timeframe):
-    app_logger.info(f"CB_update_tech_indicators_table: Selected timeframe: {selected_timeframe}, Tech data store type: {type(tech_data_store)}, Tech data store keys: {list(tech_data_store.keys()) if isinstance(tech_data_store, dict) else 'Not a dict'}")
+    if not tech_data_store or not selected_timeframe or selected_timeframe not in tech_data_store:
+        return [], []
     
-    timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    error_event = dash.no_update
-    
-    if not tech_data_store:
-        error_msg = "Technical indicators data store is empty or None"
-        app_logger.error(f"CB_update_tech_indicators_table: {error_msg}")
-        error_event = {"source": "TechIndicatorsTable", "message": error_msg, "timestamp": timestamp_str}
-        return [], [], error_event
-    
-    if not selected_timeframe:
-        error_msg = "No timeframe selected"
-        app_logger.error(f"CB_update_tech_indicators_table: {error_msg}")
-        error_event = {"source": "TechIndicatorsTable", "message": error_msg, "timestamp": timestamp_str}
-        return [], [], error_event
-    
-    if selected_timeframe not in tech_data_store:
-        error_msg = f"Selected timeframe '{selected_timeframe}' not found in tech data store. Available timeframes: {list(tech_data_store.keys())}"
-        app_logger.error(f"CB_update_tech_indicators_table: {error_msg}")
-        error_event = {"source": "TechIndicatorsTable", "message": error_msg, "timestamp": timestamp_str}
-        return [], [], error_event
-    
+    # Get data for the selected timeframe
     timeframe_data = tech_data_store[selected_timeframe]
-    app_logger.info(f"CB_update_tech_indicators_table: Timeframe data type: {type(timeframe_data)}, Length: {len(timeframe_data) if isinstance(timeframe_data, list) else 'Not a list'}")
     
     if not timeframe_data:
-        error_msg = f"Empty data for timeframe {selected_timeframe}"
-        app_logger.error(f"CB_update_tech_indicators_table: {error_msg}")
-        error_event = {"source": "TechIndicatorsTable", "message": error_msg, "timestamp": timestamp_str}
-        return [], [], error_event
+        return [], []
     
-    try:
-        # Get column names from the first record
-        columns = [{"name": col, "id": col} for col in timeframe_data[0].keys()]
-        
-        app_logger.info(f"CB_update_tech_indicators_table: Displaying {len(timeframe_data)} rows for {selected_timeframe} timeframe with columns: {[col['name'] for col in columns]}")
-        return columns, timeframe_data, error_event
-    except Exception as e:
-        error_msg = f"Error processing timeframe data: {str(e)}"
-        app_logger.error(f"CB_update_tech_indicators_table: {error_msg}", exc_info=True)
-        error_event = {"source": "TechIndicatorsTable", "message": error_msg, "timestamp": timestamp_str}
-        return [], [], error_event
+    # Create a sample record to extract column names
+    sample_record = timeframe_data[0]
+    columns = [{"name": col, "id": col} for col in sample_record.keys()]
+    
+    return columns, timeframe_data
 
+# Options Chain Callback
 @app.callback(
-    Output("options-chain-stream-status", "children"),
-    Output("options-calls-table", "columns"),
-    Output("options-calls-table", "data"),
-    Output("options-puts-table", "columns"),
-    Output("options-puts-table", "data"),
-    Output("current-option-keys-store", "data"),
-    Output("new-error-event-store", "data", allow_duplicate=True),
-    Input("selected-symbol-store", "data"),
-    Input("options-chain-interval", "n_intervals"),
-    State("current-option-keys-store", "data"),
+    [Output("expiration-date-dropdown", "options"),
+     Output("expiration-date-dropdown", "value"),
+     Output("options-chain-status", "children"),
+     Output("calls-table", "columns"),
+     Output("calls-table", "data"),
+     Output("puts-table", "columns"),
+     Output("puts-table", "data"),
+     Output("options-chain-store", "data"),
+     Output("error-store", "data", allow_duplicate=True)],
+    [Input("selected-symbol-store", "data"),
+     Input("expiration-date-dropdown", "value")],
     prevent_initial_call=True
 )
-def manage_options_stream(selected_symbol, n_intervals, current_keys):
+def update_options_chain(selected_symbol, selected_expiration):
     timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     if not selected_symbol:
-        status_msg = "Select a symbol to view options chain."
-        return status_msg, [], [], [], [], [], dash.no_update
+        return [], None, "", [], [], [], [], [], dash.no_update
+    
+    # Get Schwab client
+    client_to_use = schwab_client_provider()
+    if not client_to_use:
+        error_msg = "Schwab client initialization failed. Please check authentication."
+        app_logger.error(f"OptionsChain for {selected_symbol}: {error_msg}")
+        return [], None, f"Error: {error_msg}", [], [], [], [], [], {"source": f"ClientInit-Options-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
     
     try:
-        global SCHWAB_CLIENT, STREAMING_MANAGER
-        client_to_use = SCHWAB_CLIENT
-        
-        if not client_to_use:
-            app_logger.info(f"OptionsStream: Schwab client not initialized for {selected_symbol}. Attempting reinit.")
-            client_instance, client_err = get_schwab_client()
-            if client_err:
-                error_msg = f"Client re-init failed: {client_err}"
-                app_logger.error(f"OptionsStream: {error_msg}")
-                return f"Error: {error_msg}", [], [], [], [], [], {"source": "OptionsStream-Client", "message": error_msg, "timestamp": timestamp_str}
-            SCHWAB_CLIENT = client_instance  # Store only the client instance, not the tuple
-            client_to_use = client_instance
-            app_logger.info(f"OptionsStream: Schwab client reinitialized successfully for {selected_symbol}.")
-        
-        # Get options chain data
-        calls_df, puts_df, error = get_options_chain_data(client_to_use, selected_symbol)
+        # Fetch options chain data
+        app_logger.info(f"OptionsChain: Fetching options chain for {selected_symbol}")
+        options_data, expiration_dates, error = get_options_chain_data(client_to_use, selected_symbol)
         
         if error:
-            error_msg = f"Options chain fetch error: {error}"
-            app_logger.error(f"OptionsStream for {selected_symbol}: {error_msg}")
-            return f"Error: {error_msg}", [], [], [], [], [], {"source": f"OptionsStream-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
+            error_msg = f"Error fetching options chain: {error}"
+            app_logger.error(f"OptionsChain for {selected_symbol}: {error_msg}")
+            return [], None, f"Error: {error_msg}", [], [], [], [], [], {"source": f"OptionsFetch-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
         
-        # Get option contract keys for streaming
-        contract_keys, keys_error = get_option_contract_keys(client_to_use, selected_symbol)
-        if keys_error:
-            app_logger.warning(f"OptionsStream for {selected_symbol}: Contract keys error: {keys_error}")
-            # Continue with REST data, just log the warning
+        # Format expiration dates for dropdown
+        expiration_options = []
+        for date_str in expiration_dates:
+            try:
+                # Parse the date string to a datetime object
+                date_obj = datetime.datetime.strptime(date_str, "%Y-%m-%d")
+                # Format it for display
+                display_date = date_obj.strftime("%b %d, %Y")
+                expiration_options.append({"label": display_date, "value": date_str})
+            except Exception as e:
+                app_logger.error(f"OptionsChain: Error formatting expiration date {date_str}: {e}")
+                # Use the original string if parsing fails
+                expiration_options.append({"label": date_str, "value": date_str})
         
-        # Start streaming if we have new contract keys
-        if contract_keys and (not current_keys or set(contract_keys) != set(current_keys)):
-            app_logger.info(f"OptionsStream: Starting streaming for {len(contract_keys)} contract keys.")
-            
-            # Stop any existing stream first
-            STREAMING_MANAGER.stop_streaming()
-            
-            # Start new stream with the new keys
-            success, stream_error = STREAMING_MANAGER.start_streaming(contract_keys)
-            if not success:
-                app_logger.error(f"OptionsStream: Failed to start streaming: {stream_error}")
-                # Continue with REST data, just log the error
+        # Sort expiration dates (nearest first)
+        expiration_options.sort(key=lambda x: x["value"])
         
-        # Get streaming status
-        stream_status = STREAMING_MANAGER.get_status()
+        # If no expiration is selected or the selected one is not in the list, use the first one
+        if not selected_expiration or selected_expiration not in [opt["value"] for opt in expiration_options]:
+            selected_expiration = expiration_options[0]["value"] if expiration_options else None
         
-        # Get streaming data
-        streaming_data = STREAMING_MANAGER.get_streaming_data()
+        if not selected_expiration:
+            app_logger.warning(f"OptionsChain: No expiration dates available for {selected_symbol}")
+            return expiration_options, None, f"No options available for {selected_symbol}", [], [], [], [], [], dash.no_update
         
-        # Update the options chain data with streaming data if available
-        if streaming_data:
-            app_logger.info(f"OptionsStream: Updating options chain with streaming data for {len(streaming_data)} contracts.")
-            
-            # Update calls DataFrame
-            if not calls_df.empty:
-                for idx, row in calls_df.iterrows():
-                    contract_key = row.get("Contract Key")
-                    if contract_key in streaming_data:
-                        stream_data = streaming_data[contract_key]
-                        
-                        # Update Last, Bid, Ask with streaming data
-                        if "lastPrice" in stream_data:
-                            calls_df.at[idx, "Last"] = stream_data["lastPrice"]
-                        if "bidPrice" in stream_data:
-                            calls_df.at[idx, "Bid"] = stream_data["bidPrice"]
-                        if "askPrice" in stream_data:
-                            calls_df.at[idx, "Ask"] = stream_data["askPrice"]
-                        
-                        # Log the updates for debugging
-                        app_logger.debug(f"OptionsStream: Updated call option {contract_key} with streaming data: " +
-                                        f"Last={stream_data.get('lastPrice')}, Bid={stream_data.get('bidPrice')}, Ask={stream_data.get('askPrice')}")
-            
-            # Update puts DataFrame
-            if not puts_df.empty:
-                for idx, row in puts_df.iterrows():
-                    contract_key = row.get("Contract Key")
-                    if contract_key in streaming_data:
-                        stream_data = streaming_data[contract_key]
-                        
-                        # Update Last, Bid, Ask with streaming data
-                        if "lastPrice" in stream_data:
-                            puts_df.at[idx, "Last"] = stream_data["lastPrice"]
-                        if "bidPrice" in stream_data:
-                            puts_df.at[idx, "Bid"] = stream_data["bidPrice"]
-                        if "askPrice" in stream_data:
-                            puts_df.at[idx, "Ask"] = stream_data["askPrice"]
-                        
-                        # Log the updates for debugging
-                        app_logger.debug(f"OptionsStream: Updated put option {contract_key} with streaming data: " +
-                                        f"Last={stream_data.get('lastPrice')}, Bid={stream_data.get('bidPrice')}, Ask={stream_data.get('askPrice')}")
+        # Filter options for the selected expiration date
+        filtered_options = options_data[options_data["expirationDate"] == selected_expiration]
         
-        # Format tables
-        calls_columns = [{"name": col, "id": col} for col in calls_df.columns] if not calls_df.empty else []
-        puts_columns = [{"name": col, "id": col} for col in puts_df.columns] if not puts_df.empty else []
+        if filtered_options.empty:
+            app_logger.warning(f"OptionsChain: No options found for {selected_symbol} with expiration {selected_expiration}")
+            return expiration_options, selected_expiration, f"No options found for expiration {selected_expiration}", [], [], [], [], [], dash.no_update
         
-        calls_data = calls_df.to_dict("records") if not calls_df.empty else []
-        puts_data = puts_df.to_dict("records") if not puts_df.empty else []
+        # Split into calls and puts
+        calls_df = filtered_options[filtered_options["putCall"] == "CALL"]
+        puts_df = filtered_options[filtered_options["putCall"] == "PUT"]
         
-        # Log the presence of Last, Bid, Ask fields for debugging
-        if not calls_df.empty:
-            app_logger.info(f"OptionsStream: Calls DataFrame columns: {calls_df.columns.tolist()}")
-            app_logger.info(f"OptionsStream: Sample call option data - Last: {calls_df['Last'].iloc[0] if 'Last' in calls_df.columns else 'N/A'}, " +
-                           f"Bid: {calls_df['Bid'].iloc[0] if 'Bid' in calls_df.columns else 'N/A'}, " +
-                           f"Ask: {calls_df['Ask'].iloc[0] if 'Ask' in calls_df.columns else 'N/A'}")
+        # Sort by strike price
+        calls_df = calls_df.sort_values(by="strikePrice")
+        puts_df = puts_df.sort_values(by="strikePrice")
+        
+        # Format for display
+        display_columns = [
+            "strikePrice", "symbol", "bid", "ask", "last", "totalVolume", 
+            "openInterest", "delta", "gamma", "theta", "vega", "rho", "theoreticalVolatility"
+        ]
+        
+        # Rename columns for better display
+        column_rename = {
+            "strikePrice": "Strike",
+            "symbol": "Symbol",
+            "bid": "Bid",
+            "ask": "Ask",
+            "last": "Last",
+            "totalVolume": "Volume",
+            "openInterest": "OI",
+            "delta": "Delta",
+            "gamma": "Gamma",
+            "theta": "Theta",
+            "vega": "Vega",
+            "rho": "Rho",
+            "theoreticalVolatility": "IV"
+        }
+        
+        # Apply renaming and select columns
+        calls_display = calls_df[display_columns].rename(columns=column_rename)
+        puts_display = puts_df[display_columns].rename(columns=column_rename)
+        
+        # Format numeric columns
+        for df in [calls_display, puts_display]:
+            for col in df.columns:
+                if col != "Symbol" and pd.api.types.is_numeric_dtype(df[col]):
+                    if col in ["Delta", "Gamma", "Theta", "Vega", "Rho", "IV"]:
+                        df[col] = df[col].round(4)
+                    else:
+                        df[col] = df[col].round(2)
+        
+        # Prepare data for Dash tables
+        calls_columns = [{"name": col, "id": col} for col in calls_display.columns]
+        puts_columns = [{"name": col, "id": col} for col in puts_display.columns]
+        
+        calls_data = calls_display.to_dict("records")
+        puts_data = puts_display.to_dict("records")
         
         # Create status message
-        stream_info = f"Stream: {stream_status['status_message']} | Data count: {stream_status['data_count']}"
-        status_msg = f"Options chain for {selected_symbol} loaded. Calls: {len(calls_data)}, Puts: {len(puts_data)} | {stream_info}"
-        app_logger.info(f"OptionsStream: {status_msg}")
+        status_msg = f"Options chain for {selected_symbol} loaded. Calls: {len(calls_data)}, Puts: {len(puts_data)}"
+        app_logger.info(f"OptionsChain: {status_msg}")
         
-        return status_msg, calls_columns, calls_data, puts_columns, puts_data, list(contract_keys) if contract_keys else [], dash.no_update
+        # Store contract keys for streaming
+        contract_keys = set()
+        for df in [calls_df, puts_df]:
+            if "symbol" in df.columns:
+                contract_keys.update(df["symbol"].tolist())
+        
+        return expiration_options, selected_expiration, status_msg, calls_columns, calls_data, puts_columns, puts_data, list(contract_keys) if contract_keys else [], dash.no_update
         
     except Exception as e:
         error_msg = f"Error in options chain processing: {str(e)}"
-        app_logger.exception(f"OptionsStream for {selected_symbol}: {error_msg}")
-        return f"Error: {error_msg}", [], [], [], [], [], {"source": f"OptionsStream-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
-
+        app_logger.exception(f"OptionsChain for {selected_symbol}: {error_msg}")
+        return [], None, f"Error: {error_msg}", [], [], [], [], [], {"source": f"OptionsProcess-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
 
 # --- CSV Export Callbacks ---
 @app.callback(

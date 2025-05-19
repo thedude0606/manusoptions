@@ -1,82 +1,63 @@
 # Design Decisions
 
-## Architecture
+## Incremental Update Strategy (May 19, 2025)
 
-### Dashboard Structure
-- **Decision**: Use a tab-based layout for the dashboard
-- **Rationale**: Tabs provide a clean way to separate different types of data and functionality while maintaining a cohesive user experience
-- **Alternatives Considered**: Multi-page application, single scrolling dashboard
-- **Trade-offs**: Tabs limit the amount of information visible at once but provide better organization and focus
+### Current Implementation Analysis
+- The app currently fetches all 90 days of historical data every time a symbol is selected or a tab is changed
+- There's no caching mechanism to store previously fetched data
+- This causes unnecessary API calls and processing overhead
+- The `get_minute_data` function already supports a `since_timestamp` parameter but it's not fully utilized
 
-### Data Fetching
-- **Decision**: Implement separate data fetchers for different data types (minute data, options chain)
-- **Rationale**: Separation of concerns makes the code more maintainable and allows for independent optimization of each data fetcher
-- **Alternatives Considered**: Single unified data fetcher
-- **Trade-offs**: More code to maintain but better organization and flexibility
+### Cache Design
+- **Structure**: Global dictionary to store data by symbol
+  ```python
+  MINUTE_DATA_CACHE = {
+      'SYMBOL': {
+          'data': pandas_dataframe,
+          'last_update': datetime_object,
+          'timeframe_data': {
+              '1min': dataframe_or_records,
+              '5min': dataframe_or_records,
+              # other timeframes
+          }
+      }
+  }
+  ```
+- **Cache Invalidation**: 
+  - Default maximum age: 24 hours (configurable)
+  - Force refresh on explicit user action (symbol change, manual refresh)
+  - Automatic periodic updates every 30 seconds
 
-### Streaming Implementation
-- **Decision**: Use a dedicated StreamingManager class with its own thread
-- **Rationale**: Streaming requires continuous connection and processing that should not block the main application thread
-- **Alternatives Considered**: Using callbacks or polling
-- **Trade-offs**: More complex implementation but better performance and user experience
+### Incremental Update Logic
+1. Check if symbol exists in cache
+   - If not, fetch full 90-day history
+   - If yes, check last update timestamp
+2. For updates, fetch only data since last update (minus small buffer to avoid gaps)
+3. Merge new data with cached data
+4. Update cache timestamp
 
-### Fix for Last, Bid, Ask Values Not Showing in Options Streaming Tab
-- **Decision**: Enhance the streaming data processing pipeline to correctly handle field mapping
-- **Rationale**: The original implementation had issues with field mapping and contract key matching between REST and streaming data
-- **Implementation Details**:
-  1. Enhanced field mapping to handle both string and numeric field IDs from the stream
-  2. Improved contract key formatting to ensure proper matching between REST and streaming data
-  3. Added more detailed logging of price field updates for better diagnostics
-  4. Ensured proper data type conversion for numeric values in the stream
-- **Alternatives Considered**: Creating a separate streaming-only display or using polling instead of streaming
-- **Trade-offs**: More complex code but provides real-time updates without requiring full data refresh
+### Technical Indicator Recalculation
+- Only recalculate indicators for timeframes being viewed
+- Only process new data points, not the entire dataset
+- Store calculated indicators in the cache to avoid redundant calculations
 
-## Technology Choices
+### Error Handling
+- Display clear error messages when data fetching fails
+- Fall back to cached data when possible
+- Implement retry mechanism with exponential backoff for transient errors
 
-### Dash Framework
-- **Decision**: Use Dash for the web application framework
-- **Rationale**: Dash provides interactive visualization capabilities with Python backend, ideal for financial data
-- **Alternatives Considered**: Flask with JavaScript frontend, Django
-- **Trade-offs**: Less flexibility than a custom JavaScript frontend but faster development and easier integration with Python data processing
+### Loading State Management
+- Show loading indicators during initial data fetch
+- Use non-blocking updates for periodic refreshes
+- Provide visual feedback when new data is being merged
 
-### Dash API Update (app.run vs app.run_server)
-- **Decision**: Replace app.run_server with app.run to comply with current Dash API
-- **Rationale**: The app.run_server method has been deprecated in newer versions of Dash, causing ObsoleteAttributeException
-- **Implementation Details**:
-  1. Updated dashboard_app.py to use app.run instead of app.run_server
-  2. Maintained all original parameters (debug=True, host="0.0.0.0", port=8050)
-  3. Ensured backward compatibility with existing functionality
-- **Alternatives Considered**: Downgrading Dash version, using compatibility layer
-- **Trade-offs**: Minor code change required but ensures compatibility with current and future Dash versions
+### Periodic Update Implementation
+- Use Dash's interval component to trigger updates every 30 seconds
+- Consider future enhancement to use WebSocket streaming for real-time updates
 
-### Pandas for Data Processing
-- **Decision**: Use Pandas for data manipulation and analysis
-- **Rationale**: Pandas provides powerful tools for time series data and financial calculations
-- **Alternatives Considered**: NumPy arrays, custom data structures
-- **Trade-offs**: Memory overhead but significant productivity gains and built-in functionality
+### Performance Considerations
+- Minimize redundant calculations
+- Use efficient data structures for merging
+- Implement debouncing for rapid user interactions
 
-### Logging System
-- **Decision**: Implement comprehensive logging with both console and file outputs
-- **Rationale**: Detailed logging is essential for debugging streaming and API issues
-- **Implementation**: Module-specific loggers with consistent formatting
-- **Trade-offs**: Performance impact but crucial for troubleshooting complex issues
-
-## Design Patterns
-
-### Observer Pattern
-- **Decision**: Use observer pattern for streaming data updates
-- **Rationale**: Allows components to subscribe to data changes without tight coupling
-- **Implementation**: StreamingManager notifies subscribers of data updates
-- **Trade-offs**: More complex than direct updates but more flexible and maintainable
-
-### Factory Pattern
-- **Decision**: Use factory functions for client creation and data fetching
-- **Rationale**: Encapsulates creation logic and provides consistent error handling
-- **Implementation**: Functions like get_schwab_client() that handle initialization and error states
-- **Trade-offs**: Additional layer of abstraction but better error handling and consistency
-
-### Repository Pattern
-- **Decision**: Use repository pattern for data access
-- **Rationale**: Abstracts data sources and provides consistent interface
-- **Implementation**: Data fetcher modules that handle API interactions
-- **Trade-offs**: More code but better separation of concerns and testability
+This design balances responsiveness with efficiency, reducing unnecessary API calls while ensuring users have access to the most current data.

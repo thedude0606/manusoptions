@@ -1,26 +1,30 @@
 # TODO List
 
-## High Priority
-- [x] Fix Dash ObsoleteAttributeException by replacing app.run_server with app.run
-- [x] Fix last, bid, ask values not showing up in options streaming tab
-- [x] Enhance streaming data handling to update options chain with real-time data
-- [x] Improve logging for streaming data to better diagnose issues
-- [ ] Test fix for streaming data display across multiple symbols
-- [ ] Verify compatibility with latest Dash API across all components
-- [ ] Optimize streaming data refresh rate for better performance
+## Incremental Update Strategy Implementation
 
-## Medium Priority
-- [ ] Add more technical indicators (VWAP, Bollinger Bands)
-- [ ] Implement options strategy builder
-- [ ] Add visualization tools for options data
-- [ ] Enhance user interface with more interactive elements
+### High Priority
+- [x] Analyze current data flow and codebase
+- [x] Design incremental update strategy
+- [x] Implement global data cache structure
+- [x] Modify `get_minute_data` function to better utilize `since_timestamp`
+- [x] Implement data merging logic for incremental updates
+- [x] Add periodic update mechanism (30-second interval)
+- [x] Implement selective technical indicator recalculation
+- [x] Add loading indicators for initial data fetch
+- [x] Implement error handling for failed updates
 
-## Low Priority
-- [ ] Implement user preferences and settings
-- [ ] Add authentication and user management
-- [ ] Develop automated trading strategies based on technical indicators
+### Medium Priority
+- [ ] Optimize cache memory usage
+- [ ] Add cache invalidation logic (24-hour max age)
+- [ ] Implement manual refresh functionality
+- [ ] Add visual feedback for data updates
 
-## Dependencies
-- Fix for streaming data display must be completed before implementing options strategy builder
-- Technical indicators must be implemented before developing automated trading strategies
-- User interface enhancements depend on core functionality being stable
+### Low Priority
+- [ ] Evaluate WebSocket streaming for future enhancement
+- [ ] Add configuration options for update frequency
+- [ ] Implement analytics to track API call reduction
+
+### Dependencies
+- Global cache structure must be implemented before incremental updates
+- Periodic update mechanism depends on cache and merging logic
+- Selective recalculation depends on data merging implementation

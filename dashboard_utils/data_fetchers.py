@@ -1,5 +1,4 @@
 # dashboard_utils/data_fetchers.py
-
 import schwabdev
 import os
 import datetime
@@ -10,10 +9,8 @@ import time # For adding delays between API calls
 import math # For ceiling function
 from dotenv import load_dotenv
 import re # For contract key formatting
-
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 TOKENS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "tokens.json")
-
 # Configure basic logging for this module with both console and file handlers
 logger = logging.getLogger(__name__)
 if not logger.hasHandlers():
@@ -33,40 +30,27 @@ if not logger.hasHandlers():
     
 logger.setLevel(logging.INFO)
 logger.info(f"Data fetchers logger initialized. Logging to console and file: {log_file}")
-
 def get_schwab_client():
     """Helper to initialize and return a Schwab client if tokens exist."""
     app_key = os.getenv("APP_KEY")
     app_secret = os.getenv("APP_SECRET")
     callback_url = os.getenv("CALLBACK_URL")
-
     if not all([app_key, app_secret, callback_url]):
         return None, "Error: APP_KEY, APP_SECRET, or CALLBACK_URL not found in environment variables."
-
     if not os.path.exists(TOKENS_FILE):
         return None, f"Error: Tokens file not found at {TOKENS_FILE}. Please run authentication."
     
     try:
         client = schwabdev.Client(app_key, app_secret, callback_url, tokens_file=TOKENS_FILE, capture_callback=False)
+        # Verify authentication by checking for access token
         if not (client.tokens and client.tokens.access_token):
-            error_msg = "Error: No valid access token in loaded tokens.json."
-            if client.tokens and client.tokens.refresh_token:
-                logger.info("Attempting to refresh token...")
-                try:
-                    client.tokens.update_tokens_from_refresh_token()
-                    if client.tokens and client.tokens.access_token:
-                        logger.info("Token refreshed successfully.")
-                        return client, None
-                    else:
-                        return None, error_msg + " Token refresh failed."
-                except Exception as refresh_e:
-                    return None, error_msg + f" Token refresh attempt failed: {str(refresh_e)}"
-            else:
-                return None, error_msg + " No refresh token available."
+            return None, "Error: No valid access token found. Please re-authenticate."
+        
+        logger.info("Schwab client initialized successfully.")
         return client, None
     except Exception as e:
+        logger.error(f"Error initializing Schwab client: {e}", exc_info=True)
         return None, f"Error initializing Schwab client: {str(e)}"
-
 def get_minute_data(client: schwabdev.Client, symbol: str, days_history: int = 1, since_timestamp=None):
     """
     Fetches 1-minute historical price data for the given symbol.
@@ -93,7 +77,6 @@ def get_minute_data(client: schwabdev.Client, symbol: str, days_history: int = 1
     # We will fetch in chunks of `max_days_per_call`.
     max_days_per_call = 10 
     api_call_delay_seconds = 1 # Delay between API calls to be respectful
-
     current_end_date = datetime.datetime.now()
     # Ensure we don't request future data if current_end_date is slightly ahead due to execution time
     current_end_date = min(current_end_date, datetime.datetime.now())
@@ -118,212 +101,202 @@ def get_minute_data(client: schwabdev.Client, symbol: str, days_history: int = 1
             days_history = max(1, min(90, math.ceil(days_diff)))  # Ensure between 1 and 90 days
             logger.info(f"Calculated {days_history} days of history based on since_timestamp {since_timestamp}")
         else:
-            logger.warning(f"Invalid since_timestamp provided, falling back to {days_history} days of history")
+            # If conversion failed, fall back to days_history
+            start_date = current_end_date - datetime.timedelta(days=days_history)
+            logger.info(f"Using default days_history ({days_history}) due to since_timestamp conversion failure")
     else:
-        logger.info(f"No since_timestamp provided, using {days_history} days of history")
-
-    # Iterate backwards in chunks
-    for i in range(0, days_history, max_days_per_call):
-        days_to_go_back_for_this_chunk_end = i
-        days_to_go_back_for_this_chunk_start = min(i + max_days_per_call, days_history)
-
-        # Calculate chunk_end_date and chunk_start_date for this iteration
-        # Iterating backwards: the "end" of our current chunk is further in the past than its "start"
-        chunk_end_date_dt = current_end_date - datetime.timedelta(days=days_to_go_back_for_this_chunk_end)
-        chunk_start_date_dt = current_end_date - datetime.timedelta(days=days_to_go_back_for_this_chunk_start)
+        # No since_timestamp provided, use days_history
+        start_date = current_end_date - datetime.timedelta(days=days_history)
+        logger.info(f"Using default days_history ({days_history})")
+    
+    # Limit to 90 days maximum (Schwab API limitation)
+    days_history = min(days_history, 90)
+    
+    # Calculate number of chunks needed
+    num_chunks = math.ceil(days_history / max_days_per_call)
+    logger.info(f"Fetching {days_history} days of data in {num_chunks} chunks of {max_days_per_call} days each")
+    
+    # Fetch data in chunks
+    chunk_end_date = current_end_date
+    for chunk in range(num_chunks):
+        # Calculate chunk start date (limited by max_days_per_call)
+        days_in_chunk = min(max_days_per_call, days_history - (chunk * max_days_per_call))
+        chunk_start_date = chunk_end_date - datetime.timedelta(days=days_in_chunk)
         
-        # Ensure start date is not after end date (can happen for the last partial chunk if days_history is not a multiple of max_days_per_call)
-        if chunk_start_date_dt >= chunk_end_date_dt:
-            if days_history == days_to_go_back_for_this_chunk_start: # Exact multiple, last chunk is full
-                 chunk_start_date_dt = current_end_date - datetime.timedelta(days=days_history)
-            else: # Partial last chunk, start date should be overall start
-                 chunk_start_date_dt = current_end_date - datetime.timedelta(days=days_history)
-                 if chunk_start_date_dt >= chunk_end_date_dt: # if days_history < max_days_per_call
-                    chunk_end_date_dt = current_end_date # ensure end date is current for single small chunk
-
-        # Adjust if chunk_start_date_dt is before the actual overall start date we need
-        overall_start_date_limit = current_end_date - datetime.timedelta(days=days_history)
-        chunk_start_date_dt = max(chunk_start_date_dt, overall_start_date_limit)
-
-        # If the calculated chunk_start_date_dt is now same or after chunk_end_date_dt, means we've covered enough
-        if chunk_start_date_dt >= chunk_end_date_dt and i > 0: # i > 0 to ensure first chunk is always attempted
-            logger.info(f"Chunk {i // max_days_per_call + 1}: Start date {chunk_start_date_dt.strftime('%Y-%m-%d')} is on or after end date {chunk_end_date_dt.strftime('%Y-%m-%d')}. Assuming all required data fetched.")
-            break
-
-        logger.info(f"Chunk {i // max_days_per_call + 1}: Fetching from {chunk_start_date_dt.strftime('%Y-%m-%d')} to {chunk_end_date_dt.strftime('%Y-%m-%d')}")
-
+        # Ensure we don't go before the overall start_date
+        chunk_start_date = max(chunk_start_date, start_date)
+        
+        # Skip this chunk if start date is after end date (shouldn't happen, but just in case)
+        if chunk_start_date >= chunk_end_date:
+            logger.warning(f"Skipping chunk {chunk+1}/{num_chunks} because start date {chunk_start_date} is not before end date {chunk_end_date}")
+            continue
+        
+        logger.info(f"Fetching chunk {chunk+1}/{num_chunks}: {chunk_start_date.strftime('%Y-%m-%d')} to {chunk_end_date.strftime('%Y-%m-%d')}")
+        
         try:
             response = client.price_history(
-                symbol=symbol.upper(),
+                symbol=symbol,
                 frequencyType="minute",
                 frequency=1,
-                startDate=chunk_start_date_dt, 
-                endDate=chunk_end_date_dt,
-                needExtendedHoursData=True
+                startDate=chunk_start_date,
+                endDate=chunk_end_date,
+                needExtendedHoursData=False
             )
-
+            
             if response.ok:
                 price_data = response.json()
+                
                 if price_data.get("candles"):
-                    chunk_df = pd.DataFrame(price_data["candles"])
+                    candles = price_data["candles"]
+                    logger.info(f"Received {len(candles)} candles for chunk {chunk+1}/{num_chunks}")
+                    
+                    # Convert to DataFrame
+                    chunk_df = pd.DataFrame(candles)
+                    
+                    # Convert datetime column
+                    if "datetime" in chunk_df.columns:
+                        # Convert milliseconds to datetime
+                        chunk_df["timestamp"] = pd.to_datetime(chunk_df["datetime"], unit="ms")
+                        chunk_df.drop("datetime", axis=1, inplace=True)
+                    
+                    # Append to all_candles_df
                     all_candles_df = pd.concat([all_candles_df, chunk_df], ignore_index=True)
-                    logger.info(f"Chunk {i // max_days_per_call + 1}: Fetched {len(chunk_df)} candles.")
                 elif price_data.get("empty") == True:
-                    logger.info(f"Chunk {i // max_days_per_call + 1}: No minute data returned (API response empty) for period.")
+                    logger.warning(f"No data returned for chunk {chunk+1}/{num_chunks} (API returned empty=True)")
                 else:
-                    logger.warning(f"Chunk {i // max_days_per_call + 1}: Unexpected response format: {price_data}")
+                    logger.warning(f"Unexpected response format for chunk {chunk+1}/{num_chunks}")
             else:
-                error_text = response.text
-                logger.error(f"Chunk {i // max_days_per_call + 1}: Error fetching minute data: {response.status_code} - {error_text}")
-                # If one chunk fails, we might want to stop or continue. For now, log and continue.
-                # return pd.DataFrame(), f"Error fetching minute data for {symbol} (chunk {i // max_days_per_call + 1}): {response.status_code} - {error_text}"
-        except Exception as e:
-            logger.error(f"Chunk {i // max_days_per_call + 1}: An error occurred: {str(e)}", exc_info=True)
-            # return pd.DataFrame(), f"An error occurred while fetching minute data for {symbol} (chunk {i // max_days_per_call + 1}): {str(e)}"
+                logger.error(f"Error fetching price data for chunk {chunk+1}/{num_chunks}: {response.status_code} - {response.text}")
+                return all_candles_df, f"API error: {response.status_code} - {response.text}"
         
-        # Delay before next API call if not the last chunk
-        if (i + max_days_per_call) < days_history:
-            logger.info(f"Waiting for {api_call_delay_seconds}s before next chunk...")
+        except Exception as e:
+            logger.error(f"Exception during price history fetch for chunk {chunk+1}/{num_chunks}: {e}", exc_info=True)
+            return all_candles_df, f"Exception during fetch: {str(e)}"
+        
+        # Update chunk_end_date for next iteration
+        chunk_end_date = chunk_start_date
+        
+        # Add delay between API calls
+        if chunk < num_chunks - 1:  # Don't delay after the last chunk
             time.sleep(api_call_delay_seconds)
-
-    if all_candles_df.empty:
-        return pd.DataFrame(), f"No minute data found for {symbol} after attempting to fetch {days_history} days."
-
-    # Process the combined DataFrame
-    # Convert API 'datetime' (epoch ms) to pandas datetime objects, store in 'timestamp' column (America/New_York timezone)
-    all_candles_df["timestamp"] = pd.to_datetime(all_candles_df["datetime"], unit="ms", utc=True).dt.tz_convert("America/New_York")
     
-    # Rename other relevant columns for consistency
-    # Using lowercase column names for compatibility with technical_analysis.py
-    all_candles_df = all_candles_df.rename(columns={
-        "open": "open", "high": "high", "low": "low", 
-        "close": "close", "volume": "volume"
-    })
+    # Process the combined data
+    if not all_candles_df.empty:
+        # Remove duplicates
+        all_candles_df.drop_duplicates(subset=["timestamp"], inplace=True)
+        
+        # Sort by timestamp
+        all_candles_df.sort_values(by="timestamp", ascending=False, inplace=True)
+        
+        # Filter by since_timestamp if provided
+        if since_timestamp is not None:
+            # Keep only rows with timestamp >= since_timestamp
+            all_candles_df = all_candles_df[all_candles_df["timestamp"] >= since_timestamp]
+            logger.info(f"Filtered to {len(all_candles_df)} rows with timestamp >= {since_timestamp}")
+        
+        logger.info(f"Successfully fetched and processed {len(all_candles_df)} minute data rows for {symbol}")
+        
+        # Log date range of the data
+        if not all_candles_df.empty:
+            min_date = all_candles_df["timestamp"].min()
+            max_date = all_candles_df["timestamp"].max()
+            logger.info(f"Data ranges from {min_date} to {max_date}")
+    else:
+        logger.warning(f"No minute data returned for {symbol}")
     
-    # Select the final set of columns, ensuring 'timestamp' is a datetime object.
-    # This implicitly drops the original 'datetime' column from the API if it's not in the list.
-    # Using lowercase column names for compatibility with technical_analysis.py
-    columns_to_keep = ["timestamp", "open", "high", "low", "close", "volume"]
-    all_candles_df = all_candles_df[columns_to_keep]
-    
-    # Remove duplicate entries based on the 'timestamp'
-    all_candles_df = all_candles_df.drop_duplicates(subset=["timestamp"])
-    
-    # Sort data by timestamp, typically newest first for financial time series
-    all_candles_df = all_candles_df.sort_values(by="timestamp", ascending=False)
-    
-    # IMPORTANT: The 'timestamp' column is now a datetime object.
-    # DO NOT convert it to a string here. String formatting for display will be handled by the consuming function (e.g., in dashboard_app.py).
-    
-    logger.info(f"Successfully fetched a total of {len(all_candles_df)} unique minute candles for {symbol} over {days_history} days.")
     return all_candles_df, None
-
 def get_options_chain_data(client: schwabdev.Client, symbol: str):
-    """Fetches options chain data for the given symbol, for REST polling."""
+    """
+    Fetches options chain data for the given symbol.
+    
+    Args:
+        client: Schwab API client
+        symbol: Stock symbol to fetch options for
+        
+    Returns:
+        DataFrame with options data, list of expiration dates, error message (if any)
+    """
     if not client:
-        return pd.DataFrame(), pd.DataFrame(), "Schwab client not initialized for get_options_chain_data."
-
+        return pd.DataFrame(), [], "Schwab client not initialized for get_options_chain_data."
+    
     try:
+        logger.info(f"Fetching options chain for {symbol}")
         response = client.option_chains(
             symbol=symbol.upper(),
             contractType="ALL",
-            includeUnderlyingQuote=False,
+            includeUnderlyingQuote=True,
             expMonth="ALL",
             optionType="ALL"
         )
-
-        if not response.ok:
-            return pd.DataFrame(), pd.DataFrame(), f"Error fetching options chain for {symbol}: {response.status_code} - {response.text}"
-
-        options_data = response.json()
-        if options_data.get("status") == "FAILED":
-             return pd.DataFrame(), pd.DataFrame(), f"Failed to fetch options chain for {symbol}: {options_data.get('error', 'Unknown API error')}"
-
-        calls_list = []
-        puts_list = []
-        columns = ["Expiration Date", "Strike", "Last", "Bid", "Ask", "Volume", "Open Interest", "Implied Volatility", "Delta", "Gamma", "Theta", "Vega", "Contract Key"]
-
-        for exp_date_map_type, contract_list_to_append in [("callExpDateMap", calls_list), ("putExpDateMap", puts_list)]:
-            if exp_date_map_type in options_data and options_data[exp_date_map_type]:
-                for date, strikes in options_data[exp_date_map_type].items():
-                    for strike_price, contracts in strikes.items():
-                        for contract in contracts:
-                            if contract.get("openInterest", 0) > 0:
-                                # Format the contract key for streaming compatibility
-                                original_symbol = contract.get("symbol")
-                                formatted_symbol = format_contract_key_for_streaming(original_symbol)
-                                
-                                record = {
-                                    "Expiration Date": contract.get("expirationDate"), # Use actual expirationDate field
-                                    "Strike": contract.get("strikePrice"),
-                                    "Last": contract.get("lastPrice"),
-                                    "Bid": contract.get("bidPrice"),
-                                    "Ask": contract.get("askPrice"),
-                                    "Volume": contract.get("totalVolume"),
-                                    "Open Interest": contract.get("openInterest"),
-                                    "Implied Volatility": contract.get("volatility"),
-                                    "Delta": contract.get("delta"),
-                                    "Gamma": contract.get("gamma"),
-                                    "Theta": contract.get("theta"),
-                                    "Vega": contract.get("vega"),
-                                    "Contract Key": formatted_symbol # Use the formatted symbol for streaming compatibility
-                                }
-                                contract_list_to_append.append(record)
         
-        calls_df = pd.DataFrame(calls_list)
-        puts_df = pd.DataFrame(puts_list)
-
-        # Correctly ensure columns and order for calls_df
-        if not calls_df.empty:
-            for col in columns:
-                if col not in calls_df.columns:
-                    calls_df[col] = None
-            calls_df = calls_df[columns]
-            # Log the first row to verify Last, Bid, Ask values
-            logger.info(f"Sample call option data - Last: {calls_df['Last'].iloc[0] if 'Last' in calls_df.columns else 'N/A'}, " +
-                       f"Bid: {calls_df['Bid'].iloc[0] if 'Bid' in calls_df.columns else 'N/A'}, " +
-                       f"Ask: {calls_df['Ask'].iloc[0] if 'Ask' in calls_df.columns else 'N/A'}")
+        if not response.ok:
+            return pd.DataFrame(), [], f"Error fetching option chains: {response.status_code} - {response.text}"
+        
+        options_data = response.json()
+        
+        if options_data.get("status") == "FAILED":
+            return pd.DataFrame(), [], f"Failed to fetch option chains: {options_data.get('error', 'Unknown API error')}"
+        
+        # Extract expiration dates
+        expiration_dates = []
+        all_options = []
+        
+        # Process call options
+        if "callExpDateMap" in options_data and options_data["callExpDateMap"]:
+            for date_str, strikes in options_data["callExpDateMap"].items():
+                # Extract date from format like "2023-06-16:2"
+                exp_date = date_str.split(":")[0]
+                if exp_date not in expiration_dates:
+                    expiration_dates.append(exp_date)
+                
+                # Process each strike price
+                for strike_price, contracts in strikes.items():
+                    for contract in contracts:
+                        contract["putCall"] = "CALL"
+                        contract["expirationDate"] = exp_date
+                        contract["strikePrice"] = float(strike_price)
+                        all_options.append(contract)
+        
+        # Process put options
+        if "putExpDateMap" in options_data and options_data["putExpDateMap"]:
+            for date_str, strikes in options_data["putExpDateMap"].items():
+                # Extract date from format like "2023-06-16:2"
+                exp_date = date_str.split(":")[0]
+                if exp_date not in expiration_dates:
+                    expiration_dates.append(exp_date)
+                
+                # Process each strike price
+                for strike_price, contracts in strikes.items():
+                    for contract in contracts:
+                        contract["putCall"] = "PUT"
+                        contract["expirationDate"] = exp_date
+                        contract["strikePrice"] = float(strike_price)
+                        all_options.append(contract)
+        
+        # Convert to DataFrame
+        if all_options:
+            options_df = pd.DataFrame(all_options)
+            logger.info(f"Successfully fetched options chain for {symbol} with {len(options_df)} contracts across {len(expiration_dates)} expiration dates")
+            return options_df, expiration_dates, None
         else:
-            calls_df = pd.DataFrame(columns=columns)
-
-        # Correctly ensure columns and order for puts_df
-        if not puts_df.empty:
-            for col in columns:
-                if col not in puts_df.columns:
-                    puts_df[col] = None
-            puts_df = puts_df[columns]
-            # Log the first row to verify Last, Bid, Ask values
-            logger.info(f"Sample put option data - Last: {puts_df['Last'].iloc[0] if 'Last' in puts_df.columns else 'N/A'}, " +
-                       f"Bid: {puts_df['Bid'].iloc[0] if 'Bid' in puts_df.columns else 'N/A'}, " +
-                       f"Ask: {puts_df['Ask'].iloc[0] if 'Ask' in puts_df.columns else 'N/A'}")
-        else:
-            puts_df = pd.DataFrame(columns=columns)
-
-        return calls_df, puts_df, None
-
+            logger.warning(f"No options data returned for {symbol}")
+            return pd.DataFrame(), [], None
+    
     except Exception as e:
         logger.error(f"Error in get_options_chain_data for {symbol}: {e}", exc_info=True)
-        return pd.DataFrame(), pd.DataFrame(), f"An error occurred while fetching options chain for {symbol}: {str(e)}"
-
+        return pd.DataFrame(), [], f"An error occurred while fetching options chain data for {symbol}: {str(e)}"
 def format_contract_key_for_streaming(contract_key):
     """
-    Format contract key for streaming according to Schwab API requirements.
+    Formats an option contract key for streaming compatibility.
     
-    The Schwab streaming API requires option symbols in a specific format:
-    - Underlying symbol (padded with spaces to 6 chars)
-    - Expiration date (YYMMDD)
-    - Call/Put indicator (C/P)
-    - Strike price (padded with leading zeros to 8 chars)
-    
-    Example: "AAPL  240621C00190000" for Apple $190 call expiring June 21, 2024
+    Args:
+        contract_key: Option contract key/symbol from the Schwab API
+        
+    Returns:
+        Formatted contract key for streaming
     """
     try:
-        # Log the original contract key
-        logger.debug(f"Formatting contract key: {contract_key}")
-        
-        # Check if the key is already in the correct format
-        if len(contract_key) >= 21 and ' ' in contract_key:
-            logger.debug(f"Contract key appears to be already formatted: {contract_key}")
+        if not contract_key:
             return contract_key
         
         # Extract components from the Schwab API format
@@ -359,7 +332,6 @@ def format_contract_key_for_streaming(contract_key):
     except Exception as e:
         logger.error(f"Error formatting contract key {contract_key}: {e}", exc_info=True)
         return contract_key
-
 def get_option_contract_keys(client: schwabdev.Client, symbol: str):
     """Fetches option contract keys (symbols) for the given underlying symbol, filtered by OI > 0."""
     if not client:
@@ -376,11 +348,9 @@ def get_option_contract_keys(client: schwabdev.Client, symbol: str):
         )
         if not response.ok:
             return set(), f"Error fetching option chains for keys: {response.status_code} - {response.text}"
-
         options_data = response.json()
         if options_data.get("status") == "FAILED":
             return set(), f"Failed to fetch option chains for keys: {options_data.get('error', 'Unknown API error')}"
-
         for exp_date_map_type in ["callExpDateMap", "putExpDateMap"]:
             if exp_date_map_type in options_data and options_data[exp_date_map_type]:
                 for _date, strikes in options_data[exp_date_map_type].items():
@@ -401,8 +371,6 @@ def get_option_contract_keys(client: schwabdev.Client, symbol: str):
     except Exception as e:
         logger.error(f"Error in get_option_contract_keys for {symbol}: {e}", exc_info=True)
         return set(), f"An error occurred while fetching option contract keys for {symbol}: {str(e)}"
-
-
 if __name__ == "__main__":
     print("Testing data_fetchers.py...")
     test_client, client_error = get_schwab_client()

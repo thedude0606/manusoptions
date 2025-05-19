@@ -1,51 +1,33 @@
-# Project Progress
+# Progress Report
 
-## Current Status
+## May 19, 2025
 
-The project is a dashboard for options trading using the Schwab API. It provides data visualization, technical analysis, and options chain streaming capabilities.
+### Completed
+- Analyzed current data flow and codebase structure
+- Identified inefficiencies in the current implementation:
+  - Full 90-day history fetched on every symbol change or tab switch
+  - No caching mechanism for previously fetched data
+  - Redundant API calls and processing overhead
+- Designed comprehensive incremental update strategy
+- Created detailed documentation of design decisions
+- Updated TODO list with prioritized implementation tasks
+- Implemented global data cache structure (MINUTE_DATA_CACHE)
+- Enhanced get_minute_data function to properly utilize since_timestamp parameter
+- Implemented data merging logic for incremental updates
+- Added periodic update mechanism with 30-second interval
+- Implemented selective technical indicator recalculation
+- Added loading indicators for initial data fetch
+- Implemented robust error handling for failed updates
 
-### Completed Features
+### Known Issues/Challenges
+- Cache memory usage could be optimized further for applications with many symbols
+- Edge cases in market data (e.g., trading halts, gaps) might require additional handling
+- WebSocket streaming could be considered for future enhancement instead of polling
 
-- Basic dashboard layout with tabs for different data views
-- Minute data fetching and display
-- Technical indicators calculation and display for multiple timeframes
-- Options chain data fetching and display
-- Streaming infrastructure for real-time options data
-- CSV export functionality for data tables
-- Error handling and logging system
-
-### Recent Fixes
-
-- Fixed Dash ObsoleteAttributeException by replacing app.run_server with app.run
-  - Updated dashboard_app.py to use the current Dash API
-  - Ensured compatibility with newer versions of Dash
-  - Maintained all original parameters (debug, host, port)
-
-- Fixed issue with last, bid, and ask values not showing up in the options streaming tab
-  - Enhanced streaming data handling to properly update options chain with real-time data
-  - Improved logging for streaming data to better diagnose issues
-  - Added explicit mapping of streamed data fields to options chain display
-  - Fixed contract key formatting to ensure proper matching between REST and streaming data
-  - Enhanced field mapping to handle both string and numeric field IDs from the stream
-
-### In Progress
-
-- Enhancing streaming data reliability and performance
-- Improving error handling and recovery mechanisms
-- Optimizing data refresh rates for better user experience
-
-### Known Issues
-
-- Some streaming data may be delayed depending on market conditions
-- Large options chains may cause performance issues
-- Limited error recovery for certain API failures
-
-## Next Steps
-
-1. Add more technical indicators and analysis tools
-2. Implement options strategy builder and analyzer
-3. Add visualization tools for options data (e.g., option chains, volatility surface)
-4. Enhance user interface with more interactive elements
-5. Implement user preferences and settings
-6. Add authentication and user management
-7. Develop automated trading strategies based on technical indicators
+### Next Steps
+- Push all code changes to GitHub repository
+- Consider future enhancements:
+  - Optimize cache memory usage with LRU eviction policy
+  - Add configuration options for update frequency
+  - Implement analytics to track API call reduction
+  - Evaluate WebSocket streaming for real-time updates
