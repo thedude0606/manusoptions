@@ -243,20 +243,18 @@ def update_error_log(error_messages):
         log_content = [html.P(f"{msg}") for msg in reversed(error_messages)] # Show newest first in display
         return log_content
     return "No new errors."
-
-
-# Modified callback for Minute Data and Technical Indicators
+    # Modified callback for Minute Data and Technical Indicators
 @app.callback(
     Output("minute-data-table", "columns"),
     Output("minute-data-table", "data"),
     Output("tech-indicators-store", "data"),  # Store technical indicators data for all timeframes
-    Output("new-error-event-store", "data"), # No allow_duplicate=True
+    Output("new-error-event-store", "data", allow_duplicate=True), # Added allow_duplicate=True
     Input("selected-symbol-store", "data"),
     Input("tabs-main", "value"), # To know which tab is active
     prevent_initial_call=True
 )
 def update_data_for_active_tab(selected_symbol, active_tab):
-    app_logger.debug(f"CB_update_data_for_active_tab: Symbol: {selected_symbol}, Active Tab: {active_tab}")
+    app_logger.info(f"CB_update_data_for_active_tab: Symbol: {selected_symbol}, Active Tab: {active_tab}")
 
     minute_cols, minute_data = dash.no_update, dash.no_update
     tech_data_store = dash.no_update
@@ -339,14 +337,17 @@ def update_data_for_active_tab(selected_symbol, active_tab):
         app_logger.info(f"UpdateDataTabs: Fetching technical indicators for {selected_symbol}...")
         df, error = get_minute_data(client_to_use, selected_symbol, days_history=90)
         
+        # Initialize tech_data_store as empty dict regardless of tab
+        tech_data_store = {}
+        
         if error:
             error_msg = f"Data fetch error for technical indicators: {error}"
             app_logger.error(f"UpdateDataTabs (TechIndicators) for {selected_symbol}: {error_msg}")
             error_event_to_send = {"source": f"TechInd-Fetch-{selected_symbol}", "message": error_msg, "timestamp": timestamp_str}
-            tech_data_store = {}
+            return minute_cols, minute_data, tech_data_store, error_event_to_send
         elif df.empty:
             app_logger.warning(f"UpdateDataTabs (TechIndicators): No minute data returned for {selected_symbol}.")
-            tech_data_store = {}
+            return minute_cols, minute_data, tech_data_store, error_event_to_send
         else:
             app_logger.info(f"UpdateDataTabs (TechIndicators): Successfully fetched {len(df)} rows for {selected_symbol}.")
             
@@ -443,26 +444,54 @@ def update_data_for_active_tab(selected_symbol, active_tab):
 @app.callback(
     Output("tech-indicators-table", "columns"),
     Output("tech-indicators-table", "data"),
+    Output("new-error-event-store", "data", allow_duplicate=True),
     Input("tech-indicators-store", "data"),
     Input("tech-indicators-timeframe-dropdown", "value")
 )
 def update_tech_indicators_table(tech_data_store, selected_timeframe):
-    app_logger.debug(f"CB_update_tech_indicators_table: Selected timeframe: {selected_timeframe}")
+    app_logger.info(f"CB_update_tech_indicators_table: Selected timeframe: {selected_timeframe}, Tech data store type: {type(tech_data_store)}, Tech data store keys: {list(tech_data_store.keys()) if isinstance(tech_data_store, dict) else 'Not a dict'}")
     
-    if not tech_data_store or not selected_timeframe or selected_timeframe not in tech_data_store:
-        app_logger.debug("CB_update_tech_indicators_table: No data available for selected timeframe.")
-        return [], []
+    timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    error_event = dash.no_update
+    
+    if not tech_data_store:
+        error_msg = "Technical indicators data store is empty or None"
+        app_logger.error(f"CB_update_tech_indicators_table: {error_msg}")
+        error_event = {"source": "TechIndicatorsTable", "message": error_msg, "timestamp": timestamp_str}
+        return [], [], error_event
+    
+    if not selected_timeframe:
+        error_msg = "No timeframe selected"
+        app_logger.error(f"CB_update_tech_indicators_table: {error_msg}")
+        error_event = {"source": "TechIndicatorsTable", "message": error_msg, "timestamp": timestamp_str}
+        return [], [], error_event
+    
+    if selected_timeframe not in tech_data_store:
+        error_msg = f"Selected timeframe '{selected_timeframe}' not found in tech data store. Available timeframes: {list(tech_data_store.keys())}"
+        app_logger.error(f"CB_update_tech_indicators_table: {error_msg}")
+        error_event = {"source": "TechIndicatorsTable", "message": error_msg, "timestamp": timestamp_str}
+        return [], [], error_event
     
     timeframe_data = tech_data_store[selected_timeframe]
+    app_logger.info(f"CB_update_tech_indicators_table: Timeframe data type: {type(timeframe_data)}, Length: {len(timeframe_data) if isinstance(timeframe_data, list) else 'Not a list'}")
+    
     if not timeframe_data:
-        app_logger.debug(f"CB_update_tech_indicators_table: Empty data for timeframe {selected_timeframe}.")
-        return [], []
+        error_msg = f"Empty data for timeframe {selected_timeframe}"
+        app_logger.error(f"CB_update_tech_indicators_table: {error_msg}")
+        error_event = {"source": "TechIndicatorsTable", "message": error_msg, "timestamp": timestamp_str}
+        return [], [], error_event
     
-    # Get column names from the first record
-    columns = [{"name": col, "id": col} for col in timeframe_data[0].keys()]
-    
-    app_logger.info(f"CB_update_tech_indicators_table: Displaying {len(timeframe_data)} rows for {selected_timeframe} timeframe.")
-    return columns, timeframe_data
+    try:
+        # Get column names from the first record
+        columns = [{"name": col, "id": col} for col in timeframe_data[0].keys()]
+        
+        app_logger.info(f"CB_update_tech_indicators_table: Displaying {len(timeframe_data)} rows for {selected_timeframe} timeframe with columns: {[col['name'] for col in columns]}")
+        return columns, timeframe_data, error_event
+    except Exception as e:
+        error_msg = f"Error processing timeframe data: {str(e)}"
+        app_logger.error(f"CB_update_tech_indicators_table: {error_msg}", exc_info=True)
+        error_event = {"source": "TechIndicatorsTable", "message": error_msg, "timestamp": timestamp_str}
+        return [], [], error_event
 
 @app.callback(
     Output("options-chain-stream-status", "children"),
