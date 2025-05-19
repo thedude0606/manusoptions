@@ -61,3 +61,44 @@
 - Implement debouncing for rapid user interactions
 
 This design balances responsiveness with efficiency, reducing unnecessary API calls while ensuring users have access to the most current data.
+
+## Table Sorting and Filtering Strategy (May 19, 2025)
+
+### Requirements Analysis
+- All tables need both simple and advanced filtering capabilities
+- Users should be able to sort by any column
+- Multi-column sorting should be supported
+- Filter UI should appear when column headers are clicked
+- Clear visual indicators for sorting and filtering should be present
+
+### Design Approach
+- **Consistent Implementation**: Use the same approach for all tables (minute data, technical indicators, options chain)
+- **Dash DataTable Features**: Leverage built-in Dash DataTable sorting and filtering capabilities
+- **Filter Types**:
+  - Simple text-based filtering for quick searches
+  - Advanced filtering with operators (equals, greater than, less than, etc.)
+  - Toggle between filter types via UI controls
+
+### Implementation Strategy
+1. **Table Configuration**:
+   - Enable `sort_action="native"` for client-side sorting
+   - Set `filter_action="native"` for client-side filtering
+   - Configure `sort_mode="multi"` to allow sorting by multiple columns
+
+2. **Column Definitions**:
+   - Define filter operators for each column based on data type
+   - Numeric columns: Support comparison operators (>, <, =, etc.)
+   - Text columns: Support contains, exact match, starts with, etc.
+   - Date columns: Support date range filtering
+
+3. **UI Enhancements**:
+   - Add filter icons in column headers
+   - Provide visual feedback for active filters and sort direction
+   - Include filter reset functionality
+
+4. **Callback Structure**:
+   - Maintain existing data flow while adding filter state persistence
+   - Ensure filters persist across data refreshes
+   - Preserve user-defined sorting across updates
+
+This approach provides a powerful yet intuitive interface for data exploration while maintaining consistency across all tables in the application.

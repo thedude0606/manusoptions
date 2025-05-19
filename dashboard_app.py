@@ -122,7 +122,34 @@ app.layout = html.Div([
                                 style_header={
                                     'backgroundColor': 'rgb(230, 230, 230)',
                                     'fontWeight': 'bold'
-                                }
+                                },
+                                # Enable sorting
+                                sort_action="native",
+                                sort_mode="multi",
+                                # Enable filtering
+                                filter_action="native",
+                                # Styling for filter
+                                style_filter={
+                                    'backgroundColor': 'rgb(240, 240, 240)',
+                                },
+                                # Style for filter cells
+                                style_filter_conditional=[
+                                    {
+                                        'if': {'column_id': c},
+                                        'textAlign': 'left'
+                                    } for c in ['timestamp', 'open', 'high', 'low', 'close', 'volume']
+                                ],
+                                # Tooltip for filter usage
+                                tooltip_header={
+                                    'timestamp': 'Filter format: =YYYY-MM-DD for exact date, >YYYY-MM-DD for after date',
+                                    'open': 'Filter format: =X for equals, >X for greater than, <X for less than',
+                                    'high': 'Filter format: =X for equals, >X for greater than, <X for less than',
+                                    'low': 'Filter format: =X for equals, >X for greater than, <X for less than',
+                                    'close': 'Filter format: =X for equals, >X for greater than, <X for less than',
+                                    'volume': 'Filter format: =X for equals, >X for greater than, <X for less than'
+                                },
+                                tooltip_delay=0,
+                                tooltip_duration=None
                             )
                         ])
                     )
@@ -170,7 +197,22 @@ app.layout = html.Div([
                                 style_header={
                                     'backgroundColor': 'rgb(230, 230, 230)',
                                     'fontWeight': 'bold'
-                                }
+                                },
+                                # Enable sorting
+                                sort_action="native",
+                                sort_mode="multi",
+                                # Enable filtering
+                                filter_action="native",
+                                # Styling for filter
+                                style_filter={
+                                    'backgroundColor': 'rgb(240, 240, 240)',
+                                },
+                                # Tooltip for filter usage
+                                tooltip_header={
+                                    'Timestamp': 'Filter format: =YYYY-MM-DD for exact date, >YYYY-MM-DD for after date',
+                                },
+                                tooltip_delay=0,
+                                tooltip_duration=None
                             )
                         ])
                     )
@@ -210,7 +252,19 @@ app.layout = html.Div([
                                         style_header={
                                             'backgroundColor': 'rgb(230, 230, 230)',
                                             'fontWeight': 'bold'
-                                        }
+                                        },
+                                        # Enable sorting
+                                        sort_action="native",
+                                        sort_mode="multi",
+                                        # Enable filtering
+                                        filter_action="native",
+                                        # Styling for filter
+                                        style_filter={
+                                            'backgroundColor': 'rgb(240, 240, 240)',
+                                        },
+                                        # Tooltip for filter usage
+                                        tooltip_delay=0,
+                                        tooltip_duration=None
                                     )
                                 ], className="calls-container"),
                                 html.Div([
@@ -228,7 +282,19 @@ app.layout = html.Div([
                                         style_header={
                                             'backgroundColor': 'rgb(230, 230, 230)',
                                             'fontWeight': 'bold'
-                                        }
+                                        },
+                                        # Enable sorting
+                                        sort_action="native",
+                                        sort_mode="multi",
+                                        # Enable filtering
+                                        filter_action="native",
+                                        # Styling for filter
+                                        style_filter={
+                                            'backgroundColor': 'rgb(240, 240, 240)',
+                                        },
+                                        # Tooltip for filter usage
+                                        tooltip_delay=0,
+                                        tooltip_duration=None
                                     )
                                 ], className="puts-container")
                             ], className="options-tables-container")
@@ -454,7 +520,42 @@ def update_data_tabs(selected_symbol, n_intervals, refresh_n_clicks):
         
         # Prepare data for Dash table
         minute_data = df_for_display.to_dict("records")
-        minute_cols = [{"name": col, "id": col} for col in df_for_display.columns]
+        
+        # Define column properties for filtering and sorting
+        minute_cols = []
+        for col in df_for_display.columns:
+            col_def = {"name": col, "id": col}
+            
+            # Add filter operators based on column type
+            if col == "timestamp":
+                col_def["type"] = "datetime"
+            elif col != "timestamp" and pd.api.types.is_numeric_dtype(df_for_display[col]):
+                col_def["type"] = "numeric"
+                # Add filter operators for numeric columns
+                col_def["filter_options"] = {
+                    'case': 'insensitive',
+                    'operators': [
+                        {'label': '=', 'value': '='},
+                        {'label': '>', 'value': '>'},
+                        {'label': '<', 'value': '<'},
+                        {'label': '>=', 'value': '>='},
+                        {'label': '<=', 'value': '<='},
+                        {'label': '≠', 'value': '!='}
+                    ]
+                }
+            else:
+                col_def["type"] = "text"
+                # Add filter operators for text columns
+                col_def["filter_options"] = {
+                    'case': 'insensitive',
+                    'operators': [
+                        {'label': 'Contains', 'value': 'contains'},
+                        {'label': 'Equals', 'value': 'equals'},
+                        {'label': 'Starts with', 'value': 'startswith'}
+                    ]
+                }
+            
+            minute_cols.append(col_def)
         
         app_logger.info(f"UpdateDataTabs: Minute data prepared with {len(minute_data)} rows and {len(minute_cols)} columns")
     
@@ -591,7 +692,42 @@ def update_tech_indicators_table(tech_data_store, selected_timeframe):
     
     # Create a sample record to extract column names
     sample_record = timeframe_data[0]
-    columns = [{"name": col, "id": col} for col in sample_record.keys()]
+    
+    # Define column properties for filtering and sorting
+    columns = []
+    for col in sample_record.keys():
+        col_def = {"name": col, "id": col}
+        
+        # Add filter operators based on column type
+        if col == "Timestamp":
+            col_def["type"] = "datetime"
+        elif isinstance(sample_record[col], (int, float)):
+            col_def["type"] = "numeric"
+            # Add filter operators for numeric columns
+            col_def["filter_options"] = {
+                'case': 'insensitive',
+                'operators': [
+                    {'label': '=', 'value': '='},
+                    {'label': '>', 'value': '>'},
+                    {'label': '<', 'value': '<'},
+                    {'label': '>=', 'value': '>='},
+                    {'label': '<=', 'value': '<='},
+                    {'label': '≠', 'value': '!='}
+                ]
+            }
+        else:
+            col_def["type"] = "text"
+            # Add filter operators for text columns
+            col_def["filter_options"] = {
+                'case': 'insensitive',
+                'operators': [
+                    {'label': 'Contains', 'value': 'contains'},
+                    {'label': 'Equals', 'value': 'equals'},
+                    {'label': 'Starts with', 'value': 'startswith'}
+                ]
+            }
+        
+        columns.append(col_def)
     
     return columns, timeframe_data
 
@@ -709,10 +845,47 @@ def update_options_chain(selected_symbol, selected_expiration):
                     else:
                         df[col] = df[col].round(2)
         
-        # Prepare data for Dash tables
-        calls_columns = [{"name": col, "id": col} for col in calls_display.columns]
-        puts_columns = [{"name": col, "id": col} for col in puts_display.columns]
+        # Define column properties for filtering and sorting
+        def create_columns_with_filters(df):
+            columns = []
+            for col in df.columns:
+                col_def = {"name": col, "id": col}
+                
+                # Add filter operators based on column type
+                if col == "Symbol":
+                    col_def["type"] = "text"
+                    # Add filter operators for text columns
+                    col_def["filter_options"] = {
+                        'case': 'insensitive',
+                        'operators': [
+                            {'label': 'Contains', 'value': 'contains'},
+                            {'label': 'Equals', 'value': 'equals'},
+                            {'label': 'Starts with', 'value': 'startswith'}
+                        ]
+                    }
+                else:
+                    col_def["type"] = "numeric"
+                    # Add filter operators for numeric columns
+                    col_def["filter_options"] = {
+                        'case': 'insensitive',
+                        'operators': [
+                            {'label': '=', 'value': '='},
+                            {'label': '>', 'value': '>'},
+                            {'label': '<', 'value': '<'},
+                            {'label': '>=', 'value': '>='},
+                            {'label': '<=', 'value': '<='},
+                            {'label': '≠', 'value': '!='}
+                        ]
+                    }
+                
+                columns.append(col_def)
+            return columns
         
+        # Create columns with filter options
+        calls_columns = create_columns_with_filters(calls_display)
+        puts_columns = create_columns_with_filters(puts_display)
+        
+        # Prepare data for Dash tables
         calls_data = calls_display.to_dict("records")
         puts_data = puts_display.to_dict("records")
         

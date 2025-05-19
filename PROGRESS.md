@@ -18,6 +18,11 @@
 - Implemented selective technical indicator recalculation
 - Added loading indicators for initial data fetch
 - Implemented robust error handling for failed updates
+- Added sorting and filtering capabilities to all tables:
+  - Implemented multi-column sorting
+  - Added both simple and advanced filtering options
+  - Created data type-specific filter operators
+  - Added tooltips to explain filter syntax
 
 ### Known Issues/Challenges
 - Cache memory usage could be optimized further for applications with many symbols
