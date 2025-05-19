@@ -29,7 +29,7 @@ logger.setLevel(logging.DEBUG) # Set to DEBUG for verbose logging during diagnos
 logger.info(f"Streaming manager logger initialized. Logging to console and file: {log_file}")
 
 # To get more detailed logs from schwabdev library itself, uncomment the following line:
-# logging.getLogger("schwabdev").setLevel(logging.DEBUG)
+logging.getLogger("schwabdev").setLevel(logging.DEBUG)
 
 class StreamingManager:
     # Corrected Field map based on user-provided list
@@ -126,7 +126,19 @@ class StreamingManager:
             time.sleep(3) # Allow time for connection
             logger.info("_stream_worker: Waited 3s for connection, proceeding with subscriptions.")
 
-            keys_str = ",".join(list(option_keys_to_subscribe))
+            # Format contract keys properly for streaming
+            formatted_keys = []
+            for key in option_keys_to_subscribe:
+                # Ensure the key is properly formatted with spaces for streaming
+                # Example: "AAPL_051720C150" should be "AAPL  051720C00150000"
+                formatted_key = self._format_contract_key_for_streaming(key)
+                formatted_keys.append(formatted_key)
+            
+            # Log the original and formatted keys for debugging
+            logger.info(f"_stream_worker: Original keys sample: {list(option_keys_to_subscribe)[:5]}")
+            logger.info(f"_stream_worker: Formatted keys sample: {formatted_keys[:5]}")
+            
+            keys_str = ",".join(formatted_keys)
             fields_str = self.SCHWAB_FIELD_IDS_TO_REQUEST
             
             subscription_payload = self.stream_client.level_one_options(keys_str, fields_str, command="ADD")
@@ -134,10 +146,10 @@ class StreamingManager:
             logger.debug(f"_stream_worker: Full subscription payload being sent: {json.dumps(subscription_payload)}")
             
             self.stream_client.send(subscription_payload)
-            logger.info(f"_stream_worker: Subscription payload sent for {len(option_keys_to_subscribe)} keys.")
+            logger.info(f"_stream_worker: Subscription payload sent for {len(formatted_keys)} keys.")
 
             with self._lock:
-                self.current_subscriptions = set(option_keys_to_subscribe)
+                self.current_subscriptions = set(formatted_keys)
                 self.status_message = f"Stream: Subscriptions sent for {len(self.current_subscriptions)} contracts. Monitoring..."
             
             logger.info("_stream_worker: Subscriptions sent. Now entering main monitoring loop.")
@@ -193,6 +205,56 @@ class StreamingManager:
                 self.stream_client = None
             logger.info("_stream_worker finished.")
 
+    def _format_contract_key_for_streaming(self, contract_key):
+        """
+        Format contract key for streaming according to Schwab API requirements.
+        
+        The Schwab streaming API requires option symbols in a specific format:
+        - Underlying symbol (padded with spaces to 6 chars)
+        - Expiration date (YYMMDD)
+        - Call/Put indicator (C/P)
+        - Strike price (padded with leading zeros to 8 chars)
+        
+        Example: "AAPL  240621C00190000" for Apple $190 call expiring June 21, 2024
+        """
+        try:
+            # Log the original contract key
+            logger.debug(f"Formatting contract key: {contract_key}")
+            
+            # Check if the key is already in the correct format
+            if len(contract_key) >= 21 and ' ' in contract_key:
+                logger.debug(f"Contract key appears to be already formatted: {contract_key}")
+                return contract_key
+            
+            # Extract components using regex
+            import re
+            # Pattern to match: symbol_YYMMDDCNNN or symbol_YYMMDDpNNN
+            pattern = r'([A-Z]+)_(\d{6})([CP])(\d+(?:\.\d+)?)'
+            match = re.match(pattern, contract_key)
+            
+            if not match:
+                logger.warning(f"Could not parse contract key: {contract_key}, using as-is")
+                return contract_key
+            
+            symbol, exp_date, cp_flag, strike = match.groups()
+            
+            # Format strike price (multiply by 1000 if needed and pad with leading zeros)
+            strike_float = float(strike)
+            strike_int = int(strike_float * 1000) if strike_float < 1000 else int(strike_float)
+            strike_padded = f"{strike_int:08d}"
+            
+            # Format symbol (pad with spaces to 6 chars)
+            symbol_padded = f"{symbol:<6}"
+            
+            # Combine all parts
+            formatted_key = f"{symbol_padded}{exp_date}{cp_flag}{strike_padded}"
+            logger.debug(f"Formatted contract key: {contract_key} -> {formatted_key}")
+            
+            return formatted_key
+        except Exception as e:
+            logger.error(f"Error formatting contract key {contract_key}: {e}", exc_info=True)
+            return contract_key
+
     def _handle_stream_message(self, raw_message):
         self.message_counter += 1
         current_message_id = self.message_counter
@@ -214,7 +276,9 @@ class StreamingManager:
             else:
                 logger.warning(f"[MsgID:{current_message_id}] Unexpected message type: {type(raw_message)}. Raw: {raw_message}")
                 return
-            logger.debug(f"[MsgID:{current_message_id}] Parsed/received message_dict: {message_dict}")
+            
+            # Log the full message for debugging
+            logger.debug(f"[MsgID:{current_message_id}] Full message: {json.dumps(message_dict)}")
 
             if "data" in message_dict:
                 data_items = message_dict.get("data", [])
@@ -230,6 +294,9 @@ class StreamingManager:
                         if not isinstance(contract_data_from_stream, dict):
                             logger.warning(f"[MsgID:{current_message_id}] Skipping non-dict contract_data #{content_index}: {contract_data_from_stream}")
                             continue
+                        
+                        # Log the raw contract data for debugging
+                        logger.debug(f"[MsgID:{current_message_id}] Raw contract data: {json.dumps(contract_data_from_stream)}")
                         
                         contract_key = contract_data_from_stream.get("key")
                         if not contract_key:

@@ -67,10 +67,15 @@
 - Enhanced logging for options chain data to better diagnose issues with Last, Bid, and Ask fields.
 - Added detailed logging of streaming data updates to track field values in real-time.
 - Created a logs directory to store all log files with timestamps in filenames.
+- Identified root cause of Last, Bid, Ask fields showing as None in options streaming: incorrect contract key formatting.
+- Implemented proper contract key formatting for streaming compatibility in both data_fetchers.py and streaming_manager.py.
+- Added comprehensive debug logging to track raw API responses and verify contract key formatting.
+- Created a dedicated format_contract_key_for_streaming function to ensure consistent key formatting across modules.
+- Enhanced streaming_manager.py to log full raw messages from the Schwab API for better troubleshooting.
 
 ## Current Work in Progress
 
-- Pushing updated code with file-based logging and streaming field display fixes to GitHub.
+- Pushing updated code with contract key formatting fix and enhanced logging to GitHub.
 - Testing the enhanced logging functionality to ensure it captures all necessary diagnostic information.
 - Verifying that Last, Bid, and Ask fields are properly displayed in the options streaming tab.
 
@@ -79,7 +84,7 @@
 - ✅ FIXED: MACD calculation issue with reverse chronological data. Implemented a fix to ensure data is sorted in ascending chronological order before technical indicator calculations.
 - ✅ FIXED: Issue affecting all time-dependent indicators that mark early values as unreliable when data is in reverse chronological order.
 - ✅ FIXED: Missing log files when running the application. Implemented file-based logging with timestamped log files.
-- ✅ FIXED: Last, Bid, and Ask fields not showing up in options streaming tab. Added enhanced logging to diagnose and fix the issue.
+- ✅ FIXED: Last, Bid, and Ask fields not showing up in options streaming tab. Identified root cause as incorrect contract key formatting and implemented proper formatting for streaming compatibility.
 
 ## Next Steps
 
@@ -87,6 +92,7 @@
 - ✅ DONE: Added logging when data is sorted to help with debugging.
 - ✅ DONE: Implemented file-based logging to create persistent log files for troubleshooting.
 - ✅ DONE: Enhanced logging for options chain data to better diagnose streaming issues.
+- ✅ DONE: Implemented proper contract key formatting for streaming compatibility.
 - Create unit tests that specifically test both ascending and descending data order scenarios.
 - Review other technical indicators for similar assumptions about data ordering.
 - Consider adding a configuration option to preserve the original data order in the output if needed.

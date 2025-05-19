@@ -8,6 +8,7 @@ import pandas as pd
 import logging
 import time # For adding delays between API calls
 from dotenv import load_dotenv
+import re # For contract key formatting
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 TOKENS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "tokens.json")
@@ -209,6 +210,10 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
                     for strike_price, contracts in strikes.items():
                         for contract in contracts:
                             if contract.get("openInterest", 0) > 0:
+                                # Format the contract key for streaming compatibility
+                                original_symbol = contract.get("symbol")
+                                formatted_symbol = format_contract_key_for_streaming(original_symbol)
+                                
                                 record = {
                                     "Expiration Date": contract.get("expirationDate"), # Use actual expirationDate field
                                     "Strike": contract.get("strikePrice"),
@@ -222,7 +227,7 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
                                     "Gamma": contract.get("gamma"),
                                     "Theta": contract.get("theta"),
                                     "Vega": contract.get("vega"),
-                                    "Contract Key": contract.get("symbol") # This is the option symbol/key
+                                    "Contract Key": formatted_symbol # Use the formatted symbol for streaming compatibility
                                 }
                                 contract_list_to_append.append(record)
         
@@ -261,6 +266,61 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
         logger.error(f"Error in get_options_chain_data for {symbol}: {e}", exc_info=True)
         return pd.DataFrame(), pd.DataFrame(), f"An error occurred while fetching options chain for {symbol}: {str(e)}"
 
+def format_contract_key_for_streaming(contract_key):
+    """
+    Format contract key for streaming according to Schwab API requirements.
+    
+    The Schwab streaming API requires option symbols in a specific format:
+    - Underlying symbol (padded with spaces to 6 chars)
+    - Expiration date (YYMMDD)
+    - Call/Put indicator (C/P)
+    - Strike price (padded with leading zeros to 8 chars)
+    
+    Example: "AAPL  240621C00190000" for Apple $190 call expiring June 21, 2024
+    """
+    try:
+        # Log the original contract key
+        logger.debug(f"Formatting contract key: {contract_key}")
+        
+        # Check if the key is already in the correct format
+        if len(contract_key) >= 21 and ' ' in contract_key:
+            logger.debug(f"Contract key appears to be already formatted: {contract_key}")
+            return contract_key
+        
+        # Extract components from the Schwab API format
+        # Example: AAPL_240621C190
+        pattern = r'([A-Z]+)_(\d{6})([CP])(\d+(?:\.\d+)?)'
+        match = re.match(pattern, contract_key)
+        
+        if not match:
+            # Try alternative pattern for Schwab's standard format
+            # Example: AAPL240621C00190000
+            alt_pattern = r'([A-Z]+)(\d{6})([CP])(\d{8})'
+            match = re.match(alt_pattern, contract_key)
+            
+            if not match:
+                logger.warning(f"Could not parse contract key: {contract_key}, using as-is")
+                return contract_key
+        
+        symbol, exp_date, cp_flag, strike = match.groups()
+        
+        # Format strike price (multiply by 1000 if needed and pad with leading zeros)
+        strike_float = float(strike)
+        strike_int = int(strike_float * 1000) if strike_float < 1000 else int(strike_float)
+        strike_padded = f"{strike_int:08d}"
+        
+        # Format symbol (pad with spaces to 6 chars)
+        symbol_padded = f"{symbol:<6}"
+        
+        # Combine all parts
+        formatted_key = f"{symbol_padded}{exp_date}{cp_flag}{strike_padded}"
+        logger.debug(f"Formatted contract key: {contract_key} -> {formatted_key}")
+        
+        return formatted_key
+    except Exception as e:
+        logger.error(f"Error formatting contract key {contract_key}: {e}", exc_info=True)
+        return contract_key
+
 def get_option_contract_keys(client: schwabdev.Client, symbol: str):
     """Fetches option contract keys (symbols) for the given underlying symbol, filtered by OI > 0."""
     if not client:
@@ -288,7 +348,16 @@ def get_option_contract_keys(client: schwabdev.Client, symbol: str):
                     for _strike_price, contracts_at_strike in strikes.items():
                         for contract in contracts_at_strike:
                             if contract.get("openInterest", 0) > 0 and contract.get("symbol"):
-                                contract_keys.add(contract.get("symbol"))
+                                # Format the contract key for streaming compatibility
+                                original_symbol = contract.get("symbol")
+                                formatted_symbol = format_contract_key_for_streaming(original_symbol)
+                                contract_keys.add(formatted_symbol)
+                                
+                                # Log a sample of the formatted keys
+                                if len(contract_keys) <= 5:
+                                    logger.info(f"Contract key formatted: {original_symbol} -> {formatted_symbol}")
+        
+        logger.info(f"Retrieved and formatted {len(contract_keys)} contract keys for {symbol}")
         return contract_keys, None
     except Exception as e:
         logger.error(f"Error in get_option_contract_keys for {symbol}: {e}", exc_info=True)

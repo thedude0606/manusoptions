@@ -2,6 +2,42 @@
 
 ## Technical Architecture Decisions
 
+### Contract Key Formatting for Options Streaming
+
+- **Decision**: Implement proper contract key formatting for Schwab API streaming compatibility.
+- **Rationale**: The Schwab API requires option contract keys in a specific format for streaming that differs from the format returned by the REST API. Incorrect formatting was causing Last, Bid, and Ask fields to be None in the streaming data.
+- **Alternatives Considered**:
+  - Using the original contract keys as returned by the REST API
+  - Implementing a mapping table between REST API keys and streaming keys
+  - Requesting Schwab to standardize key formats across APIs
+- **Trade-offs**:
+  - Implementing proper formatting adds complexity but ensures data consistency
+  - Centralizing formatting logic in a dedicated function improves maintainability
+  - Consistent formatting across modules reduces errors and simplifies debugging
+- **Implementation**:
+  - Created a dedicated `format_contract_key_for_streaming` function in both data_fetchers.py and streaming_manager.py
+  - Ensured contract keys are properly formatted with spaces for the underlying symbol and leading zeros for strike prices
+  - Added comprehensive logging to track both original and formatted keys
+  - Enhanced streaming manager to log raw API responses for better troubleshooting
+
+### Enhanced Streaming Data Logging
+
+- **Decision**: Add detailed logging of streaming data updates to track field values in real-time.
+- **Rationale**: To diagnose issues with Last, Bid, and Ask fields not showing up in the options streaming tab.
+- **Alternatives Considered**:
+  - Adding temporary debug print statements
+  - Implementing a separate monitoring system
+  - Using browser-based debugging tools
+- **Trade-offs**:
+  - Comprehensive logging provides visibility into data flow without modifying core functionality
+  - Increased log volume is acceptable for troubleshooting critical issues
+  - Structured logging makes it easier to filter and analyze specific field updates
+- **Implementation**:
+  - Added logging of sample option data in get_options_chain_data
+  - Enhanced _handle_stream_message to log price field updates
+  - Added detailed logging in the options chain callback to verify data presence
+  - Added logging of raw API responses to identify field availability and format issues
+
 ### File-Based Logging Implementation
 
 - **Decision**: Implement file-based logging across all modules to create persistent log files.
@@ -20,23 +56,6 @@
   - Created a logs directory to store all log files
   - Used timestamp-based filenames to prevent overwriting
   - Maintained console logging for immediate feedback during development
-
-### Enhanced Streaming Data Logging
-
-- **Decision**: Add detailed logging of streaming data updates to track field values in real-time.
-- **Rationale**: To diagnose issues with Last, Bid, and Ask fields not showing up in the options streaming tab.
-- **Alternatives Considered**:
-  - Adding temporary debug print statements
-  - Implementing a separate monitoring system
-  - Using browser-based debugging tools
-- **Trade-offs**:
-  - Comprehensive logging provides visibility into data flow without modifying core functionality
-  - Increased log volume is acceptable for troubleshooting critical issues
-  - Structured logging makes it easier to filter and analyze specific field updates
-- **Implementation**:
-  - Added logging of sample option data in get_options_chain_data
-  - Enhanced _handle_stream_message to log price field updates
-  - Added detailed logging in the options chain callback to verify data presence
 
 ### Options Chain Streaming Field Configuration
 
@@ -226,6 +245,24 @@
 
 ## Bug Fix Decisions
 
+### Contract Key Formatting for Options Streaming
+
+- **Decision**: Implement proper contract key formatting for Schwab API streaming compatibility.
+- **Rationale**: The Schwab API requires option contract keys in a specific format for streaming that differs from the format returned by the REST API. Incorrect formatting was causing Last, Bid, and Ask fields to be None in the streaming data.
+- **Alternatives Considered**:
+  - Using the original contract keys as returned by the REST API
+  - Implementing a mapping table between REST API keys and streaming keys
+  - Requesting Schwab to standardize key formats across APIs
+- **Trade-offs**:
+  - Implementing proper formatting adds complexity but ensures data consistency
+  - Centralizing formatting logic in a dedicated function improves maintainability
+  - Consistent formatting across modules reduces errors and simplifies debugging
+- **Implementation**:
+  - Created a dedicated `format_contract_key_for_streaming` function in both data_fetchers.py and streaming_manager.py
+  - Ensured contract keys are properly formatted with spaces for the underlying symbol and leading zeros for strike prices
+  - Added comprehensive logging to track both original and formatted keys
+  - Enhanced streaming manager to log raw API responses for better troubleshooting
+
 ### Missing Log Files Issue
 
 - **Decision**: Implement file-based logging with timestamped log files.
@@ -247,8 +284,8 @@
 
 ### Last, Bid, Ask Fields Not Showing in Options Streaming Tab
 
-- **Decision**: Enhance logging for options chain data to diagnose and fix the issue.
-- **Rationale**: The root cause was unclear, requiring detailed logging to trace data flow from API to UI.
+- **Decision**: Enhance logging for options chain data and implement proper contract key formatting to diagnose and fix the issue.
+- **Rationale**: The root cause was incorrect contract key formatting for the Schwab streaming API, which requires a specific format different from the REST API.
 - **Alternatives Considered**:
   - Adding temporary debug print statements
   - Implementing a separate monitoring system
@@ -261,6 +298,7 @@
   - Added logging of sample option data in get_options_chain_data
   - Enhanced _handle_stream_message to log price field updates
   - Added detailed logging in the options chain callback to verify data presence
+  - Implemented proper contract key formatting for streaming compatibility
 
 ### MACD Calculation with Reverse Chronological Data
 

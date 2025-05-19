@@ -10,6 +10,7 @@
 - [x] Fix MACD calculation issue with reverse chronological data
 - [x] Fix options chain streaming to include Last, Bid, and Ask fields
 - [x] Implement file-based logging for troubleshooting
+- [x] Fix contract key formatting for options streaming compatibility
 - [ ] Implement proper error handling for all API calls
 - [ ] Add unit tests for critical components
 - [ ] Implement comprehensive candlestick pattern detection (IN PROGRESS)
@@ -25,6 +26,7 @@
 - [ ] Standardize approaches for handling early values across all indicators
 - [x] Add warning logs for reverse chronological data detection
 - [ ] Create unit tests for both ascending and descending data order scenarios
+- [x] Add comprehensive debug logging for streaming API responses
 
 ## Low Priority
 - [ ] Create documentation for API usage
