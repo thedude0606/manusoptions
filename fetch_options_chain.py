@@ -6,6 +6,18 @@ import datetime
 import time
 import threading
 import sys # For flushing output
+import logging # For detailed logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("options_streaming.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("options_streaming")
 
 # Load environment variables from .env file
 load_dotenv()
@@ -65,20 +77,36 @@ stream_data_lock = threading.Lock()
 
 def stream_message_handler(message_json_str):
     global current_contracts_data, detected_changes
+    logger.debug(f"Received message: {message_json_str[:200]}..." if len(message_json_str) > 200 else message_json_str)
+    
     try:
         data_packets = json.loads(message_json_str)
-    except json.JSONDecodeError:
+        logger.debug(f"Parsed data packets: {json.dumps(data_packets)[:500]}..." if len(json.dumps(data_packets)) > 500 else json.dumps(data_packets))
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON decode error: {e}")
         return
 
     for packet in data_packets:
         if packet.get("service") == "LEVELONE_OPTIONS":
+            logger.info(f"Processing LEVELONE_OPTIONS packet with {len(packet.get('content', []))} content items")
+            
             for contract_item in packet.get("content", []):
                 contract_key = contract_item.get("key")
                 if not contract_key:
+                    logger.warning(f"Skipping contract item without key: {contract_item}")
                     continue
+
+                logger.debug(f"Processing contract: {contract_key} with fields: {contract_item}")
+                
+                # Log specific price fields if they exist
+                for price_field in ["2", "3", "4"]:  # BidPrice, AskPrice, LastPrice
+                    if price_field in contract_item:
+                        field_name = STREAMING_FIELD_MAPPING.get(int(price_field), f"Unknown-{price_field}")
+                        logger.info(f"PRICE FIELD FOUND: Contract {contract_key} has {field_name}={contract_item[price_field]}")
 
                 with stream_data_lock:
                     if contract_key not in current_contracts_data:
+                        logger.debug(f"Creating new entry for contract: {contract_key}")
                         current_contracts_data[contract_key] = {}
 
                     for field_idx_str, new_value in contract_item.items():
@@ -86,27 +114,42 @@ def stream_message_handler(message_json_str):
                             continue
                         try:
                             field_idx = int(field_idx_str)
+                            logger.debug(f"Processing field {field_idx_str} with value {new_value}")
                         except ValueError:
+                            logger.warning(f"Non-integer field index: {field_idx_str}")
                             continue
 
                         if field_idx in STREAMING_FIELD_MAPPING:
                             metric_name = STREAMING_FIELD_MAPPING[field_idx]
+                            logger.debug(f"Field {field_idx} maps to metric {metric_name}")
+                            
                             try:
                                 if isinstance(new_value, str):
                                     if "." in new_value or "e" in new_value.lower():
                                         new_value_typed = float(new_value)
+                                        logger.debug(f"Converted string '{new_value}' to float: {new_value_typed}")
                                     elif new_value.lstrip("-").isdigit():
                                         new_value_typed = int(new_value)
+                                        logger.debug(f"Converted string '{new_value}' to int: {new_value_typed}")
                                     else:
                                         new_value_typed = new_value
+                                        logger.debug(f"Kept string value as is: {new_value_typed}")
                                 else:
                                     new_value_typed = new_value
-                            except ValueError:
+                                    logger.debug(f"Non-string value, kept as is: {new_value_typed}")
+                            except ValueError as e:
                                 new_value_typed = new_value
+                                logger.warning(f"Value conversion error for {new_value}: {e}")
                             
                             current_metric_value = current_contracts_data[contract_key].get(metric_name)
+                            logger.debug(f"Current value for {metric_name}: {current_metric_value}")
+
+                            # Special logging for price fields
+                            if field_idx in [2, 3, 4]:  # BidPrice, AskPrice, LastPrice
+                                logger.info(f"PRICE UPDATE: Contract {contract_key}, {metric_name}: {current_metric_value} -> {new_value_typed}")
 
                             if current_metric_value != new_value_typed:
+                                logger.debug(f"Value changed for {contract_key}.{metric_name}: {current_metric_value} -> {new_value_typed}")
                                 detected_changes.append({
                                     "contract": contract_key,
                                     "metric": metric_name,
@@ -116,6 +159,7 @@ def stream_message_handler(message_json_str):
                                 })
                                 current_contracts_data[contract_key][metric_name] = new_value_typed
                             elif current_metric_value is None:
+                                logger.debug(f"Setting initial value for {contract_key}.{metric_name}: {new_value_typed}")
                                 current_contracts_data[contract_key][metric_name] = new_value_typed
 
 def get_filtered_option_contract_keys(client, underlying_symbol):
@@ -210,35 +254,84 @@ def get_filtered_option_contract_keys(client, underlying_symbol):
     return list(set(keys))
 
 def run_options_streaming_mode(client, symbols_to_stream):
+    logger.info("Starting options streaming mode")
     streamer = client.stream
     all_contract_keys_to_stream = []
     for symbol in symbols_to_stream:
+        logger.info(f"Getting filtered option contract keys for {symbol}")
         keys = get_filtered_option_contract_keys(client, symbol)
         if keys:
+            logger.info(f"Found {len(keys)} keys for {symbol}")
             all_contract_keys_to_stream.extend(keys)
     all_contract_keys_to_stream = list(set(all_contract_keys_to_stream))
 
     if not all_contract_keys_to_stream:
+        logger.error("No option contracts found for any specified symbols matching filters. Streaming cannot start.")
         print("No option contracts found for any specified symbols matching filters. Streaming cannot start.")
         return
 
+    logger.info(f"Total unique option contracts to stream after filtering: {len(all_contract_keys_to_stream)}")
     print(f"Total unique option contracts to stream after filtering: {len(all_contract_keys_to_stream)}")
+
+    # Log the field request configuration
+    logger.info(f"Using field request: {STREAMING_OPTION_FIELDS_REQUEST}")
+    logger.info(f"Field mapping configuration: {STREAMING_FIELD_MAPPING}")
 
     for i in range(0, len(all_contract_keys_to_stream), MAX_CONTRACTS_PER_STREAM_SUBSCRIPTION):
         chunk = all_contract_keys_to_stream[i:i + MAX_CONTRACTS_PER_STREAM_SUBSCRIPTION]
         keys_str_chunk = ",".join(chunk)
+        logger.info(f"Subscribing to {len(chunk)} option contracts (Chunk {i // MAX_CONTRACTS_PER_STREAM_SUBSCRIPTION + 1})...")
         print(f"Subscribing to {len(chunk)} option contracts (Chunk {i // MAX_CONTRACTS_PER_STREAM_SUBSCRIPTION + 1})...")
-        streamer.send(streamer.level_one_options(keys_str_chunk, STREAMING_OPTION_FIELDS_REQUEST))
+        
+        # Create and log the subscription payload
+        subscription_payload = streamer.level_one_options(keys_str_chunk, STREAMING_OPTION_FIELDS_REQUEST)
+        logger.debug(f"Subscription payload: {json.dumps(subscription_payload)[:500]}..." if len(json.dumps(subscription_payload)) > 500 else json.dumps(subscription_payload))
+        
+        streamer.send(subscription_payload)
+        logger.info(f"Sent subscription for chunk {i // MAX_CONTRACTS_PER_STREAM_SUBSCRIPTION + 1}")
         time.sleep(1.5)
 
+    logger.info("Starting stream handler...")
     print("Starting stream handler...")
     streamer.start(stream_message_handler, daemon=True)
+    logger.info("Stream started. Monitoring for changes.")
     print("Stream started. Monitoring for changes every 5 seconds. Press Ctrl+C to stop.")
 
     try:
         while True:
             time.sleep(5)
             with stream_data_lock:
+                # Log current state of data store periodically
+                logger.info(f"Current data store size: {len(current_contracts_data)} contracts")
+                
+                # Log a sample of the current data for price fields
+                sample_count = 0
+                for contract_key, contract_data in list(current_contracts_data.items())[:5]:  # Sample first 5 contracts
+                    price_info = {
+                        "BidPrice": contract_data.get("BidPrice", "N/A"),
+                        "AskPrice": contract_data.get("AskPrice", "N/A"),
+                        "LastPrice": contract_data.get("LastPrice", "N/A")
+                    }
+                    logger.info(f"Sample contract {contract_key} price data: {price_info}")
+                    sample_count += 1
+                
+                if sample_count == 0 and current_contracts_data:
+                    # If we have contracts but none were sampled, log one anyway
+                    contract_key = next(iter(current_contracts_data))
+                    contract_data = current_contracts_data[contract_key]
+                    price_info = {
+                        "BidPrice": contract_data.get("BidPrice", "N/A"),
+                        "AskPrice": contract_data.get("AskPrice", "N/A"),
+                        "LastPrice": contract_data.get("LastPrice", "N/A")
+                    }
+                    logger.info(f"Single sample contract {contract_key} price data: {price_info}")
+                
+                # Check if we have any price fields at all
+                has_bid = any("BidPrice" in data for data in current_contracts_data.values())
+                has_ask = any("AskPrice" in data for data in current_contracts_data.values())
+                has_last = any("LastPrice" in data for data in current_contracts_data.values())
+                logger.info(f"Price fields present in any contract: Bid={has_bid}, Ask={has_ask}, Last={has_last}")
+                
                 if detected_changes:
                     if os.name == "nt":
                         os.system("cls")
