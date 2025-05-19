@@ -7,6 +7,7 @@ import json # Added for JSON parsing
 import schwabdev # Import the main schwabdev library
 import os
 import datetime
+import traceback
 
 # Configure basic logging with both console and file handlers
 logger = logging.getLogger(__name__) # Use __name__ for module-specific logger
@@ -70,7 +71,19 @@ class StreamingManager:
         self.status_message = "Idle"
         self._lock = threading.RLock() # Changed to RLock for reentrancy safety in complex interactions
         self.message_counter = 0
-        logger.info("StreamingManager initialized with RLock.")
+        
+        # Create a separate log file specifically for raw stream messages
+        self.raw_stream_log_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs", 
+                                               f"raw_stream_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+        self.raw_stream_logger = logging.getLogger(f"{__name__}.raw_stream")
+        if not self.raw_stream_logger.hasHandlers():
+            raw_handler = logging.FileHandler(self.raw_stream_log_file)
+            raw_formatter = logging.Formatter("%(asctime)s - %(message)s")
+            raw_handler.setFormatter(raw_formatter)
+            self.raw_stream_logger.addHandler(raw_handler)
+            self.raw_stream_logger.setLevel(logging.DEBUG)
+        
+        logger.info(f"StreamingManager initialized with RLock. Raw stream logs will be written to: {self.raw_stream_log_file}")
 
     def _get_schwab_client(self):
         try:
@@ -88,7 +101,12 @@ class StreamingManager:
 
     def _stream_worker(self, option_keys_to_subscribe_tuple):
         option_keys_to_subscribe = set(option_keys_to_subscribe_tuple)
-        logger.info(f"_stream_worker started for {len(option_keys_to_subscribe)} keys: {list(option_keys_to_subscribe)[:20]}...") # Log a sample of keys
+        logger.info(f"_stream_worker started for {len(option_keys_to_subscribe)} keys: {list(option_keys_to_subscribe)[:5]}...")
+        
+        # Log a sample of the keys to verify format
+        for i, key in enumerate(list(option_keys_to_subscribe)[:10]):
+            logger.info(f"Sample key {i}: '{key}'")
+        
         with self._lock:
             self.status_message = "Stream: Initializing worker..."
             self.error_message = None # Clear previous errors
@@ -119,9 +137,20 @@ class StreamingManager:
                     self.is_running = False
                 return
 
-            logger.info("_stream_worker: Starting schwabdev\"s stream listener (self.stream_client.start)...")
-            self.stream_client.start(self._handle_stream_message)
-            logger.info("_stream_worker: schwabdev\"s stream_client.start() called. Listener should be active in its own thread.")
+            # Define a custom handler that logs raw messages before processing
+            def custom_stream_handler(raw_message):
+                try:
+                    # Log the raw message to the dedicated raw stream log file
+                    self.raw_stream_logger.debug(f"RAW MESSAGE: {raw_message}")
+                    
+                    # Process the message with our regular handler
+                    self._handle_stream_message(raw_message)
+                except Exception as e:
+                    logger.error(f"Error in custom_stream_handler: {e}", exc_info=True)
+            
+            logger.info("_stream_worker: Starting schwabdev's stream listener with custom handler...")
+            self.stream_client.start(custom_stream_handler)
+            logger.info("_stream_worker: schwabdev's stream_client.start() called. Listener should be active in its own thread.")
 
             time.sleep(3) # Allow time for connection
             logger.info("_stream_worker: Waited 3s for connection, proceeding with subscriptions.")
@@ -142,8 +171,11 @@ class StreamingManager:
             fields_str = self.SCHWAB_FIELD_IDS_TO_REQUEST
             
             subscription_payload = self.stream_client.level_one_options(keys_str, fields_str, command="ADD")
-            logger.info(f"_stream_worker: Preparing to send LEVELONE_OPTIONS subscription. Keys (first 200 chars): {keys_str[:200]}... Fields: {fields_str}.")
+            logger.info(f"_stream_worker: Preparing to send LEVELONE_OPTIONS subscription. Keys count: {len(formatted_keys)}. Fields: {fields_str}.")
             logger.debug(f"_stream_worker: Full subscription payload being sent: {json.dumps(subscription_payload)}")
+            
+            # Log the full payload to the raw stream log
+            self.raw_stream_logger.debug(f"SENDING SUBSCRIPTION: {json.dumps(subscription_payload)}")
             
             self.stream_client.send(subscription_payload)
             logger.info(f"_stream_worker: Subscription payload sent for {len(formatted_keys)} keys.")
@@ -162,13 +194,26 @@ class StreamingManager:
                 
                 if loop_counter % 20 == 0: # Log every 10 seconds (0.5 * 20)
                     logger.debug(f"_stream_worker: Monitoring loop active. is_running: {self.is_running}. Subscriptions: {len(self.current_subscriptions)}")
+                    
+                    # Every 10 seconds, check if we've received any data
+                    with self._lock:
+                        data_count = len(self.latest_data_store)
+                        if data_count > 0:
+                            logger.info(f"_stream_worker: Currently storing data for {data_count} contracts.")
+                            # Log a sample of the stored data
+                            sample_keys = list(self.latest_data_store.keys())[:3]
+                            for key in sample_keys:
+                                data = self.latest_data_store[key]
+                                logger.info(f"Sample data for {key}: Last={data.get('lastPrice')}, Bid={data.get('bidPrice')}, Ask={data.get('askPrice')}")
+                        else:
+                            logger.warning("_stream_worker: No data received from stream yet.")
                 
                 time.sleep(0.5) 
                 loop_counter +=1
             logger.info("_stream_worker: Exited monitoring loop.")
 
         except Exception as e:
-            logger.error(f"Error in _stream_worker\"s main try block: {e}", exc_info=True)
+            logger.error(f"Error in _stream_worker's main try block: {e}", exc_info=True)
             with self._lock:
                 self.error_message = f"Stream worker error: {e}"
                 self.status_message = f"Stream: Error - {self.error_message}"
@@ -193,13 +238,13 @@ class StreamingManager:
 
             if active_schwab_stream_client and hasattr(active_schwab_stream_client, "stop") and active_schwab_stream_client.active:
                 try:
-                    logger.info("_stream_worker\"s finally block: Attempting to stop schwabdev stream client.")
+                    logger.info("_stream_worker's finally block: Attempting to stop schwabdev stream client.")
                     active_schwab_stream_client.stop()
-                    logger.info("_stream_worker\"s finally block: schwabdev stream client stop() called.")
+                    logger.info("_stream_worker's finally block: schwabdev stream client stop() called.")
                 except Exception as e_stop:
-                    logger.error(f"_stream_worker\"s finally block: Error stopping schwabdev stream client: {e_stop}", exc_info=True)
+                    logger.error(f"_stream_worker's finally block: Error stopping schwabdev stream client: {e_stop}", exc_info=True)
             else:
-                logger.info("_stream_worker\"s finally block: Schwabdev stream client not active/stoppable or already None.")
+                logger.info("_stream_worker's finally block: Schwabdev stream client not active/stoppable or already None.")
             
             with self._lock:
                 self.stream_client = None
@@ -233,8 +278,14 @@ class StreamingManager:
             match = re.match(pattern, contract_key)
             
             if not match:
-                logger.warning(f"Could not parse contract key: {contract_key}, using as-is")
-                return contract_key
+                # Try alternative pattern for Schwab's standard format
+                # Example: AAPL240621C00190000
+                alt_pattern = r'([A-Z]+)(\d{6})([CP])(\d{8})'
+                match = re.match(alt_pattern, contract_key)
+                
+                if not match:
+                    logger.warning(f"Could not parse contract key: {contract_key}, using as-is")
+                    return contract_key
             
             symbol, exp_date, cp_flag, strike = match.groups()
             
@@ -258,6 +309,10 @@ class StreamingManager:
     def _handle_stream_message(self, raw_message):
         self.message_counter += 1
         current_message_id = self.message_counter
+        
+        # Always log the full raw message to the dedicated raw stream log
+        self.raw_stream_logger.debug(f"[MsgID:{current_message_id}] RECEIVED: {raw_message}")
+        
         log_msg_content = str(raw_message)
         if len(log_msg_content) > 1000:
             log_msg_content = log_msg_content[:1000] + "... (truncated)"
@@ -268,35 +323,48 @@ class StreamingManager:
             if isinstance(raw_message, str):
                 try:
                     message_dict = json.loads(raw_message)
+                    # Log the parsed JSON for debugging
+                    logger.debug(f"[MsgID:{current_message_id}] Parsed JSON: {json.dumps(message_dict)[:1000]}...")
                 except json.JSONDecodeError as jde:
                     logger.error(f"[MsgID:{current_message_id}] Failed to decode JSON: {jde} - Raw (first 200): {raw_message[:200]}", exc_info=True)
                     return
             elif isinstance(raw_message, dict):
                 message_dict = raw_message
+                logger.debug(f"[MsgID:{current_message_id}] Received dict message: {json.dumps(message_dict)[:1000]}...")
             else:
                 logger.warning(f"[MsgID:{current_message_id}] Unexpected message type: {type(raw_message)}. Raw: {raw_message}")
                 return
             
             # Log the full message for debugging
-            logger.debug(f"[MsgID:{current_message_id}] Full message: {json.dumps(message_dict)}")
+            self.raw_stream_logger.debug(f"[MsgID:{current_message_id}] PARSED: {json.dumps(message_dict)}")
 
             if "data" in message_dict:
                 data_items = message_dict.get("data", [])
                 logger.info(f"[MsgID:{current_message_id}] Identified \"data\" message with {len(data_items)} items.")
                 updated_keys_in_batch = []
                 for item_index, item in enumerate(data_items):
-                    if not isinstance(item, dict) or item.get("service") != "LEVELONE_OPTIONS" or "content" not in item:
+                    if not isinstance(item, dict):
+                        logger.warning(f"[MsgID:{current_message_id}] Skipping non-dict data item #{item_index}: {item}")
+                        continue
+                    
+                    # Log the service type for all data items
+                    service_type = item.get("service", "UNKNOWN")
+                    logger.info(f"[MsgID:{current_message_id}] Data item #{item_index} service: {service_type}")
+                    
+                    if service_type != "LEVELONE_OPTIONS" or "content" not in item:
                         logger.warning(f"[MsgID:{current_message_id}] Skipping non-LEVELONE_OPTIONS or malformed data item #{item_index}: {item}")
                         continue
                     
                     content_list = item.get("content", [])
+                    logger.info(f"[MsgID:{current_message_id}] Processing {len(content_list)} content items for LEVELONE_OPTIONS")
+                    
                     for content_index, contract_data_from_stream in enumerate(content_list):
                         if not isinstance(contract_data_from_stream, dict):
                             logger.warning(f"[MsgID:{current_message_id}] Skipping non-dict contract_data #{content_index}: {contract_data_from_stream}")
                             continue
                         
                         # Log the raw contract data for debugging
-                        logger.debug(f"[MsgID:{current_message_id}] Raw contract data: {json.dumps(contract_data_from_stream)}")
+                        self.raw_stream_logger.debug(f"[MsgID:{current_message_id}] RAW CONTRACT DATA: {json.dumps(contract_data_from_stream)}")
                         
                         contract_key = contract_data_from_stream.get("key")
                         if not contract_key:
@@ -310,7 +378,11 @@ class StreamingManager:
                         new_update_data = {}
                         for field_id, value in contract_data_from_stream.items():
                             if field_id in self.SCHWAB_FIELD_MAP:
-                                new_update_data[self.SCHWAB_FIELD_MAP[field_id]] = value
+                                field_name = self.SCHWAB_FIELD_MAP[field_id]
+                                new_update_data[field_name] = value
+                                
+                                # Log each field value for debugging
+                                logger.debug(f"[MsgID:{current_message_id}] Field {field_id} -> {field_name}: {value}")
                         
                         if "key" not in new_update_data: # Ensure the contract key itself is in the update if it was mapped from "0"
                             new_update_data["key"] = contract_key
@@ -328,7 +400,7 @@ class StreamingManager:
                         updated_keys_in_batch.append(contract_key)
                         
                         with self._lock:
-                            # Get existing record or an empty dict if it\"s a new key
+                            # Get existing record or an empty dict if it's a new key
                             existing_record = self.latest_data_store.get(contract_key, {})
                             # Merge new update into existing record
                             existing_record.update(new_update_data)
@@ -372,6 +444,8 @@ class StreamingManager:
                 logger.info(f"[MsgID:{current_message_id}] Unhandled message type: {message_dict}")
         except Exception as e:
             logger.error(f"[MsgID:{current_message_id}] Error in _handle_stream_message: {e}", exc_info=True)
+            # Log the full traceback to the raw stream log
+            self.raw_stream_logger.error(f"[MsgID:{current_message_id}] EXCEPTION: {traceback.format_exc()}")
 
     def start_streaming(self, option_keys_to_subscribe):
         """Start streaming for the given option contract keys."""
