@@ -1,5 +1,137 @@
 # Design Decisions
 
+## Recommendation Engine Architecture (May 19, 2025)
+
+### Requirements Analysis
+- The recommendation engine needs to analyze technical indicators to identify market direction
+- It must evaluate options chain data for optimal strike prices and expiration dates
+- It should calculate risk/reward ratios for potential trades
+- It must generate actionable buy/sell signals with confidence scores
+- The UI should be simple, showing only the top 5 contracts with highest confidence
+- Each recommendation should include target buy price, target sell price, and timeframe
+- The focus is on hourly trading and swing trading with minimum 10% expected profit
+- Recommendations should consider Greeks and IV in the evaluation
+
+### Architecture Design
+- **Modular Component Structure**: Separate the recommendation engine logic from the UI components
+- **Data Flow**: Technical indicators and options chain data → Recommendation engine → UI display
+- **Calculation Pipeline**:
+  1. Market direction analysis based on technical indicators
+  2. Options chain filtering and evaluation
+  3. Risk/reward calculation
+  4. Confidence score generation
+  5. Top recommendations selection
+
+### Key Components
+1. **RecommendationEngine Class**:
+   - Core logic encapsulated in a single class
+   - Stateless design for easy testing and maintenance
+   - Public methods for each step in the recommendation pipeline
+   - Configurable parameters for thresholds and filters
+
+2. **Recommendation Tab Module**:
+   - Separate UI module following the existing tab pattern
+   - Callback registration function for clean integration
+   - Responsive layout with panels for different information types
+
+3. **Data Integration**:
+   - Leverage existing data stores (tech-indicators-store, options-chain-store)
+   - Use callback context to determine update triggers
+   - Maintain consistency with the existing caching strategy
+
+### Technical Indicator Analysis
+- **Market Direction Determination**:
+  - Use a scoring system (0-100) for bullish and bearish signals
+  - Consider multiple indicators with weighted importance
+  - RSI, MACD, Bollinger Bands given higher weight
+  - MFI and IMI used as confirming indicators
+  - Fair Value Gaps given significant weight when present
+
+### Options Evaluation Strategy
+- **Filtering Criteria**:
+  - Minimum open interest threshold to ensure liquidity
+  - Days to expiration range (1-14 days) for hourly/swing trading
+  - Bid-ask spread percentage to avoid illiquid options
+
+- **Scoring System**:
+  - Base score adjusted by market direction alignment
+  - Greeks evaluation with optimal ranges:
+    - Delta: Prefer 0.3-0.7 range (not too far OTM or ITM)
+    - Gamma: Higher gamma preferred for short-term trades
+    - Theta: Lower absolute theta preferred to minimize time decay
+    - Vega: Lower vega preferred to reduce volatility exposure
+  - IV evaluation with penalties for very high (>60%) or very low (<15%) values
+  - Strike distance from current price factored into score
+
+### Risk/Reward Calculation
+- **Risk Definition**: Premium paid for the option
+- **Reward Projection**:
+  - Based on delta and projected underlying price movement
+  - Default projection of 2% move in underlying
+  - Expected profit percentage calculated as (projected profit / risk) * 100
+  - Minimum threshold of 10% expected profit
+
+- **Target Price and Timeframe**:
+  - Target sell price = current price * (1 + minimum expected profit)
+  - Target timeframe calculated based on theta decay
+  - Formula: hours until theta decay would reduce price by expected profit percentage
+  - Reasonable bounds applied (1-72 hours)
+
+### Confidence Score System
+- **Base Score**: 50 (neutral)
+- **Market Direction Adjustment**:
+  - For calls: +/- based on bullish/bearish score
+  - For puts: +/- based on bearish/bullish score
+- **Greeks Adjustments**:
+  - Delta: +10 for optimal range, decreasing as delta moves toward 0 or 1
+  - Gamma: +50 * gamma value (higher gamma = higher score)
+  - Theta: -20 * abs(theta) (more negative theta = lower score)
+  - Vega: -10 * abs(vega) (higher vega = lower score)
+- **Other Factors**:
+  - Spread percentage: -100 * spread_pct (wider spread = lower score)
+  - Strike distance: -50 * distance_pct (further from ATM = lower score)
+  - Days to expiration: -5 * (3 - DTE) for DTE < 3 (too short = lower score)
+  - Expected profit: +10 if >= 10%, -20 if < 10%
+
+### UI Design Decisions
+- **Panel-Based Layout**:
+  - Market direction panel with visual indicators
+  - Separate tables for call and put recommendations
+  - Contract details panel for selected recommendation
+
+- **Visual Indicators**:
+  - Color coding for bullish (green), bearish (red), neutral (gray)
+  - Confidence score highlighting (green for high confidence)
+  - Clear display of target prices and timeframes
+
+- **Interaction Model**:
+  - Click on recommendation to see detailed Greeks
+  - Dropdown for timeframe selection
+  - Automatic updates with the global update interval
+
+### Testing Strategy
+- **Unit Tests**:
+  - Test each component of the recommendation pipeline
+  - Validate calculations with known inputs and expected outputs
+  - Ensure confidence scores and risk/reward ratios are calculated correctly
+
+- **Integration Tests**:
+  - Verify data flow from stores to recommendation engine
+  - Validate UI updates with recommendation changes
+
+### Performance Considerations
+- **Calculation Efficiency**:
+  - Perform calculations only when necessary (new data available)
+  - Reuse market direction analysis for multiple options evaluation
+  - Filter options early in the pipeline to reduce processing load
+
+- **UI Responsiveness**:
+  - Use loading indicators for calculation processes
+  - Separate store for recommendations to avoid redundant calculations
+  - Leverage Dash's callback prevention for unchanged inputs
+
+This architecture balances accuracy, performance, and usability while maintaining consistency with the existing application structure and data flow patterns.
+
 ## Incremental Update Strategy (May 19, 2025)
 
 ### Current Implementation Analysis
