@@ -11,6 +11,12 @@ import traceback
 
 # Configure basic logging with both console and file handlers
 logger = logging.getLogger(__name__) # Use __name__ for module-specific logger
+
+# Always define log_file regardless of handler state
+log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.path.join(log_dir, f"streaming_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+
 if not logger.hasHandlers(): # Avoid adding multiple handlers if already configured
     # Console handler
     handler = logging.StreamHandler()
@@ -19,9 +25,6 @@ if not logger.hasHandlers(): # Avoid adding multiple handlers if already configu
     logger.addHandler(handler)
     
     # File handler
-    log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
-    os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, f"streaming_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
     file_handler = logging.FileHandler(log_file)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
