@@ -20,6 +20,19 @@
   - More complex error handling required
   - Better resilience through smaller, atomic requests
 
+## Dashboard Integration
+
+- **Decision**: Configure dashboard to request 60 days of minute data by default
+- **Rationale**: Provides users with a comprehensive view of historical data while handling API limitations transparently
+- **Alternatives Considered**:
+  - User-configurable time range (adds complexity)
+  - Separate batch processing outside the dashboard (less integrated experience)
+- **Consequences**:
+  - Increased initial load time
+  - Larger memory footprint
+  - More comprehensive data for analysis
+  - Better user experience with complete dataset available immediately
+
 ## Data Storage
 
 - **Decision**: Store aggregated data in JSON format

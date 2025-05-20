@@ -10,17 +10,19 @@
 - Technical analysis implementation
 - Recommendation engine implementation
 - Batched minute data retrieval for 60 days
+- Dashboard integration with 60-day minute data retrieval
 
 ## Current Work in Progress
 
-- Testing and optimizing the 60-day minute data retrieval
-- Integrating the batched data retrieval with the dashboard application
+- Testing and optimizing the 60-day minute data retrieval in the dashboard
+- Enhancing error handling for multi-day data retrieval
 
 ## Known Issues or Challenges
 
 - Schwab API limitation: Only returns 1 day of minute data per request
 - Need to handle potential rate limiting when making multiple API requests
 - Need to ensure proper error handling for days with no market data
+- Large datasets may impact dashboard performance
 
 ## Next Steps
 
@@ -28,3 +30,4 @@
 - Add progress visualization during data fetching
 - Optimize data storage and retrieval for large datasets
 - Consider adding caching mechanism to reduce API calls
+- Implement parallel processing for faster data retrieval
