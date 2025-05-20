@@ -631,10 +631,10 @@ def update_technical_indicators(minute_data, timeframe):
 # Options Chain Callback
 @app.callback(
     [
-        Output("options-chain-store", "data"),
-        Output("expiration-date-dropdown", "options"),
-        Output("expiration-date-dropdown", "value"),
-        Output("options-chain-status", "children"),
+        Output("options-chain-store", "data", allow_duplicate=True),
+        Output("expiration-date-dropdown", "options", allow_duplicate=True),
+        Output("expiration-date-dropdown", "value", allow_duplicate=True),
+        Output("options-chain-status", "children", allow_duplicate=True),
         Output("error-store", "data", allow_duplicate=True)
     ],
     [
