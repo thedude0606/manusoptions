@@ -52,7 +52,7 @@ def run_with_fix():
         
         # Run the app with hot reloading disabled
         logger.info("Starting dashboard with hot reloading disabled to prevent duplicate callback issues")
-        app.run_server(debug=True, use_reloader=False, host="0.0.0.0")
+        app.run(debug=True, use_reloader=False, host="0.0.0.0")
         
     except Exception as e:
         logger.error(f"Error running dashboard with fix: {e}")
