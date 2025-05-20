@@ -256,44 +256,71 @@ def register_recommendation_callbacks(app):
         
         ctx = dash.callback_context
         trigger = ctx.triggered[0]['prop_id'] if ctx.triggered else ""
+        logger.info(f"update_recommendations triggered by: {trigger}")
         
         if not tech_indicators_data or not options_chain_data or not selected_symbol:
+            logger.warning(f"Missing required data: tech_indicators_data={bool(tech_indicators_data)}, options_chain_data={bool(options_chain_data)}, selected_symbol={bool(selected_symbol)}")
             return None, "Please load symbol data first."
         
         try:
             # Get the symbol and underlying price
             symbol = selected_symbol.get("symbol", "")
             underlying_price = options_chain_data.get("underlyingPrice", 0)
+            logger.info(f"Processing recommendations for symbol: {symbol}, underlying price: {underlying_price}")
             
             if not symbol or not underlying_price:
+                logger.warning(f"Missing symbol or price data: symbol={symbol}, underlying_price={underlying_price}")
                 return None, "Missing symbol or price data."
             
             # Get technical indicators for the selected timeframe
             tech_indicators_df = pd.DataFrame()
             if tech_indicators_data and "timeframe_data" in tech_indicators_data:
                 timeframe_data = tech_indicators_data.get("timeframe_data", {})
+                logger.info(f"Available timeframes in tech_indicators_data: {list(timeframe_data.keys())}")
                 if timeframe in timeframe_data:
                     tech_indicators_df = pd.DataFrame(timeframe_data[timeframe])
+                    logger.info(f"Loaded technical indicators for {timeframe}, shape: {tech_indicators_df.shape}")
+                    logger.info(f"Technical indicators columns: {tech_indicators_df.columns.tolist()}")
+                else:
+                    logger.warning(f"Timeframe {timeframe} not found in available timeframes")
+            else:
+                logger.warning("No timeframe_data found in tech_indicators_data")
             
             if tech_indicators_df.empty:
+                logger.warning(f"Empty technical indicators DataFrame for {timeframe} timeframe")
                 return None, f"No technical indicator data available for {timeframe} timeframe."
             
             # Get options chain data
             options_df = pd.DataFrame()
             if options_chain_data and "options" in options_chain_data:
                 options_df = pd.DataFrame(options_chain_data["options"])
+                logger.info(f"Loaded options chain data, shape: {options_df.shape}")
+                logger.info(f"Options chain columns: {options_df.columns.tolist()}")
+                logger.info(f"Options chain putCall values: {options_df['putCall'].unique().tolist() if 'putCall' in options_df.columns else 'putCall column not found'}")
+            else:
+                logger.warning("No options key found in options_chain_data")
             
             if options_df.empty:
+                logger.warning("Empty options chain DataFrame")
                 return None, "No options chain data available."
             
             # Generate recommendations
+            logger.info("Creating recommendation engine instance")
             engine = RecommendationEngine()
+            
+            logger.info(f"Calling get_recommendations with timeframe: {timeframe}")
             recommendations = engine.get_recommendations(
                 tech_indicators_df,
                 options_df,
                 underlying_price,
                 timeframe
             )
+            
+            # Log the structure of recommendations
+            logger.info(f"Recommendation keys: {list(recommendations.keys())}")
+            logger.info(f"Number of call recommendations: {len(recommendations.get('calls', []))}")
+            logger.info(f"Number of put recommendations: {len(recommendations.get('puts', []))}")
+            logger.info(f"Market direction: {recommendations.get('market_direction', {}).get('direction', 'unknown')}")
             
             # Add timestamp
             recommendations["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -321,7 +348,10 @@ def register_recommendation_callbacks(app):
     )
     def update_recommendation_ui(recommendations_data):
         """Update the recommendation UI with the latest data."""
+        logger.info(f"update_recommendation_ui called with data: {recommendations_data is not None}")
+        
         if not recommendations_data:
+            logger.warning("No recommendations data available")
             return (
                 "N/A", "No data", "N/A", "N/A", 
                 "No signals available", [], [], 
@@ -329,12 +359,20 @@ def register_recommendation_callbacks(app):
             )
         
         try:
+            # Log the structure of the recommendations data
+            logger.info(f"Recommendations data keys: {list(recommendations_data.keys())}")
+            
             # Extract market direction data
             market_direction = recommendations_data.get("market_direction", {})
+            logger.info(f"Market direction data: {market_direction}")
+            
             direction = market_direction.get("direction", "neutral")
             bullish_score = market_direction.get("bullish_score", 50)
             bearish_score = market_direction.get("bearish_score", 50)
             signals = market_direction.get("signals", [])
+            
+            logger.info(f"Direction: {direction}, Bullish: {bullish_score}, Bearish: {bearish_score}")
+            logger.info(f"Number of signals: {len(signals)}")
             
             # Create direction indicator
             if direction == "bullish":
@@ -366,6 +404,14 @@ def register_recommendation_callbacks(app):
             # Get recommendations
             call_recommendations = recommendations_data.get("calls", [])
             put_recommendations = recommendations_data.get("puts", [])
+            
+            logger.info(f"Number of call recommendations: {len(call_recommendations)}")
+            logger.info(f"Number of put recommendations: {len(put_recommendations)}")
+            
+            if call_recommendations:
+                logger.info(f"Sample call recommendation: {call_recommendations[0]}")
+            if put_recommendations:
+                logger.info(f"Sample put recommendation: {put_recommendations[0]}")
             
             # Get timestamp
             timestamp = recommendations_data.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))

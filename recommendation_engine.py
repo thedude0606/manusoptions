@@ -526,18 +526,32 @@ class RecommendationEngine:
             dict: Trading recommendations
         """
         logger.info(f"Getting recommendations for timeframe {timeframe}")
+        logger.info(f"Tech indicators DataFrame shape: {tech_indicators_df.shape}")
+        logger.info(f"Options DataFrame shape: {options_df.shape}")
+        logger.info(f"Underlying price: {underlying_price}")
         
         # Step 1: Analyze market direction
+        logger.info("Step 1: Analyzing market direction")
         market_direction = self.analyze_market_direction(tech_indicators_df, timeframe)
+        logger.info(f"Market direction analysis result: {market_direction}")
         
         # Step 2: Evaluate options chain
+        logger.info("Step 2: Evaluating options chain")
         evaluated_options = self.evaluate_options_chain(options_df, market_direction, underlying_price)
+        logger.info(f"Calls shape after evaluation: {evaluated_options['calls'].shape if not evaluated_options['calls'].empty else 'Empty DataFrame'}")
+        logger.info(f"Puts shape after evaluation: {evaluated_options['puts'].shape if not evaluated_options['puts'].empty else 'Empty DataFrame'}")
         
         # Step 3: Calculate risk/reward ratios
+        logger.info("Step 3: Calculating risk/reward ratios")
         options_with_risk_reward = self.calculate_risk_reward(evaluated_options, underlying_price)
+        logger.info(f"Calls shape after risk/reward: {options_with_risk_reward['calls'].shape if not options_with_risk_reward['calls'].empty else 'Empty DataFrame'}")
+        logger.info(f"Puts shape after risk/reward: {options_with_risk_reward['puts'].shape if not options_with_risk_reward['puts'].empty else 'Empty DataFrame'}")
         
         # Step 4: Generate recommendations
+        logger.info("Step 4: Generating final recommendations")
         recommendations = self.generate_recommendations(options_with_risk_reward)
+        logger.info(f"Number of call recommendations: {len(recommendations.get('calls', []))}")
+        logger.info(f"Number of put recommendations: {len(recommendations.get('puts', []))}")
         
         # Add market direction analysis to recommendations
         recommendations["market_direction"] = market_direction
