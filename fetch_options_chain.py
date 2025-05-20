@@ -7,6 +7,10 @@ import time
 import threading
 import sys # For flushing output
 import logging # For detailed logging
+import re # For contract key formatting
+
+# Import utility functions for contract key formatting
+from dashboard_utils.contract_utils import normalize_contract_key, format_contract_key_for_streaming
 
 # Configure logging
 logging.basicConfig(
@@ -52,8 +56,10 @@ STREAMING_SYMBOLS = ["AAPL"]  # List of underlying symbols to stream (e.g., ["AA
 STREAMING_FILTER_MIN_OPEN_INTEREST = 1  # Minimum open interest required
 STREAMING_FILTER_DTE = 0  # Target Days To Expiration (e.g., 0 for 0DTE). Set to None to disable DTE filter.
 
+# Updated to include both numeric and string field IDs
 STREAMING_OPTION_FIELDS_REQUEST = "0,2,3,4,9,10,20,27,28,29,30,31,32"
 STREAMING_FIELD_MAPPING = {
+    # Numeric field IDs
     0: "key",
     2: "bidPrice",
     3: "askPrice",
@@ -66,7 +72,21 @@ STREAMING_FIELD_MAPPING = {
     29: "gamma",
     30: "theta",
     31: "vega",
-    32: "rho"
+    32: "rho",
+    # String field IDs (for robustness)
+    "0": "key",
+    "2": "bidPrice",
+    "3": "askPrice",
+    "4": "lastPrice",
+    "9": "openInterest",
+    "10": "volatility",
+    "20": "strikePrice", 
+    "27": "daysToExpiration",
+    "28": "delta",
+    "29": "gamma",
+    "30": "theta",
+    "31": "vega",
+    "32": "rho"
 }
 MAX_CONTRACTS_PER_STREAM_SUBSCRIPTION = 300
 
@@ -96,71 +116,80 @@ def stream_message_handler(message_json_str):
                     logger.warning(f"Skipping contract item without key: {contract_item}")
                     continue
 
-                logger.debug(f"Processing contract: {contract_key} with fields: {contract_item}")
+                # Normalize the contract key for consistent matching
+                normalized_key = normalize_contract_key(contract_key)
+                logger.debug(f"Processing contract: {contract_key} (normalized: {normalized_key}) with fields: {contract_item}")
                 
                 # Log specific price fields if they exist
                 for price_field in ["2", "3", "4"]:  # bidPrice, askPrice, lastPrice
                     if price_field in contract_item:
-                        field_name = STREAMING_FIELD_MAPPING.get(int(price_field), f"Unknown-{price_field}")
-                        logger.info(f"PRICE FIELD FOUND: Contract {contract_key} has {field_name}={contract_item[price_field]}")
+                        field_name = STREAMING_FIELD_MAPPING.get(price_field, f"Unknown-{price_field}")
+                        logger.info(f"PRICE FIELD FOUND: Contract {normalized_key} has {field_name}={contract_item[price_field]}")
 
                 with stream_data_lock:
-                    if contract_key not in current_contracts_data:
-                        logger.debug(f"Creating new entry for contract: {contract_key}")
-                        current_contracts_data[contract_key] = {}
+                    if normalized_key not in current_contracts_data:
+                        logger.debug(f"Creating new entry for contract: {normalized_key}")
+                        current_contracts_data[normalized_key] = {}
 
                     for field_idx_str, new_value in contract_item.items():
                         if field_idx_str == "key":
                             continue
-                        try:
-                            field_idx = int(field_idx_str)
-                            logger.debug(f"Processing field {field_idx_str} with value {new_value}")
-                        except ValueError:
-                            logger.warning(f"Non-integer field index: {field_idx_str}")
-                            continue
-
-                        if field_idx in STREAMING_FIELD_MAPPING:
-                            metric_name = STREAMING_FIELD_MAPPING[field_idx]
-                            logger.debug(f"Field {field_idx} maps to metric {metric_name}")
-                            
+                        
+                        # Handle both string and numeric field IDs
+                        if field_idx_str in STREAMING_FIELD_MAPPING:
+                            metric_name = STREAMING_FIELD_MAPPING[field_idx_str]
+                            logger.debug(f"Field {field_idx_str} maps to metric {metric_name}")
+                        else:
                             try:
-                                if isinstance(new_value, str):
-                                    if "." in new_value or "e" in new_value.lower():
-                                        new_value_typed = float(new_value)
-                                        logger.debug(f"Converted string '{new_value}' to float: {new_value_typed}")
-                                    elif new_value.lstrip("-").isdigit():
-                                        new_value_typed = int(new_value)
-                                        logger.debug(f"Converted string '{new_value}' to int: {new_value_typed}")
-                                    else:
-                                        new_value_typed = new_value
-                                        logger.debug(f"Kept string value as is: {new_value_typed}")
+                                field_idx = int(field_idx_str)
+                                if field_idx in STREAMING_FIELD_MAPPING:
+                                    metric_name = STREAMING_FIELD_MAPPING[field_idx]
+                                    logger.debug(f"Field {field_idx} maps to metric {metric_name}")
+                                else:
+                                    logger.warning(f"Unknown field index: {field_idx_str}")
+                                    continue
+                            except ValueError:
+                                logger.warning(f"Non-integer field index: {field_idx_str}")
+                                continue
+                            
+                        try:
+                            if isinstance(new_value, str):
+                                if "." in new_value or "e" in new_value.lower():
+                                    new_value_typed = float(new_value)
+                                    logger.debug(f"Converted string '{new_value}' to float: {new_value_typed}")
+                                elif new_value.lstrip("-").isdigit():
+                                    new_value_typed = int(new_value)
+                                    logger.debug(f"Converted string '{new_value}' to int: {new_value_typed}")
                                 else:
                                     new_value_typed = new_value
-                                    logger.debug(f"Non-string value, kept as is: {new_value_typed}")
-                            except ValueError as e:
+                                    logger.debug(f"Kept string value as is: {new_value_typed}")
+                            else:
                                 new_value_typed = new_value
-                                logger.warning(f"Value conversion error for {new_value}: {e}")
-                            
-                            current_metric_value = current_contracts_data[contract_key].get(metric_name)
-                            logger.debug(f"Current value for {metric_name}: {current_metric_value}")
+                                logger.debug(f"Non-string value, kept as is: {new_value_typed}")
+                        except ValueError as e:
+                            new_value_typed = new_value
+                            logger.warning(f"Value conversion error for {new_value}: {e}")
+                        
+                        current_metric_value = current_contracts_data[normalized_key].get(metric_name)
+                        logger.debug(f"Current value for {metric_name}: {current_metric_value}")
 
-                            # Special logging for price fields
-                            if field_idx in [2, 3, 4]:  # bidPrice, askPrice, lastPrice
-                                logger.info(f"PRICE UPDATE: Contract {contract_key}, {metric_name}: {current_metric_value} -> {new_value_typed}")
+                        # Special logging for price fields
+                        if field_idx_str in ["2", "3", "4"] or (isinstance(field_idx_str, int) and field_idx_str in [2, 3, 4]):
+                            logger.info(f"PRICE UPDATE: Contract {normalized_key}, {metric_name}: {current_metric_value} -> {new_value_typed}")
 
-                            if current_metric_value != new_value_typed:
-                                logger.debug(f"Value changed for {contract_key}.{metric_name}: {current_metric_value} -> {new_value_typed}")
-                                detected_changes.append({
-                                    "contract": contract_key,
-                                    "metric": metric_name,
-                                    "old": current_metric_value if current_metric_value is not None else "N/A",
-                                    "new": new_value_typed,
-                                    "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
-                                })
-                                current_contracts_data[contract_key][metric_name] = new_value_typed
-                            elif current_metric_value is None:
-                                logger.debug(f"Setting initial value for {contract_key}.{metric_name}: {new_value_typed}")
-                                current_contracts_data[contract_key][metric_name] = new_value_typed
+                        if current_metric_value != new_value_typed:
+                            logger.debug(f"Value changed for {normalized_key}.{metric_name}: {current_metric_value} -> {new_value_typed}")
+                            detected_changes.append({
+                                "contract": normalized_key,
+                                "metric": metric_name,
+                                "old": current_metric_value if current_metric_value is not None else "N/A",
+                                "new": new_value_typed,
+                                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
+                            })
+                            current_contracts_data[normalized_key][metric_name] = new_value_typed
+                        elif current_metric_value is None:
+                            logger.debug(f"Setting initial value for {normalized_key}.{metric_name}: {new_value_typed}")
+                            current_contracts_data[normalized_key][metric_name] = new_value_typed
 
 def get_filtered_option_contract_keys(client, underlying_symbol):
     print(f"Fetching and filtering option contract keys for {underlying_symbol}...")
@@ -230,7 +259,9 @@ def get_filtered_option_contract_keys(client, underlying_symbol):
                                                 passes_dte_filter = True
                                         
                                         if passes_oi_filter and passes_dte_filter and "symbol" in contract:
-                                            keys.append(contract["symbol"])
+                                            # Normalize the contract key before adding to the list
+                                            normalized_key = normalize_contract_key(contract["symbol"])
+                                            keys.append(normalized_key)
                     diag_file.write("--- End of Raw Contract Data ---\n")
                     filtered_keys = list(set(keys))
                     print(f"Found {len(filtered_keys)} unique contract keys for {underlying_symbol} after filtering.")
@@ -279,7 +310,11 @@ def run_options_streaming_mode(client, symbols_to_stream):
 
     for i in range(0, len(all_contract_keys_to_stream), MAX_CONTRACTS_PER_STREAM_SUBSCRIPTION):
         chunk = all_contract_keys_to_stream[i:i + MAX_CONTRACTS_PER_STREAM_SUBSCRIPTION]
-        keys_str_chunk = ",".join(chunk)
+        
+        # Format contract keys for streaming
+        formatted_keys = [format_contract_key_for_streaming(key) for key in chunk]
+        keys_str_chunk = ",".join(formatted_keys)
+        
         logger.info(f"Subscribing to {len(chunk)} option contracts (Chunk {i // MAX_CONTRACTS_PER_STREAM_SUBSCRIPTION + 1})...")
         print(f"Subscribing to {len(chunk)} option contracts (Chunk {i // MAX_CONTRACTS_PER_STREAM_SUBSCRIPTION + 1})...")
         
@@ -434,4 +469,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
