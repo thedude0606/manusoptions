@@ -337,33 +337,34 @@ def update_error_display(error_data):
             html.P(f"Time: {timestamp}", className="error-timestamp")
         ], className="error-message")
     
-    return ""
+    return None
 
 # Symbol Selection Callback
 @app.callback(
     Output("selected-symbol-store", "data"),
+    Output("status-message", "children"),
     Input("load-button", "n_clicks"),
     State("symbol-input", "value"),
     prevent_initial_call=True
 )
-def update_selected_symbol(n_clicks, symbol_value):
-    """Updates the selected symbol when the Load button is clicked."""
-    if not symbol_value:
-        return None
+def update_selected_symbol(n_clicks, symbol):
+    """Updates the selected symbol."""
+    if not symbol:
+        return None, "Please enter a symbol"
     
-    # Normalize symbol (uppercase, trim whitespace)
-    symbol = symbol_value.strip().upper()
+    # Normalize symbol
+    symbol = symbol.strip().upper()
     
-    app_logger.info(f"Symbol selected: {symbol}")
+    app_logger.info(f"Selected symbol: {symbol}")
     
-    return {"symbol": symbol, "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+    return {"symbol": symbol}, f"Symbol selected: {symbol}"
 
 # Minute Data Callback
 @app.callback(
     [
         Output("minute-data-store", "data"),
-        Output("status-message", "children"),
-        Output("error-store", "data", allow_duplicate=True)
+        Output("status-message", "children", allow_duplicate=True),
+        Output("error-store", "data")
     ],
     [
         Input("selected-symbol-store", "data"),
@@ -373,7 +374,7 @@ def update_selected_symbol(n_clicks, symbol_value):
     prevent_initial_call=True
 )
 def update_minute_data(selected_symbol, n_refresh, n_intervals):
-    """Fetches and updates minute data for the selected symbol."""
+    """Fetches minute data for the selected symbol."""
     global MINUTE_DATA_CACHE
     
     ctx_msg = dash.callback_context
@@ -384,9 +385,6 @@ def update_minute_data(selected_symbol, n_refresh, n_intervals):
     
     symbol = selected_symbol["symbol"]
     app_logger.info(f"Updating minute data for {symbol} (trigger: {trigger_id})")
-    
-    # Initialize status message
-    status_message = f"Loading data for {symbol}..."
     
     try:
         client = schwab_client_provider()
@@ -399,65 +397,17 @@ def update_minute_data(selected_symbol, n_refresh, n_intervals):
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
         
-        # Check if we need a full refresh or incremental update
-        force_refresh = trigger_id in ["load-button", "refresh-button"]
+        # Check if we need to fetch new data
+        force_refresh = trigger_id in ["refresh-button", "load-button"]
         
-        # Check if symbol exists in cache
         if symbol in MINUTE_DATA_CACHE and not force_refresh:
-            # Get last update timestamp
+            # Check if cache is still valid
             last_update = MINUTE_DATA_CACHE[symbol].get("last_update")
-            
             if last_update:
-                # Calculate time since last update
-                time_since_update = datetime.datetime.now() - last_update
-                
-                # If cache is too old, force a refresh
-                if time_since_update.total_seconds() > CACHE_CONFIG["max_age_hours"] * 3600:
-                    app_logger.info(f"Cache for {symbol} is too old ({time_since_update.total_seconds()/3600:.2f} hours), forcing refresh")
-                    force_refresh = True
-                else:
-                    # Incremental update - fetch only new data since last update
-                    # Add a buffer to avoid gaps
-                    buffer_minutes = CACHE_CONFIG["buffer_minutes"]
-                    since_timestamp = last_update - datetime.timedelta(minutes=buffer_minutes)
-                    
-                    app_logger.info(f"Performing incremental update for {symbol} since {since_timestamp}")
-                    
-                    # Fetch new data
-                    new_data_df, error = get_minute_data(client, symbol, since_timestamp=since_timestamp)
-                    
-                    if error:
-                        app_logger.error(f"Error fetching incremental data: {error}")
-                        return None, f"Error: {error}", {
-                            "source": "Minute Data",
-                            "message": error,
-                            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        }
-                    
-                    if not new_data_df.empty:
-                        # Merge with existing data
-                        existing_df = MINUTE_DATA_CACHE[symbol]["data"]
-                        
-                        # Convert timestamp to datetime if it's not already
-                        if "timestamp" in new_data_df.columns and not pd.api.types.is_datetime64_any_dtype(new_data_df["timestamp"]):
-                            new_data_df["timestamp"] = pd.to_datetime(new_data_df["timestamp"])
-                        
-                        # Remove duplicates (keep newer data)
-                        combined_df = pd.concat([existing_df, new_data_df])
-                        combined_df = combined_df.drop_duplicates(subset=["timestamp"], keep="last")
-                        
-                        # Sort by timestamp (descending)
-                        combined_df = combined_df.sort_values("timestamp", ascending=False)
-                        
-                        # Update cache
-                        MINUTE_DATA_CACHE[symbol]["data"] = combined_df
-                        MINUTE_DATA_CACHE[symbol]["last_update"] = datetime.datetime.now()
-                        
-                        app_logger.info(f"Added {len(new_data_df)} new data points for {symbol}")
-                        status_message = f"Updated {symbol} data with {len(new_data_df)} new points"
-                    else:
-                        app_logger.info(f"No new data for {symbol}")
-                        status_message = f"No new data available for {symbol}"
+                age = datetime.datetime.now() - last_update
+                if age.total_seconds() < CACHE_CONFIG["update_interval_seconds"]:
+                    # Cache is still fresh, use it
+                    app_logger.info(f"Using cached minute data for {symbol} (age: {age.total_seconds():.1f}s)")
                     
                     # Prepare data for store
                     minute_data = {
@@ -466,42 +416,42 @@ def update_minute_data(selected_symbol, n_refresh, n_intervals):
                         "last_update": MINUTE_DATA_CACHE[symbol]["last_update"].strftime("%Y-%m-%d %H:%M:%S")
                     }
                     
+                    status_message = f"Using cached data for {symbol} (updated {age.total_seconds():.1f}s ago)"
                     return minute_data, status_message, None
         
-        # Full refresh or symbol not in cache
-        if force_refresh or symbol not in MINUTE_DATA_CACHE:
-            app_logger.info(f"Performing full refresh for {symbol}")
-            
-            # Fetch full data (90 days)
-            days_history = 90
-            minute_data_df, error = get_minute_data(client, symbol, days_history=days_history)
-            
-            if error:
-                app_logger.error(f"Error fetching full data: {error}")
-                return None, f"Error: {error}", {
-                    "source": "Minute Data",
-                    "message": error,
-                    "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
-            
-            # Update cache
-            MINUTE_DATA_CACHE[symbol] = {
-                "data": minute_data_df,
-                "last_update": datetime.datetime.now(),
-                "timeframe_data": {}  # Will be populated by technical indicators callback
+        # Fetch new data
+        app_logger.info(f"Fetching minute data for {symbol}")
+        minute_df, error = get_minute_data(client, symbol)
+        
+        if error:
+            app_logger.error(f"Error fetching minute data: {error}")
+            return None, f"Error: {error}", {
+                "source": "Minute Data",
+                "message": error,
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
-            
-            app_logger.info(f"Fetched {len(minute_data_df)} data points for {symbol}")
-            status_message = f"Loaded {len(minute_data_df)} data points for {symbol}"
-            
-            # Prepare data for store
-            minute_data = {
-                "symbol": symbol,
-                "data": minute_data_df.to_dict("records"),
-                "last_update": MINUTE_DATA_CACHE[symbol]["last_update"].strftime("%Y-%m-%d %H:%M:%S")
-            }
-            
-            return minute_data, status_message, None
+        
+        if minute_df.empty:
+            app_logger.warning(f"No minute data available for {symbol}")
+            return None, f"No minute data available for {symbol}", None
+        
+        # Update cache
+        MINUTE_DATA_CACHE[symbol] = {
+            "data": minute_df,
+            "last_update": datetime.datetime.now()
+        }
+        
+        # Prepare data for store
+        minute_data = {
+            "symbol": symbol,
+            "data": minute_df.to_dict("records"),
+            "last_update": MINUTE_DATA_CACHE[symbol]["last_update"].strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+        status_message = f"Loaded {len(minute_df)} minute bars for {symbol}"
+        app_logger.info(status_message)
+        
+        return minute_data, status_message, None
     
     except Exception as e:
         error_msg = f"Error updating minute data: {str(e)}"
@@ -511,9 +461,6 @@ def update_minute_data(selected_symbol, n_refresh, n_intervals):
             "message": error_msg,
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
-    
-    # This should not be reached, but just in case
-    return None, "No data available", None
 
 # Technical Indicators Callback
 @app.callback(
@@ -628,13 +575,13 @@ def update_technical_indicators(minute_data, timeframe):
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
 
-# Options Chain Callback
+# Combined Options Chain Callback
 @app.callback(
     [
-        Output("options-chain-store", "data", allow_duplicate=True),
-        Output("expiration-date-dropdown", "options", allow_duplicate=True),
-        Output("expiration-date-dropdown", "value", allow_duplicate=True),
-        Output("options-chain-status", "children", allow_duplicate=True),
+        Output("options-chain-store", "data"),
+        Output("expiration-date-dropdown", "options"),
+        Output("expiration-date-dropdown", "value"),
+        Output("options-chain-status", "children"),
         Output("error-store", "data", allow_duplicate=True)
     ],
     [
