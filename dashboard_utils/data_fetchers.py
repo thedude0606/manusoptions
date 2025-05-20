@@ -11,6 +11,12 @@ from dotenv import load_dotenv
 import re # For contract key formatting
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 TOKENS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "tokens.json")
+
+# Define log_file variable at module level to ensure it's always available
+log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.path.join(log_dir, f"data_fetchers_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+
 # Configure basic logging for this module with both console and file handlers
 logger = logging.getLogger(__name__)
 if not logger.hasHandlers():
@@ -21,15 +27,13 @@ if not logger.hasHandlers():
     logger.addHandler(handler)
     
     # File handler
-    log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
-    os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, f"data_fetchers_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
     file_handler = logging.FileHandler(log_file)
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
     
 logger.setLevel(logging.INFO)
 logger.info(f"Data fetchers logger initialized. Logging to console and file: {log_file}")
+
 def get_schwab_client():
     """Helper to initialize and return a Schwab client if tokens exist."""
     app_key = os.getenv("APP_KEY")
@@ -51,6 +55,7 @@ def get_schwab_client():
     except Exception as e:
         logger.error(f"Error initializing Schwab client: {e}", exc_info=True)
         return None, f"Error initializing Schwab client: {str(e)}"
+
 def get_minute_data(client: schwabdev.Client, symbol: str, days_history: int = 1, since_timestamp=None):
     """
     Fetches 1-minute historical price data for the given symbol.
@@ -205,6 +210,7 @@ def get_minute_data(client: schwabdev.Client, symbol: str, days_history: int = 1
         logger.warning(f"No minute data returned for {symbol}")
     
     return all_candles_df, None
+
 def get_options_chain_data(client: schwabdev.Client, symbol: str):
     """
     Fetches options chain data for the given symbol.
@@ -285,6 +291,7 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
     except Exception as e:
         logger.error(f"Error in get_options_chain_data for {symbol}: {e}", exc_info=True)
         return pd.DataFrame(), [], f"An error occurred while fetching options chain data for {symbol}: {str(e)}"
+
 def format_contract_key_for_streaming(contract_key):
     """
     Formats an option contract key for streaming compatibility.
@@ -332,6 +339,7 @@ def format_contract_key_for_streaming(contract_key):
     except Exception as e:
         logger.error(f"Error formatting contract key {contract_key}: {e}", exc_info=True)
         return contract_key
+
 def get_option_contract_keys(client: schwabdev.Client, symbol: str):
     """Fetches option contract keys (symbols) for the given underlying symbol, filtered by OI > 0."""
     if not client:
@@ -346,55 +354,33 @@ def get_option_contract_keys(client: schwabdev.Client, symbol: str):
             expMonth="ALL",
             optionType="ALL"
         )
-        if not response.ok:
-            return set(), f"Error fetching option chains for keys: {response.status_code} - {response.text}"
-        options_data = response.json()
-        if options_data.get("status") == "FAILED":
-            return set(), f"Failed to fetch option chains for keys: {options_data.get('error', 'Unknown API error')}"
-        for exp_date_map_type in ["callExpDateMap", "putExpDateMap"]:
-            if exp_date_map_type in options_data and options_data[exp_date_map_type]:
-                for _date, strikes in options_data[exp_date_map_type].items():
-                    for _strike_price, contracts_at_strike in strikes.items():
-                        for contract in contracts_at_strike:
-                            if contract.get("openInterest", 0) > 0 and contract.get("symbol"):
-                                # Format the contract key for streaming compatibility
-                                original_symbol = contract.get("symbol")
-                                formatted_symbol = format_contract_key_for_streaming(original_symbol)
-                                contract_keys.add(formatted_symbol)
-                                
-                                # Log a sample of the formatted keys
-                                if len(contract_keys) <= 5:
-                                    logger.info(f"Contract key formatted: {original_symbol} -> {formatted_symbol}")
         
-        logger.info(f"Retrieved and formatted {len(contract_keys)} contract keys for {symbol}")
+        if not response.ok:
+            return set(), f"Error fetching option chains: {response.status_code} - {response.text}"
+        
+        options_data = response.json()
+        
+        # Process call options
+        if "callExpDateMap" in options_data and options_data["callExpDateMap"]:
+            for date_str, strikes in options_data["callExpDateMap"].items():
+                for strike_price, contracts in strikes.items():
+                    for contract in contracts:
+                        # Only include contracts with open interest > 0
+                        if contract.get("openInterest", 0) > 0:
+                            contract_keys.add(contract.get("symbol"))
+        
+        # Process put options
+        if "putExpDateMap" in options_data and options_data["putExpDateMap"]:
+            for date_str, strikes in options_data["putExpDateMap"].items():
+                for strike_price, contracts in strikes.items():
+                    for contract in contracts:
+                        # Only include contracts with open interest > 0
+                        if contract.get("openInterest", 0) > 0:
+                            contract_keys.add(contract.get("symbol"))
+        
+        logger.info(f"Found {len(contract_keys)} option contracts with OI > 0 for {symbol}")
         return contract_keys, None
+    
     except Exception as e:
         logger.error(f"Error in get_option_contract_keys for {symbol}: {e}", exc_info=True)
         return set(), f"An error occurred while fetching option contract keys for {symbol}: {str(e)}"
-if __name__ == "__main__":
-    print("Testing data_fetchers.py...")
-    test_client, client_error = get_schwab_client()
-    if client_error:
-        print(client_error)
-    if test_client:
-        print("Schwab client initialized successfully.")
-        
-        symbol_to_test = "AAPL" 
-        days_to_test = 5 # Test with a smaller number of days first
-        print(f"\nFetching {days_to_test} days of minute data for {symbol_to_test}...")
-        minute_df, error = get_minute_data(test_client, symbol_to_test, days_history=days_to_test)
-        if error:
-            print(f"Error: {error}")
-        elif not minute_df.empty:
-            print(f"Successfully fetched minute data for {symbol_to_test} ({len(minute_df)} rows):")
-            print("Minute Data Head:")
-            print(minute_df.head())
-            print("\nMinute Data Tail:")
-            print(minute_df.tail())
-            # Verify date range roughly
-            if not minute_df.empty:
-                min_date_str = minute_df["timestamp"].min()
-                max_date_str = minute_df["timestamp"].max()
-                print(f"Data ranges from {min_date_str} to {max_date_str}")
-        else:
-            print("No minute data returned.")
