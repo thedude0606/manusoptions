@@ -261,21 +261,6 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
                         contract["putCall"] = "CALL"
                         contract["expirationDate"] = exp_date
                         contract["strikePrice"] = float(strike_price)
-                        
-                        # Only set default values if the fields are missing or null
-                        # This preserves actual values when they exist
-                        if "lastPrice" not in contract or contract["lastPrice"] is None:
-                            contract["lastPrice"] = 0.0
-                            logger.debug(f"Added default lastPrice for {contract.get('symbol', 'unknown')}")
-                        
-                        if "bidPrice" not in contract or contract["bidPrice"] is None:
-                            contract["bidPrice"] = 0.0
-                            logger.debug(f"Added default bidPrice for {contract.get('symbol', 'unknown')}")
-                        
-                        if "askPrice" not in contract or contract["askPrice"] is None:
-                            contract["askPrice"] = 0.0
-                            logger.debug(f"Added default askPrice for {contract.get('symbol', 'unknown')}")
-                        
                         all_options.append(contract)
         
         # Process put options
@@ -292,21 +277,6 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
                         contract["putCall"] = "PUT"
                         contract["expirationDate"] = exp_date
                         contract["strikePrice"] = float(strike_price)
-                        
-                        # Only set default values if the fields are missing or null
-                        # This preserves actual values when they exist
-                        if "lastPrice" not in contract or contract["lastPrice"] is None:
-                            contract["lastPrice"] = 0.0
-                            logger.debug(f"Added default lastPrice for {contract.get('symbol', 'unknown')}")
-                        
-                        if "bidPrice" not in contract or contract["bidPrice"] is None:
-                            contract["bidPrice"] = 0.0
-                            logger.debug(f"Added default bidPrice for {contract.get('symbol', 'unknown')}")
-                        
-                        if "askPrice" not in contract or contract["askPrice"] is None:
-                            contract["askPrice"] = 0.0
-                            logger.debug(f"Added default askPrice for {contract.get('symbol', 'unknown')}")
-                        
                         all_options.append(contract)
         
         # Convert to DataFrame
