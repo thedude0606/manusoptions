@@ -1,34 +1,49 @@
 # Design Decisions
 
-## Callback Structure and Duplicate Output Resolution (May 20, 2025)
+## Dash Callback Structure and Hot Reloading Fix (May 20, 2025)
 
 ### Issue Analysis
 - The application was experiencing a "Duplicate callback outputs" error
-- Error specifically mentioned outputs: options-chain-store.data, expiration-date-dropdown.options, expiration-date-dropdown.value, options-chain-status.children, and error-store.data
+- Error specifically mentioned outputs: options-chain-store.data, expiration-date-dropdown.options, expiration-date-dropdown.value, options-chain-status.children, error-store.data
 - This occurs when multiple callbacks attempt to update the same output component without proper handling
 
 ### Code Audit Findings
 - A comprehensive audit of all callbacks in the codebase was conducted
 - All callbacks that output to the same components (particularly error-store.data) already have `allow_duplicate=True` flags set
-- The error is not due to missing flags in the code but likely due to a stale or misconfigured environment
+- No duplicate callback registrations were found in the codebase
+- The error persists despite correct code structure
 
-### Resolution Strategy
-- **Environment Refresh**: Rather than code changes, a complete environment refresh is recommended:
-  1. Create a fresh virtual environment
-  2. Reinstall all dependencies
-  3. Clear browser cache
-  4. Restart the Dash server with `use_reloader=False`
+### Root Cause Analysis
+- Dash's hot reloading feature can cause duplicate callback registrations
+- When the app reloads, callbacks may be registered multiple times without proper cleanup
+- This is a known issue with Dash's development server when using hot reloading
+- The issue occurs even when the code structure is correct
 
-- **Documentation**: Added comprehensive documentation about callback structure and potential environment issues
-- **Future Prevention**: Consider implementing a callback registration system that automatically checks for and prevents duplicate outputs
+### Solution Strategy
+1. **Disable Hot Reloading**: Created a specialized script (dash_callback_fix.py) that:
+   - Imports the dashboard_app module without executing it
+   - Ensures suppress_callback_exceptions is set to True
+   - Runs the app with hot reloading disabled (use_reloader=False)
+   - Provides proper error handling and logging
+
+2. **Implementation Details**:
+   - The script uses Python's importlib to load the dashboard_app module
+   - It accesses the app instance directly from the module
+   - It configures the app to run with hot reloading disabled
+   - This prevents duplicate callback registrations during development
+
+3. **Usage Instructions**:
+   - Place dash_callback_fix.py in the project root directory
+   - Run the app using `python dash_callback_fix.py` instead of directly running dashboard_app.py
+   - This provides a clean environment for each app run without callback duplication
 
 ### Technical Rationale
-- Dash's callback system requires explicit handling of duplicate outputs
-- When multiple callbacks target the same output, each must include `allow_duplicate=True` except for the first one
-- In complex applications, stale environments can sometimes maintain outdated callback registrations
-- A complete environment refresh ensures all callbacks are properly registered with the current code
+- Disabling hot reloading ensures each callback is registered exactly once
+- This approach maintains the existing code structure without requiring changes to callback definitions
+- It provides a clean solution that addresses the root cause rather than symptoms
+- The approach is consistent with Dash's recommended practices for production deployments
 
-This approach addresses the root cause without introducing unnecessary code changes that could potentially create new issues.
+This solution addresses the root cause of the duplicate callback outputs error while maintaining the existing application structure and functionality.
 
 ## Recommendation Engine Architecture (May 19, 2025)
 
