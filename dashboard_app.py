@@ -20,6 +20,12 @@ from dashboard_utils.recommendation_tab import create_recommendation_tab, regist
 
 # Configure logging for the app with both console and file handlers
 app_logger = logging.getLogger(__name__)
+
+# Always define log_file regardless of handler state
+log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.path.join(log_dir, f"app_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+
 if not app_logger.hasHandlers():
     # Console handler
     app_handler = logging.StreamHandler()
@@ -28,9 +34,6 @@ if not app_logger.hasHandlers():
     app_logger.addHandler(app_handler)
     
     # File handler
-    log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
-    os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, f"app_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
     file_handler = logging.FileHandler(log_file)
     file_handler.setFormatter(app_formatter)
     app_logger.addHandler(file_handler)
