@@ -20,6 +20,11 @@
 - ✅ Integration with existing data sources
 - ✅ Comprehensive test suite for validation
 
+### Bug Fixes and Optimizations (May 20, 2025)
+- ✅ Audited callback structure for duplicate outputs
+- ✅ Verified all callbacks using duplicate outputs have allow_duplicate=True flags
+- ✅ Documented environment refresh procedure for resolving stale environment issues
+
 ## Current Work in Progress
 
 - 🔄 User experience refinements for recommendation tab
@@ -31,6 +36,7 @@
 - ⚠️ API rate limiting may affect real-time recommendation updates
 - ⚠️ Options with very low liquidity may still appear in recommendations despite filtering
 - ⚠️ Market direction analysis needs more historical data for improved accuracy
+- ⚠️ Stale development environments may cause duplicate callback output errors despite correct code
 
 ## Next Steps
 

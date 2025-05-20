@@ -1,5 +1,35 @@
 # Design Decisions
 
+## Callback Structure and Duplicate Output Resolution (May 20, 2025)
+
+### Issue Analysis
+- The application was experiencing a "Duplicate callback outputs" error
+- Error specifically mentioned outputs: options-chain-store.data, expiration-date-dropdown.options, expiration-date-dropdown.value, options-chain-status.children, and error-store.data
+- This occurs when multiple callbacks attempt to update the same output component without proper handling
+
+### Code Audit Findings
+- A comprehensive audit of all callbacks in the codebase was conducted
+- All callbacks that output to the same components (particularly error-store.data) already have `allow_duplicate=True` flags set
+- The error is not due to missing flags in the code but likely due to a stale or misconfigured environment
+
+### Resolution Strategy
+- **Environment Refresh**: Rather than code changes, a complete environment refresh is recommended:
+  1. Create a fresh virtual environment
+  2. Reinstall all dependencies
+  3. Clear browser cache
+  4. Restart the Dash server with `use_reloader=False`
+
+- **Documentation**: Added comprehensive documentation about callback structure and potential environment issues
+- **Future Prevention**: Consider implementing a callback registration system that automatically checks for and prevents duplicate outputs
+
+### Technical Rationale
+- Dash's callback system requires explicit handling of duplicate outputs
+- When multiple callbacks target the same output, each must include `allow_duplicate=True` except for the first one
+- In complex applications, stale environments can sometimes maintain outdated callback registrations
+- A complete environment refresh ensures all callbacks are properly registered with the current code
+
+This approach addresses the root cause without introducing unnecessary code changes that could potentially create new issues.
+
 ## Recommendation Engine Architecture (May 19, 2025)
 
 ### Requirements Analysis

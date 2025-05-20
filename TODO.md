@@ -1,5 +1,17 @@
 # TODO List
 
+## Environment and Bug Fixes
+
+### High Priority
+- [x] Audit callback structure for duplicate outputs
+- [x] Verify all callbacks using duplicate outputs have allow_duplicate=True flags
+- [ ] Refresh development environment to resolve stale environment issues:
+  - [ ] Create fresh virtual environment
+  - [ ] Reinstall all dependencies
+  - [ ] Clear browser cache
+  - [ ] Restart Dash server with use_reloader=False
+- [ ] Implement comprehensive callback structure documentation
+
 ## Recommendation Engine Implementation
 
 ### High Priority
