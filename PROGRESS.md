@@ -12,6 +12,7 @@
 - Batched minute data retrieval for 60 days
 - Dashboard integration with 60-day minute data retrieval
 - Fixed Dash obsolete attribute error (replaced app.run_server with app.run)
+- Fixed recommendations tab with robust data validation and field handling
 
 ## Current Work in Progress
 

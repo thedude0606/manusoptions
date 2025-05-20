@@ -12,6 +12,7 @@
 - [x] Implement batched minute data retrieval for 60 days
 - [x] Integrate batched data retrieval with dashboard application
 - [x] Fix Dash obsolete attribute error (app.run_server → app.run)
+- [x] Fix recommendations tab with robust data validation and field handling
 - [ ] Test dashboard with various symbols and extended data periods
 
 ## Medium Priority

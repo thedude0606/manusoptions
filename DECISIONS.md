@@ -1,5 +1,19 @@
 # Key Architectural Decisions
 
+## Recommendation Engine Data Handling
+
+- **Decision**: Implement robust data validation and field handling in the recommendation engine
+- **Rationale**: The recommendation engine needs to handle various field name inconsistencies and missing data in the options chain API responses
+- **Alternatives Considered**: 
+  - Strict schema validation (too rigid for varying API responses)
+  - Minimal validation with error handling (insufficient for reliable recommendations)
+- **Consequences**: 
+  - Increased resilience to API response variations
+  - Graceful fallbacks for missing or differently named fields
+  - More detailed logging for troubleshooting
+  - Slightly increased code complexity but significantly improved reliability
+  - Better user experience with more consistent recommendations
+
 ## Dashboard Framework Updates
 
 - **Decision**: Update from app.run_server to app.run in Dash application
