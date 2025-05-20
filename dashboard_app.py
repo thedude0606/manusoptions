@@ -752,8 +752,38 @@ def update_options_tables(options_chain_data, selected_expiration):
     filtered_options = [opt for opt in options_data if opt.get("expirationDate") == selected_expiration]
     
     # Separate calls and puts
-    calls = [opt for opt in filtered_options if opt.get("putCall") == "CALL"]
-    puts = [opt for opt in filtered_options if opt.get("putCall") == "PUT"]
+    calls_raw = [opt for opt in filtered_options if opt.get("putCall") == "CALL"]
+    puts_raw = [opt for opt in filtered_options if opt.get("putCall") == "PUT"]
+    
+    # Sanitize data for DataTable (remove non-primitive types)
+    def sanitize_option_data(options_list):
+        sanitized_list = []
+        for opt in options_list:
+            sanitized_opt = {}
+            for key, value in opt.items():
+                # Skip complex objects or convert them to strings
+                if isinstance(value, (str, int, float, bool)) or value is None:
+                    sanitized_opt[key] = value
+                elif key == "optionDeliverablesList":
+                    # Convert complex object to string representation or skip
+                    try:
+                        sanitized_opt[key] = str(value)
+                    except:
+                        # If conversion fails, skip this field
+                        pass
+                else:
+                    # For other complex objects, try to convert to string
+                    try:
+                        sanitized_opt[key] = str(value)
+                    except:
+                        # If conversion fails, skip this field
+                        pass
+            sanitized_list.append(sanitized_opt)
+        return sanitized_list
+    
+    # Apply sanitization
+    calls = sanitize_option_data(calls_raw)
+    puts = sanitize_option_data(puts_raw)
     
     # Create columns configuration
     columns = [
