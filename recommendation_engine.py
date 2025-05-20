@@ -198,50 +198,167 @@ class RecommendationEngine:
                 "puts": pd.DataFrame()
             }
         
+        # Ensure required columns exist with fallbacks
+        self._ensure_required_columns(options_df)
+        
         # Create copies to avoid modifying the original DataFrame
-        calls_df = options_df[options_df['putCall'] == 'CALL'].copy()
-        puts_df = options_df[options_df['putCall'] == 'PUT'].copy()
+        try:
+            calls_df = options_df[options_df['putCall'] == 'CALL'].copy()
+            puts_df = options_df[options_df['putCall'] == 'PUT'].copy()
+            logger.info(f"Split options into {len(calls_df)} calls and {len(puts_df)} puts")
+        except KeyError:
+            logger.error("Missing 'putCall' column in options DataFrame")
+            # Try to infer from symbol if possible
+            if 'symbol' in options_df.columns:
+                logger.info("Attempting to infer putCall from symbol")
+                options_df['putCall'] = options_df['symbol'].apply(
+                    lambda x: 'CALL' if 'C' in str(x).upper() else ('PUT' if 'P' in str(x).upper() else 'UNKNOWN')
+                )
+                calls_df = options_df[options_df['putCall'] == 'CALL'].copy()
+                puts_df = options_df[options_df['putCall'] == 'PUT'].copy()
+                logger.info(f"Inferred {len(calls_df)} calls and {len(puts_df)} puts from symbols")
+            else:
+                logger.error("Cannot determine option types without putCall or symbol columns")
+                return {
+                    "calls": pd.DataFrame(),
+                    "puts": pd.DataFrame()
+                }
         
-        # Filter for options with sufficient liquidity
-        calls_df = calls_df[calls_df['openInterest'] > 10]
-        puts_df = puts_df[puts_df['openInterest'] > 10]
+        # Filter for options with sufficient liquidity if openInterest is available
+        if 'openInterest' in calls_df.columns:
+            calls_df_filtered = calls_df[calls_df['openInterest'] > 10]
+            puts_df_filtered = puts_df[puts_df['openInterest'] > 10]
+            
+            # Only use filtered dataframes if they're not empty
+            if not calls_df_filtered.empty:
+                calls_df = calls_df_filtered
+            else:
+                logger.warning("No call options with sufficient openInterest, using all calls")
+                
+            if not puts_df_filtered.empty:
+                puts_df = puts_df_filtered
+            else:
+                logger.warning("No put options with sufficient openInterest, using all puts")
+        else:
+            logger.warning("openInterest column not found, skipping liquidity filter")
         
-        if calls_df.empty or puts_df.empty:
-            logger.warning("Insufficient liquidity in options chain")
+        if calls_df.empty and puts_df.empty:
+            logger.warning("No valid options found after filtering")
             return {
                 "calls": pd.DataFrame(),
                 "puts": pd.DataFrame()
             }
         
         # Calculate days to expiration if not already present
-        if 'daysToExpiration' not in calls_df.columns:
+        if 'daysToExpiration' not in calls_df.columns and 'expirationDate' in calls_df.columns:
+            logger.info("Calculating daysToExpiration from expirationDate")
             today = datetime.now().date()
-            calls_df['daysToExpiration'] = calls_df['expirationDate'].apply(
-                lambda x: (datetime.strptime(x, '%Y-%m-%d').date() - today).days
-            )
-            puts_df['daysToExpiration'] = puts_df['expirationDate'].apply(
-                lambda x: (datetime.strptime(x, '%Y-%m-%d').date() - today).days
-            )
+            try:
+                calls_df['daysToExpiration'] = calls_df['expirationDate'].apply(
+                    lambda x: (datetime.strptime(str(x), '%Y-%m-%d').date() - today).days if pd.notna(x) else None
+                )
+                puts_df['daysToExpiration'] = puts_df['expirationDate'].apply(
+                    lambda x: (datetime.strptime(str(x), '%Y-%m-%d').date() - today).days if pd.notna(x) else None
+                )
+            except (ValueError, TypeError) as e:
+                logger.error(f"Error calculating daysToExpiration: {e}")
+                # Try alternative date format
+                try:
+                    calls_df['daysToExpiration'] = calls_df['expirationDate'].apply(
+                        lambda x: (datetime.strptime(str(x), '%m/%d/%Y').date() - today).days if pd.notna(x) else None
+                    )
+                    puts_df['daysToExpiration'] = puts_df['expirationDate'].apply(
+                        lambda x: (datetime.strptime(str(x), '%m/%d/%Y').date() - today).days if pd.notna(x) else None
+                    )
+                except (ValueError, TypeError) as e:
+                    logger.error(f"Error with alternative date format: {e}")
+                    # Set default value
+                    calls_df['daysToExpiration'] = 7
+                    puts_df['daysToExpiration'] = 7
         
         # Filter for options with appropriate expiration (1-14 days for hourly/swing trading)
-        calls_df = calls_df[(calls_df['daysToExpiration'] >= 1) & (calls_df['daysToExpiration'] <= 14)]
-        puts_df = puts_df[(puts_df['daysToExpiration'] >= 1) & (puts_df['daysToExpiration'] <= 14)]
+        if 'daysToExpiration' in calls_df.columns:
+            calls_df_filtered = calls_df[(calls_df['daysToExpiration'] >= 1) & (calls_df['daysToExpiration'] <= 14)]
+            puts_df_filtered = puts_df[(puts_df['daysToExpiration'] >= 1) & (puts_df['daysToExpiration'] <= 14)]
+            
+            # Only use filtered dataframes if they're not empty
+            if not calls_df_filtered.empty:
+                calls_df = calls_df_filtered
+            else:
+                logger.warning("No call options within desired expiration range, using all calls")
+                
+            if not puts_df_filtered.empty:
+                puts_df = puts_df_filtered
+            else:
+                logger.warning("No put options within desired expiration range, using all puts")
         
         # Calculate additional metrics for scoring
         for df in [calls_df, puts_df]:
             if not df.empty:
-                # Calculate bid-ask spread percentage
-                df['spreadPct'] = (df['askPrice'] - df['bidPrice']) / ((df['askPrice'] + df['bidPrice']) / 2)
+                # Calculate bid-ask spread percentage with fallbacks for missing fields
+                if all(col in df.columns for col in ['askPrice', 'bidPrice']):
+                    # Use askPrice and bidPrice if available
+                    df['spreadPct'] = df.apply(
+                        lambda row: (row['askPrice'] - row['bidPrice']) / ((row['askPrice'] + row['bidPrice']) / 2) 
+                        if pd.notna(row['askPrice']) and pd.notna(row['bidPrice']) and row['bidPrice'] > 0 else 0.05,
+                        axis=1
+                    )
+                elif all(col in df.columns for col in ['ask', 'bid']):
+                    # Fallback to ask and bid
+                    df['spreadPct'] = df.apply(
+                        lambda row: (row['ask'] - row['bid']) / ((row['ask'] + row['bid']) / 2) 
+                        if pd.notna(row['ask']) and pd.notna(row['bid']) and row['bid'] > 0 else 0.05,
+                        axis=1
+                    )
+                else:
+                    # Default value if no price data available
+                    df['spreadPct'] = 0.05
+                    logger.warning("No bid/ask price data available, using default spreadPct")
                 
                 # Calculate distance from current price (as percentage)
-                df['strikeDistancePct'] = abs(df['strikePrice'] - underlying_price) / underlying_price
+                df['strikeDistancePct'] = df.apply(
+                    lambda row: abs(row['strikePrice'] - underlying_price) / underlying_price 
+                    if pd.notna(row['strikePrice']) and underlying_price > 0 else 0.05,
+                    axis=1
+                )
+                
+                # Calculate time value with fallbacks
+                if 'mark' in df.columns:
+                    price_col = 'mark'
+                elif 'lastPrice' in df.columns:
+                    price_col = 'lastPrice'
+                elif 'last' in df.columns:
+                    price_col = 'last'
+                else:
+                    # Use average of bid and ask if available
+                    if all(col in df.columns for col in ['bid', 'ask']):
+                        df['mark'] = df.apply(
+                            lambda row: (row['bid'] + row['ask']) / 2 
+                            if pd.notna(row['bid']) and pd.notna(row['ask']) else None,
+                            axis=1
+                        )
+                        price_col = 'mark'
+                    else:
+                        # No price data available
+                        df['mark'] = 1.0  # Default value
+                        price_col = 'mark'
+                        logger.warning("No price data available, using default mark value")
                 
                 # Calculate time value
-                df['timeValue'] = df['mark'] - np.maximum(0, underlying_price - df['strikePrice'] if df['putCall'] == 'CALL' else df['strikePrice'] - underlying_price)
+                df['timeValue'] = df.apply(
+                    lambda row: row[price_col] - np.maximum(0, 
+                        underlying_price - row['strikePrice'] if row['putCall'] == 'CALL' 
+                        else row['strikePrice'] - underlying_price) 
+                    if pd.notna(row[price_col]) and pd.notna(row['strikePrice']) else 0,
+                    axis=1
+                )
                 
                 # Calculate implied volatility rank if possible
                 if 'volatility' in df.columns:
                     df['ivRank'] = df['volatility']
+                else:
+                    df['ivRank'] = 0.3  # Default moderate volatility
+                    logger.warning("No volatility data available, using default ivRank")
         
         # Score the options based on various factors
         self._score_options(calls_df, puts_df, market_direction, underlying_price)
@@ -250,6 +367,75 @@ class RecommendationEngine:
             "calls": calls_df,
             "puts": puts_df
         }
+        
+    def _ensure_required_columns(self, options_df):
+        """
+        Ensure all required columns exist in the options DataFrame, adding defaults if needed.
+        
+        Args:
+            options_df: DataFrame containing options chain data
+        """
+        logger.info("Ensuring required columns exist in options DataFrame")
+        
+        # List of required columns with default values
+        required_columns = {
+            'putCall': 'UNKNOWN',
+            'strikePrice': 0.0,
+            'expirationDate': datetime.now().strftime('%Y-%m-%d'),
+            'daysToExpiration': 7,
+            'openInterest': 100,  # Default to moderate open interest
+            'volatility': 0.3,    # Default to moderate volatility
+            'delta': 0.5,         # Default to ATM delta
+            'gamma': 0.05,
+            'theta': -0.05,
+            'vega': 0.05,
+            'mark': None,
+            'bidPrice': None,
+            'askPrice': None,
+            'lastPrice': None
+        }
+        
+        # Check for price columns and create fallbacks
+        if 'bidPrice' not in options_df.columns and 'bid' in options_df.columns:
+            logger.info("Creating bidPrice from bid column")
+            options_df['bidPrice'] = options_df['bid']
+            
+        if 'askPrice' not in options_df.columns and 'ask' in options_df.columns:
+            logger.info("Creating askPrice from ask column")
+            options_df['askPrice'] = options_df['ask']
+            
+        if 'lastPrice' not in options_df.columns and 'last' in options_df.columns:
+            logger.info("Creating lastPrice from last column")
+            options_df['lastPrice'] = options_df['last']
+            
+        # If mark is missing but we have bid and ask, calculate it
+        if 'mark' not in options_df.columns:
+            if all(col in options_df.columns for col in ['bid', 'ask']):
+                logger.info("Creating mark as average of bid and ask")
+                options_df['mark'] = options_df.apply(
+                    lambda row: (row['bid'] + row['ask']) / 2 
+                    if pd.notna(row['bid']) and pd.notna(row['ask']) else None,
+                    axis=1
+                )
+            elif all(col in options_df.columns for col in ['bidPrice', 'askPrice']):
+                logger.info("Creating mark as average of bidPrice and askPrice")
+                options_df['mark'] = options_df.apply(
+                    lambda row: (row['bidPrice'] + row['askPrice']) / 2 
+                    if pd.notna(row['bidPrice']) and pd.notna(row['askPrice']) else None,
+                    axis=1
+                )
+            elif 'lastPrice' in options_df.columns:
+                logger.info("Creating mark from lastPrice")
+                options_df['mark'] = options_df['lastPrice']
+            elif 'last' in options_df.columns:
+                logger.info("Creating mark from last")
+                options_df['mark'] = options_df['last']
+        
+        # Add any missing required columns with default values
+        for col, default_val in required_columns.items():
+            if col not in options_df.columns:
+                logger.warning(f"Adding missing column '{col}' with default value")
+                options_df[col] = default_val
     
     def _score_options(self, calls_df, puts_df, market_direction, underlying_price):
         """
@@ -261,6 +447,8 @@ class RecommendationEngine:
             market_direction: Dict with market direction analysis
             underlying_price: Current price of the underlying asset
         """
+        logger.info("Scoring options based on market direction and greeks")
+        
         # Initialize confidence scores
         for df in [calls_df, puts_df]:
             if not df.empty:
@@ -271,60 +459,122 @@ class RecommendationEngine:
             # For calls, higher score if market is bullish
             if market_direction['direction'] == 'bullish':
                 calls_df['confidenceScore'] += (market_direction['bullish_score'] - 50) * 0.5
+                logger.info(f"Adjusted call scores for bullish market: +{(market_direction['bullish_score'] - 50) * 0.5}")
             elif market_direction['direction'] == 'bearish':
                 calls_df['confidenceScore'] -= (market_direction['bearish_score'] - 50) * 0.5
+                logger.info(f"Adjusted call scores for bearish market: -{(market_direction['bearish_score'] - 50) * 0.5}")
         
         if not puts_df.empty:
             # For puts, higher score if market is bearish
             if market_direction['direction'] == 'bearish':
                 puts_df['confidenceScore'] += (market_direction['bearish_score'] - 50) * 0.5
+                logger.info(f"Adjusted put scores for bearish market: +{(market_direction['bearish_score'] - 50) * 0.5}")
             elif market_direction['direction'] == 'bullish':
                 puts_df['confidenceScore'] -= (market_direction['bullish_score'] - 50) * 0.5
+                logger.info(f"Adjusted put scores for bullish market: -{(market_direction['bullish_score'] - 50) * 0.5}")
         
         # Adjust scores based on greeks if available
-        for df in [calls_df, puts_df]:
+        for df_name, df in [("calls", calls_df), ("puts", puts_df)]:
             if not df.empty:
+                logger.info(f"Adjusting scores for {df_name} based on greeks and other factors")
+                
                 # Delta - prefer options with delta between 0.3 and 0.7 (not too far OTM or ITM)
                 if 'delta' in df.columns:
-                    df['delta'] = pd.to_numeric(df['delta'], errors='coerce')
-                    df.loc[df['delta'].notna(), 'confidenceScore'] += (
-                        10 - 20 * abs(abs(df.loc[df['delta'].notna(), 'delta']) - 0.5)
-                    )
+                    try:
+                        df['delta'] = pd.to_numeric(df['delta'], errors='coerce')
+                        df.loc[df['delta'].notna(), 'confidenceScore'] += (
+                            10 - 20 * abs(abs(df.loc[df['delta'].notna(), 'delta']) - 0.5)
+                        )
+                        logger.info(f"Adjusted {df_name} scores based on delta")
+                    except Exception as e:
+                        logger.error(f"Error adjusting scores based on delta: {e}")
+                        # Provide a default adjustment if delta processing fails
+                        df['confidenceScore'] += 5  # Modest boost as fallback
                 
                 # Gamma - higher gamma means more responsive to price changes (good for short-term)
                 if 'gamma' in df.columns:
-                    df['gamma'] = pd.to_numeric(df['gamma'], errors='coerce')
-                    df.loc[df['gamma'].notna(), 'confidenceScore'] += df.loc[df['gamma'].notna(), 'gamma'] * 50
+                    try:
+                        df['gamma'] = pd.to_numeric(df['gamma'], errors='coerce')
+                        df.loc[df['gamma'].notna(), 'confidenceScore'] += df.loc[df['gamma'].notna(), 'gamma'] * 50
+                        logger.info(f"Adjusted {df_name} scores based on gamma")
+                    except Exception as e:
+                        logger.error(f"Error adjusting scores based on gamma: {e}")
                 
                 # Theta - lower (less negative) theta is better for holding
                 if 'theta' in df.columns:
-                    df['theta'] = pd.to_numeric(df['theta'], errors='coerce')
-                    df.loc[df['theta'].notna(), 'confidenceScore'] -= abs(df.loc[df['theta'].notna(), 'theta']) * 20
+                    try:
+                        df['theta'] = pd.to_numeric(df['theta'], errors='coerce')
+                        df.loc[df['theta'].notna(), 'confidenceScore'] -= abs(df.loc[df['theta'].notna(), 'theta']) * 20
+                        logger.info(f"Adjusted {df_name} scores based on theta")
+                    except Exception as e:
+                        logger.error(f"Error adjusting scores based on theta: {e}")
                 
                 # Vega - lower vega reduces exposure to volatility changes
                 if 'vega' in df.columns:
-                    df['vega'] = pd.to_numeric(df['vega'], errors='coerce')
-                    df.loc[df['vega'].notna(), 'confidenceScore'] -= abs(df.loc[df['vega'].notna(), 'vega']) * 10
+                    try:
+                        df['vega'] = pd.to_numeric(df['vega'], errors='coerce')
+                        df.loc[df['vega'].notna(), 'confidenceScore'] -= abs(df.loc[df['vega'].notna(), 'vega']) * 10
+                        logger.info(f"Adjusted {df_name} scores based on vega")
+                    except Exception as e:
+                        logger.error(f"Error adjusting scores based on vega: {e}")
                 
                 # IV - prefer options with moderate IV (not too high or low)
                 if 'volatility' in df.columns:
-                    df['volatility'] = pd.to_numeric(df['volatility'], errors='coerce')
-                    # Penalize very high IV (>60%)
-                    df.loc[df['volatility'] > 0.6, 'confidenceScore'] -= (df.loc[df['volatility'] > 0.6, 'volatility'] - 0.6) * 50
-                    # Penalize very low IV (<15%)
-                    df.loc[df['volatility'] < 0.15, 'confidenceScore'] -= (0.15 - df.loc[df['volatility'] < 0.15, 'volatility']) * 50
+                    try:
+                        df['volatility'] = pd.to_numeric(df['volatility'], errors='coerce')
+                        # Penalize very high IV (>60%)
+                        high_iv_mask = df['volatility'] > 0.6
+                        if high_iv_mask.any():
+                            df.loc[high_iv_mask, 'confidenceScore'] -= (df.loc[high_iv_mask, 'volatility'] - 0.6) * 50
+                        
+                        # Penalize very low IV (<15%)
+                        low_iv_mask = df['volatility'] < 0.15
+                        if low_iv_mask.any():
+                            df.loc[low_iv_mask, 'confidenceScore'] -= (0.15 - df.loc[low_iv_mask, 'volatility']) * 50
+                        
+                        logger.info(f"Adjusted {df_name} scores based on volatility")
+                    except Exception as e:
+                        logger.error(f"Error adjusting scores based on volatility: {e}")
                 
                 # Liquidity - prefer options with tighter spreads
-                df.loc[df['spreadPct'].notna(), 'confidenceScore'] -= df.loc[df['spreadPct'].notna(), 'spreadPct'] * 100
+                try:
+                    if 'spreadPct' in df.columns:
+                        spread_mask = df['spreadPct'].notna()
+                        if spread_mask.any():
+                            df.loc[spread_mask, 'confidenceScore'] -= df.loc[spread_mask, 'spreadPct'] * 100
+                        logger.info(f"Adjusted {df_name} scores based on spread percentage")
+                except Exception as e:
+                    logger.error(f"Error adjusting scores based on spread percentage: {e}")
                 
                 # Strike distance - prefer options closer to the money
-                df.loc[df['strikeDistancePct'].notna(), 'confidenceScore'] -= df.loc[df['strikeDistancePct'].notna(), 'strikeDistancePct'] * 50
+                try:
+                    if 'strikeDistancePct' in df.columns:
+                        distance_mask = df['strikeDistancePct'].notna()
+                        if distance_mask.any():
+                            df.loc[distance_mask, 'confidenceScore'] -= df.loc[distance_mask, 'strikeDistancePct'] * 50
+                        logger.info(f"Adjusted {df_name} scores based on strike distance")
+                except Exception as e:
+                    logger.error(f"Error adjusting scores based on strike distance: {e}")
                 
                 # Days to expiration - prefer options with at least a few days to expiration
-                df.loc[df['daysToExpiration'] < 3, 'confidenceScore'] -= (3 - df.loc[df['daysToExpiration'] < 3, 'daysToExpiration']) * 5
+                try:
+                    if 'daysToExpiration' in df.columns:
+                        short_exp_mask = df['daysToExpiration'] < 3
+                        if short_exp_mask.any():
+                            df.loc[short_exp_mask, 'confidenceScore'] -= (3 - df.loc[short_exp_mask, 'daysToExpiration']) * 5
+                        logger.info(f"Adjusted {df_name} scores based on days to expiration")
+                except Exception as e:
+                    logger.error(f"Error adjusting scores based on days to expiration: {e}")
                 
                 # Cap confidence scores between 0 and 100
                 df['confidenceScore'] = df['confidenceScore'].clip(0, 100)
+                
+                # Log score distribution
+                if not df.empty:
+                    try:
+                        logger.info(f"{df_name} confidence score stats: min={df['confidenceScore'].min():.1f}, max={df['confidenceScore'].max():.1f}, mean={df['confidenceScore'].mean():.1f}")
+                    except Exception as e:
+                        logger.error(f"Error calculating score statistics: {e}")
     
     def calculate_risk_reward(self, evaluated_options, underlying_price):
         """
