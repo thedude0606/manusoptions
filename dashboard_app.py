@@ -102,74 +102,16 @@ app.layout = html.Div([
         n_intervals=0
     ),
     
-    # Tabs
+    # Tabs for different views
     dcc.Tabs([
         # Minute Data Tab
         dcc.Tab(label="Minute Data", children=[
             html.Div([
+                # Timeframe selector
                 html.Div([
-                    html.Button("Export to CSV", id="export-minute-data-button", n_clicks=0, className="export-button"),
-                    dcc.Download(id="download-minute-data-csv")
-                ], className="tab-controls"),
-                html.Div(id="minute-data-loading", children=[
-                    dcc.Loading(
-                        id="minute-data-loading-spinner",
-                        type="circle",
-                        children=html.Div(id="minute-data-container", children=[
-                            dash_table.DataTable(
-                                id="minute-data-table",
-                                page_size=15,
-                                style_table={'overflowX': 'auto'},
-                                style_cell={
-                                    'textAlign': 'left',
-                                    'padding': '5px',
-                                    'minWidth': '80px', 'width': '80px', 'maxWidth': '120px',
-                                    'whiteSpace': 'normal'
-                                },
-                                style_header={
-                                    'backgroundColor': 'rgb(230, 230, 230)',
-                                    'fontWeight': 'bold'
-                                },
-                                # Enable sorting
-                                sort_action="native",
-                                sort_mode="multi",
-                                # Enable filtering
-                                filter_action="native",
-                                # Styling for filter
-                                style_filter={
-                                    'backgroundColor': 'rgb(240, 240, 240)',
-                                },
-                                # Style for filter cells
-                                style_filter_conditional=[
-                                    {
-                                        'if': {'column_id': c},
-                                        'textAlign': 'left'
-                                    } for c in ['timestamp', 'open', 'high', 'low', 'close', 'volume']
-                                ],
-                                # Tooltip for filter usage
-                                tooltip_header={
-                                    'timestamp': 'Filter format: =YYYY-MM-DD for exact date, >YYYY-MM-DD for after date',
-                                    'open': 'Filter format: =X for equals, >X for greater than, <X for less than',
-                                    'high': 'Filter format: =X for equals, >X for greater than, <X for less than',
-                                    'low': 'Filter format: =X for equals, >X for greater than, <X for less than',
-                                    'close': 'Filter format: =X for equals, >X for greater than, <X for less than',
-                                    'volume': 'Filter format: =X for equals, >X for greater than, <X for less than'
-                                },
-                                tooltip_delay=0,
-                                tooltip_duration=None
-                            )
-                        ])
-                    )
-                ])
-            ], className="tab-content")
-        ]),
-        
-        # Technical Indicators Tab
-        dcc.Tab(label="Technical Indicators", children=[
-            html.Div([
-                html.Div([
+                    html.Label("Timeframe:"),
                     dcc.Dropdown(
-                        id="tech-indicators-timeframe-dropdown",
+                        id="timeframe-dropdown",
                         options=[
                             {"label": "1 Minute", "value": "1min"},
                             {"label": "5 Minutes", "value": "5min"},
@@ -179,135 +121,187 @@ app.layout = html.Div([
                             {"label": "4 Hours", "value": "4hour"},
                             {"label": "1 Day", "value": "1day"}
                         ],
-                        value="1min",
+                        value="1hour",
                         clearable=False,
                         className="timeframe-dropdown"
-                    ),
-                    html.Button("Export to CSV", id="export-tech-indicators-button", n_clicks=0, className="export-button"),
-                    dcc.Download(id="download-tech-indicators-csv")
-                ], className="tab-controls"),
-                html.Div(id="tech-indicators-loading", children=[
-                    dcc.Loading(
-                        id="tech-indicators-loading-spinner",
-                        type="circle",
-                        children=html.Div(id="tech-indicators-container", children=[
-                            dash_table.DataTable(
-                                id="tech-indicators-table",
-                                page_size=15,
-                                style_table={'overflowX': 'auto'},
-                                style_cell={
-                                    'textAlign': 'left',
-                                    'padding': '5px',
-                                    'minWidth': '80px', 'width': '80px', 'maxWidth': '120px',
-                                    'whiteSpace': 'normal'
-                                },
-                                style_header={
-                                    'backgroundColor': 'rgb(230, 230, 230)',
-                                    'fontWeight': 'bold'
-                                },
-                                # Enable sorting
-                                sort_action="native",
-                                sort_mode="multi",
-                                # Enable filtering
-                                filter_action="native",
-                                # Styling for filter
-                                style_filter={
-                                    'backgroundColor': 'rgb(240, 240, 240)',
-                                },
-                                # Tooltip for filter usage
-                                tooltip_header={
-                                    'Timestamp': 'Filter format: =YYYY-MM-DD for exact date, >YYYY-MM-DD for after date',
-                                },
-                                tooltip_delay=0,
-                                tooltip_duration=None
-                            )
-                        ])
                     )
-                ])
+                ], className="control-group"),
+                
+                # Data table
+                html.Div([
+                    dash_table.DataTable(
+                        id="minute-data-table",
+                        page_size=10,
+                        style_table={'overflowX': 'auto'},
+                        style_cell={
+                            'textAlign': 'left',
+                            'padding': '5px'
+                        },
+                        style_header={
+                            'backgroundColor': 'rgb(230, 230, 230)',
+                            'fontWeight': 'bold'
+                        }
+                    )
+                ], className="data-table-container")
+            ], className="tab-content")
+        ]),
+        
+        # Technical Indicators Tab
+        dcc.Tab(label="Technical Indicators", children=[
+            html.Div([
+                # Timeframe selector
+                html.Div([
+                    html.Label("Timeframe:"),
+                    dcc.Dropdown(
+                        id="tech-timeframe-dropdown",
+                        options=[
+                            {"label": "1 Minute", "value": "1min"},
+                            {"label": "5 Minutes", "value": "5min"},
+                            {"label": "15 Minutes", "value": "15min"},
+                            {"label": "30 Minutes", "value": "30min"},
+                            {"label": "1 Hour", "value": "1hour"},
+                            {"label": "4 Hours", "value": "4hour"},
+                            {"label": "1 Day", "value": "1day"}
+                        ],
+                        value="1hour",
+                        clearable=False,
+                        className="timeframe-dropdown"
+                    )
+                ], className="control-group"),
+                
+                # Data table
+                html.Div([
+                    dash_table.DataTable(
+                        id="tech-indicators-table",
+                        page_size=10,
+                        style_table={'overflowX': 'auto'},
+                        style_cell={
+                            'textAlign': 'left',
+                            'padding': '5px'
+                        },
+                        style_header={
+                            'backgroundColor': 'rgb(230, 230, 230)',
+                            'fontWeight': 'bold'
+                        }
+                    )
+                ], className="data-table-container")
             ], className="tab-content")
         ]),
         
         # Options Chain Tab
         dcc.Tab(label="Options Chain", children=[
             html.Div([
+                # Controls
                 html.Div([
-                    dcc.Dropdown(
-                        id="expiration-date-dropdown",
-                        placeholder="Select Expiration Date",
-                        className="expiration-dropdown"
-                    ),
+                    html.Div([
+                        html.Label("Expiration Date:"),
+                        dcc.Dropdown(
+                            id="expiration-date-dropdown",
+                            options=[],
+                            className="expiration-dropdown"
+                        )
+                    ], className="control-group"),
+                    html.Div([
+                        html.Label("Option Type:"),
+                        dcc.RadioItems(
+                            id="option-type-radio",
+                            options=[
+                                {"label": "Calls", "value": "CALL"},
+                                {"label": "Puts", "value": "PUT"},
+                                {"label": "Both", "value": "BOTH"}
+                            ],
+                            value="BOTH",
+                            className="option-type-radio"
+                        )
+                    ], className="control-group"),
                     html.Div(id="options-chain-status", className="options-status")
-                ], className="tab-controls"),
-                html.Div(id="options-chain-loading", children=[
-                    dcc.Loading(
-                        id="options-chain-loading-spinner",
-                        type="circle",
-                        children=html.Div(id="options-chain-container", children=[
-                            html.Div([
-                                html.Div([
-                                    html.H3("Calls"),
-                                    dash_table.DataTable(
-                                        id="calls-table",
-                                        page_size=15,
-                                        style_table={'overflowX': 'auto'},
-                                        style_cell={
-                                            'textAlign': 'left',
-                                            'padding': '5px',
-                                            'minWidth': '80px', 'width': '80px', 'maxWidth': '120px',
-                                            'whiteSpace': 'normal'
-                                        },
-                                        style_header={
-                                            'backgroundColor': 'rgb(230, 230, 230)',
-                                            'fontWeight': 'bold'
-                                        },
-                                        # Enable sorting
-                                        sort_action="native",
-                                        sort_mode="multi",
-                                        # Enable filtering
-                                        filter_action="native",
-                                        # Styling for filter
-                                        style_filter={
-                                            'backgroundColor': 'rgb(240, 240, 240)',
-                                        },
-                                        # Tooltip for filter usage
-                                        tooltip_delay=0,
-                                        tooltip_duration=None
-                                    )
-                                ], className="calls-container"),
-                                html.Div([
-                                    html.H3("Puts"),
-                                    dash_table.DataTable(
-                                        id="puts-table",
-                                        page_size=15,
-                                        style_table={'overflowX': 'auto'},
-                                        style_cell={
-                                            'textAlign': 'left',
-                                            'padding': '5px',
-                                            'minWidth': '80px', 'width': '80px', 'maxWidth': '120px',
-                                            'whiteSpace': 'normal'
-                                        },
-                                        style_header={
-                                            'backgroundColor': 'rgb(230, 230, 230)',
-                                            'fontWeight': 'bold'
-                                        },
-                                        # Enable sorting
-                                        sort_action="native",
-                                        sort_mode="multi",
-                                        # Enable filtering
-                                        filter_action="native",
-                                        # Styling for filter
-                                        style_filter={
-                                            'backgroundColor': 'rgb(240, 240, 240)',
-                                        },
-                                        # Tooltip for filter usage
-                                        tooltip_delay=0,
-                                        tooltip_duration=None
-                                    )
-                                ], className="puts-container")
-                            ], className="options-tables-container")
-                        ])
-                    )
-                ])
+                ], className="options-controls"),
+                
+                # Options chain tables
+                html.Div([
+                    html.Div([
+                        html.H3("Calls", className="table-header"),
+                        html.Div([
+                            dash_table.DataTable(
+                                id="calls-table",
+                                columns=[
+                                    {"name": "Strike", "id": "strikePrice", "type": "numeric", "format": {"specifier": ".2f"}},
+                                    {"name": "Last", "id": "lastPrice", "type": "numeric", "format": {"specifier": ".2f"}},
+                                    {"name": "Bid", "id": "bidPrice", "type": "numeric", "format": {"specifier": ".2f"}},
+                                    {"name": "Ask", "id": "askPrice", "type": "numeric", "format": {"specifier": ".2f"}},
+                                    {"name": "Volume", "id": "totalVolume", "type": "numeric"},
+                                    {"name": "OI", "id": "openInterest", "type": "numeric"},
+                                    {"name": "IV", "id": "volatility", "type": "numeric", "format": {"specifier": ".2f"}},
+                                    {"name": "Delta", "id": "delta", "type": "numeric", "format": {"specifier": ".3f"}},
+                                    {"name": "Gamma", "id": "gamma", "type": "numeric", "format": {"specifier": ".3f"}},
+                                    {"name": "Theta", "id": "theta", "type": "numeric", "format": {"specifier": ".3f"}},
+                                    {"name": "Vega", "id": "vega", "type": "numeric", "format": {"specifier": ".3f"}}
+                                ],
+                                page_size=10,
+                                style_table={'overflowX': 'auto'},
+                                style_cell={
+                                    'textAlign': 'left',
+                                    'padding': '5px'
+                                },
+                                style_header={
+                                    'backgroundColor': 'rgb(230, 230, 230)',
+                                    'fontWeight': 'bold'
+                                },
+                                style_data_conditional=[
+                                    {
+                                        'if': {'column_id': 'strikePrice', 'filter_query': '{inTheMoney} eq true'},
+                                        'backgroundColor': 'rgba(0, 255, 0, 0.1)',
+                                        'fontWeight': 'bold'
+                                    }
+                                ],
+                                # Tooltip for filter usage
+                                tooltip_delay=0,
+                                tooltip_duration=None
+                            )
+                        ], className="calls-container")
+                    ]),
+                    html.Div([
+                        html.H3("Puts", className="table-header"),
+                        html.Div([
+                            dash_table.DataTable(
+                                id="puts-table",
+                                columns=[
+                                    {"name": "Strike", "id": "strikePrice", "type": "numeric", "format": {"specifier": ".2f"}},
+                                    {"name": "Last", "id": "lastPrice", "type": "numeric", "format": {"specifier": ".2f"}},
+                                    {"name": "Bid", "id": "bidPrice", "type": "numeric", "format": {"specifier": ".2f"}},
+                                    {"name": "Ask", "id": "askPrice", "type": "numeric", "format": {"specifier": ".2f"}},
+                                    {"name": "Volume", "id": "totalVolume", "type": "numeric"},
+                                    {"name": "OI", "id": "openInterest", "type": "numeric"},
+                                    {"name": "IV", "id": "volatility", "type": "numeric", "format": {"specifier": ".2f"}},
+                                    {"name": "Delta", "id": "delta", "type": "numeric", "format": {"specifier": ".3f"}},
+                                    {"name": "Gamma", "id": "gamma", "type": "numeric", "format": {"specifier": ".3f"}},
+                                    {"name": "Theta", "id": "theta", "type": "numeric", "format": {"specifier": ".3f"}},
+                                    {"name": "Vega", "id": "vega", "type": "numeric", "format": {"specifier": ".3f"}}
+                                ],
+                                page_size=10,
+                                style_table={'overflowX': 'auto'},
+                                style_cell={
+                                    'textAlign': 'left',
+                                    'padding': '5px'
+                                },
+                                style_header={
+                                    'backgroundColor': 'rgb(230, 230, 230)',
+                                    'fontWeight': 'bold'
+                                },
+                                style_data_conditional=[
+                                    {
+                                        'if': {'column_id': 'strikePrice', 'filter_query': '{inTheMoney} eq true'},
+                                        'backgroundColor': 'rgba(0, 255, 0, 0.1)',
+                                        'fontWeight': 'bold'
+                                    },
+                                ],
+                                # Tooltip for filter usage
+                                tooltip_delay=0,
+                                tooltip_duration=None
+                            )
+                        ], className="puts-container")
+                    ])
+                ], className="options-tables-container")
             ], className="tab-content")
         ]),
         
@@ -398,32 +392,35 @@ def update_minute_data(selected_symbol, n_refresh, n_intervals):
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
         
-        # Check if we need to fetch new data
-        force_refresh = trigger_id in ["refresh-button", "load-button"]
+        # Check if we need to fetch new data or can use cached data
+        force_refresh = trigger_id in ["refresh-button", "selected-symbol-store"]
         
         if symbol in MINUTE_DATA_CACHE and not force_refresh:
             # Check if cache is still valid
             last_update = MINUTE_DATA_CACHE[symbol].get("last_update")
             if last_update:
-                age = datetime.datetime.now() - last_update
-                if age.total_seconds() < CACHE_CONFIG["update_interval_seconds"]:
-                    # Cache is still fresh, use it
-                    app_logger.info(f"Using cached minute data for {symbol} (age: {age.total_seconds():.1f}s)")
-                    
-                    # Prepare data for store
-                    minute_data = {
-                        "symbol": symbol,
-                        "data": MINUTE_DATA_CACHE[symbol]["data"].to_dict("records"),
-                        "last_update": MINUTE_DATA_CACHE[symbol]["last_update"].strftime("%Y-%m-%d %H:%M:%S")
-                    }
-                    
-                    status_message = f"Using cached data for {symbol} (updated {age.total_seconds():.1f}s ago)"
-                    return minute_data, status_message, None
+                age_hours = (datetime.datetime.now() - last_update).total_seconds() / 3600
+                if age_hours < CACHE_CONFIG["max_age_hours"]:
+                    # Cache is still valid, use it
+                    app_logger.info(f"Using cached minute data for {symbol} (age: {age_hours:.2f} hours)")
+                    return MINUTE_DATA_CACHE[symbol], f"Using cached data for {symbol}", None
         
         # Fetch new data
-        app_logger.info(f"Fetching minute data for {symbol}")
-        # Use the days_history from CACHE_CONFIG (now set to 60 days)
-        minute_df, error = get_minute_data(client, symbol, days_history=CACHE_CONFIG["days_history"])
+        days_history = CACHE_CONFIG["days_history"]
+        app_logger.info(f"Fetching {days_history} days of minute data for {symbol}")
+        
+        # If we have cached data, use the latest timestamp as the starting point
+        since_timestamp = None
+        if symbol in MINUTE_DATA_CACHE and "data" in MINUTE_DATA_CACHE[symbol]:
+            cached_df = pd.DataFrame(MINUTE_DATA_CACHE[symbol]["data"])
+            if not cached_df.empty and "timestamp" in cached_df.columns:
+                # Get the latest timestamp and subtract a buffer to ensure no gaps
+                latest_timestamp = pd.to_datetime(cached_df["timestamp"]).max()
+                buffer_minutes = CACHE_CONFIG["buffer_minutes"]
+                since_timestamp = latest_timestamp - datetime.timedelta(minutes=buffer_minutes)
+                app_logger.info(f"Using incremental fetch since {since_timestamp} (with {buffer_minutes} minute buffer)")
+        
+        minute_df, error = get_minute_data(client, symbol, days_history, since_timestamp)
         
         if error:
             app_logger.error(f"Error fetching minute data: {error}")
@@ -437,9 +434,40 @@ def update_minute_data(selected_symbol, n_refresh, n_intervals):
             app_logger.warning(f"No minute data available for {symbol}")
             return None, f"No minute data available for {symbol}", None
         
+        # If we have existing cached data and did an incremental fetch, merge with cached data
+        if symbol in MINUTE_DATA_CACHE and "data" in MINUTE_DATA_CACHE[symbol] and since_timestamp:
+            cached_df = pd.DataFrame(MINUTE_DATA_CACHE[symbol]["data"])
+            if not cached_df.empty:
+                # Convert timestamp columns to datetime for proper comparison
+                if "timestamp" in cached_df.columns:
+                    cached_df["timestamp"] = pd.to_datetime(cached_df["timestamp"])
+                
+                if "timestamp" in minute_df.columns:
+                    minute_df["timestamp"] = pd.to_datetime(minute_df["timestamp"])
+                
+                # Remove any overlap (keep newer data)
+                if since_timestamp:
+                    cached_df = cached_df[cached_df["timestamp"] < since_timestamp]
+                
+                # Combine old and new data
+                combined_df = pd.concat([minute_df, cached_df], ignore_index=True)
+                
+                # Remove duplicates
+                combined_df.drop_duplicates(subset=["timestamp"], keep="first", inplace=True)
+                
+                # Sort by timestamp (descending)
+                combined_df.sort_values(by="timestamp", ascending=False, inplace=True)
+                
+                minute_df = combined_df
+                app_logger.info(f"Merged new data with cached data, total rows: {len(minute_df)}")
+        
+        # Convert timestamp to string for JSON serialization
+        if "timestamp" in minute_df.columns:
+            minute_df["timestamp"] = minute_df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
+        
         # Update cache
         MINUTE_DATA_CACHE[symbol] = {
-            "data": minute_df,
+            "data": minute_df.to_dict("records"),
             "last_update": datetime.datetime.now()
         }
         
@@ -447,10 +475,10 @@ def update_minute_data(selected_symbol, n_refresh, n_intervals):
         minute_data = {
             "symbol": symbol,
             "data": minute_df.to_dict("records"),
-            "last_update": MINUTE_DATA_CACHE[symbol]["last_update"].strftime("%Y-%m-%d %H:%M:%S")
+            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         
-        status_message = f"Loaded {len(minute_df)} minute bars for {symbol}"
+        status_message = f"Loaded {len(minute_df)} minute data rows for {symbol}"
         app_logger.info(status_message)
         
         return minute_data, status_message, None
@@ -472,7 +500,7 @@ def update_minute_data(selected_symbol, n_refresh, n_intervals):
     ],
     [
         Input("minute-data-store", "data"),
-        Input("tech-indicators-timeframe-dropdown", "value")
+        Input("tech-timeframe-dropdown", "value")
     ],
     prevent_initial_call=True
 )
@@ -480,24 +508,30 @@ def update_technical_indicators(minute_data, timeframe):
     """Calculates technical indicators for the selected timeframe."""
     global MINUTE_DATA_CACHE
     
-    if not minute_data or not minute_data.get("symbol") or not minute_data.get("data"):
+    if not minute_data or not minute_data.get("data"):
         return None, None
     
-    symbol = minute_data["symbol"]
+    symbol = minute_data.get("symbol", "")
     app_logger.info(f"Updating technical indicators for {symbol} ({timeframe})")
     
     try:
-        # Convert data back to DataFrame
+        # Convert minute data to DataFrame
         minute_df = pd.DataFrame(minute_data["data"])
         
-        # Ensure timestamp is datetime
-        if "timestamp" in minute_df.columns and not pd.api.types.is_datetime64_any_dtype(minute_df["timestamp"]):
+        if minute_df.empty:
+            app_logger.warning(f"Empty minute data DataFrame for {symbol}")
+            return None, {
+                "source": "Technical Indicators",
+                "message": "No minute data available",
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+        
+        # Convert timestamp to datetime
+        if "timestamp" in minute_df.columns:
             minute_df["timestamp"] = pd.to_datetime(minute_df["timestamp"])
+            minute_df.set_index("timestamp", inplace=True)
         
-        # Set timestamp as index for aggregation
-        minute_df = minute_df.set_index("timestamp")
-        
-        # Check if we already have this timeframe in cache
+        # Check if we need to recalculate or can use cached data
         recalculate = True
         if symbol in MINUTE_DATA_CACHE and "timeframe_data" in MINUTE_DATA_CACHE[symbol]:
             if timeframe in MINUTE_DATA_CACHE[symbol]["timeframe_data"]:
@@ -616,7 +650,7 @@ def update_options_chain(selected_symbol, n_refresh, n_intervals):
             }
         
         app_logger.info(f"Fetching options chain for {symbol}")
-        options_df, expiration_dates, error = get_options_chain_data(client, symbol)
+        options_df, expiration_dates, underlying_price, error = get_options_chain_data(client, symbol)
         
         if error:
             app_logger.error(f"Error fetching options chain: {error}")
@@ -639,13 +673,15 @@ def update_options_chain(selected_symbol, n_refresh, n_intervals):
         # Prepare data for store
         options_data = {
             "symbol": symbol,
-            "data": options_df.to_dict("records"),
+            "options": options_df.to_dict("records"),
             "expiration_dates": expiration_dates,
+            "underlyingPrice": underlying_price,  # Include underlying price in the options data
             "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         
         status_message = f"Loaded {len(options_df)} option contracts for {symbol}"
         app_logger.info(status_message)
+        app_logger.info(f"Underlying price for {symbol}: {underlying_price}")
         
         return options_data, dropdown_options, default_expiration, status_message, None
     
@@ -703,112 +739,72 @@ def update_tech_indicators_table(tech_indicators_data):
         return [], []
     
     # Get column names from the first row
-    first_row = data[0] if data else {}
-    columns = [{"name": k, "id": k} for k in first_row.keys()]
+    first_row = data[0]
+    columns = [{"name": col, "id": col} for col in first_row.keys()]
     
     return data, columns
 
 # Options Chain Tables Callback
 @app.callback(
-    Output("calls-table", "data"),
-    Output("calls-table", "columns"),
-    Output("puts-table", "data"),
-    Output("puts-table", "columns"),
-    Input("options-chain-store", "data"),
-    Input("expiration-date-dropdown", "value"),
+    [
+        Output("calls-table", "data"),
+        Output("puts-table", "data")
+    ],
+    [
+        Input("options-chain-store", "data"),
+        Input("expiration-date-dropdown", "value"),
+        Input("option-type-radio", "value")
+    ],
     prevent_initial_call=True
 )
-def update_options_tables(options_data, selected_expiration):
-    """Updates the calls and puts tables with the fetched options data."""
-    if not options_data or not options_data.get("data") or not selected_expiration:
-        return [], [], [], []
+def update_options_tables(options_data, expiration_date, option_type):
+    """Updates the options chain tables with the fetched data."""
+    if not options_data or not options_data.get("options"):
+        return [], []
+    
+    options = options_data["options"]
     
     # Convert to DataFrame for easier filtering
-    options_df = pd.DataFrame(options_data["data"])
+    options_df = pd.DataFrame(options)
     
-    # Filter by expiration date
-    filtered_df = options_df[options_df["expirationDate"] == selected_expiration]
+    # Filter by expiration date if provided
+    if expiration_date and "expirationDate" in options_df.columns:
+        options_df = options_df[options_df["expirationDate"] == expiration_date]
     
     # Split into calls and puts
-    calls_df = filtered_df[filtered_df["putCall"] == "CALL"].copy()
-    puts_df = filtered_df[filtered_df["putCall"] == "PUT"].copy()
+    if "putCall" in options_df.columns:
+        calls_df = options_df[options_df["putCall"] == "CALL"]
+        puts_df = options_df[options_df["putCall"] == "PUT"]
+    else:
+        # If putCall column is missing, try to infer from symbol
+        if "symbol" in options_df.columns:
+            options_df["putCall"] = options_df["symbol"].apply(
+                lambda x: "CALL" if "C" in str(x).upper() else ("PUT" if "P" in str(x).upper() else "UNKNOWN")
+            )
+            calls_df = options_df[options_df["putCall"] == "CALL"]
+            puts_df = options_df[options_df["putCall"] == "PUT"]
+        else:
+            # Can't determine option type
+            return [], []
     
     # Sort by strike price
-    calls_df = calls_df.sort_values(by="strikePrice")
-    puts_df = puts_df.sort_values(by="strikePrice")
+    if "strikePrice" in calls_df.columns:
+        calls_df = calls_df.sort_values(by="strikePrice")
     
-    # Define columns to display
-    display_columns = [
-        "symbol", "strikePrice", "lastPrice", "bidPrice", "askPrice", 
-        "delta", "gamma", "theta", "vega", "rho", "openInterest", "totalVolume"
-    ]
+    if "strikePrice" in puts_df.columns:
+        puts_df = puts_df.sort_values(by="strikePrice")
     
-    # Filter columns that exist in the DataFrame
-    display_columns = [col for col in display_columns if col in calls_df.columns]
+    # Filter by option type if "BOTH" is not selected
+    if option_type == "CALL":
+        puts_df = pd.DataFrame()  # Empty DataFrame for puts
+    elif option_type == "PUT":
+        calls_df = pd.DataFrame()  # Empty DataFrame for calls
     
-    # Create column definitions
-    columns = [{"name": col, "id": col} for col in display_columns]
+    # Convert to records for Dash table
+    calls_data = calls_df.to_dict("records") if not calls_df.empty else []
+    puts_data = puts_df.to_dict("records") if not puts_df.empty else []
     
-    # Convert to records for table
-    calls_data = calls_df[display_columns].to_dict("records") if not calls_df.empty else []
-    puts_data = puts_df[display_columns].to_dict("records") if not puts_df.empty else []
-    
-    return calls_data, columns, puts_data, columns
-
-# Export Minute Data Callback
-@app.callback(
-    Output("download-minute-data-csv", "data"),
-    Input("export-minute-data-button", "n_clicks"),
-    State("minute-data-store", "data"),
-    prevent_initial_call=True
-)
-def export_minute_data(n_clicks, minute_data):
-    """Exports minute data to CSV."""
-    if not minute_data or not minute_data.get("data"):
-        return None
-    
-    symbol = minute_data.get("symbol", "unknown")
-    data = minute_data["data"]
-    
-    # Convert to DataFrame
-    df = pd.DataFrame(data)
-    
-    # Create CSV string
-    csv_string = df.to_csv(index=False)
-    
-    # Return download data
-    return dict(
-        content=csv_string,
-        filename=f"{symbol}_minute_data_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-    )
-
-# Export Technical Indicators Callback
-@app.callback(
-    Output("download-tech-indicators-csv", "data"),
-    Input("export-tech-indicators-button", "n_clicks"),
-    State("tech-indicators-store", "data"),
-    prevent_initial_call=True
-)
-def export_tech_indicators(n_clicks, tech_indicators_data):
-    """Exports technical indicators to CSV."""
-    if not tech_indicators_data or not tech_indicators_data.get("timeframe_data"):
-        return None
-    
-    symbol = tech_indicators_data.get("symbol", "unknown")
-    timeframe = tech_indicators_data.get("timeframe", "1min")
-    data = tech_indicators_data["timeframe_data"].get(timeframe, [])
-    
-    # Convert to DataFrame
-    df = pd.DataFrame(data)
-    
-    # Create CSV string
-    csv_string = df.to_csv(index=False)
-    
-    # Return download data
-    return dict(
-        content=csv_string,
-        filename=f"{symbol}_{timeframe}_indicators_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-    )
+    return calls_data, puts_data
 
 # Register recommendation callbacks
 register_recommendation_callbacks(app)

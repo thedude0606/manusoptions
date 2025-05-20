@@ -235,10 +235,10 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
         symbol: Stock symbol to fetch options for
         
     Returns:
-        DataFrame with options data, list of expiration dates, error message (if any)
+        DataFrame with options data, list of expiration dates, underlying price, error message (if any)
     """
     if not client:
-        return pd.DataFrame(), [], "Schwab client not initialized for get_options_chain_data."
+        return pd.DataFrame(), [], 0, "Schwab client not initialized for get_options_chain_data."
     
     try:
         logger.info(f"Fetching options chain for {symbol}")
@@ -251,7 +251,7 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
         )
         
         if not response.ok:
-            return pd.DataFrame(), [], f"Error fetching option chains: {response.status_code} - {response.text}"
+            return pd.DataFrame(), [], 0, f"Error fetching option chains: {response.status_code} - {response.text}"
         
         options_data = response.json()
         
@@ -259,15 +259,17 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
         raw_api_logger.debug(f"OPTIONS CHAIN RAW RESPONSE FOR {symbol}:\n{json.dumps(options_data, indent=2)}")
         
         if options_data.get("status") == "FAILED":
-            return pd.DataFrame(), [], f"Failed to fetch option chains: {options_data.get('error', 'Unknown API error')}"
+            return pd.DataFrame(), [], 0, f"Failed to fetch option chains: {options_data.get('error', 'Unknown API error')}"
         
         # Extract expiration dates
         expiration_dates = []
         all_options = []
         
-        # Log underlying price if available
+        # Extract underlying price
+        underlying_price = 0
         if "underlyingPrice" in options_data:
-            logger.info(f"Underlying price for {symbol}: {options_data.get('underlyingPrice')}")
+            underlying_price = float(options_data.get("underlyingPrice", 0))
+            logger.info(f"Underlying price for {symbol}: {underlying_price}")
         
         # Process call options
         if "callExpDateMap" in options_data and options_data["callExpDateMap"]:
@@ -321,10 +323,8 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
                         if "symbol" in contract:
                             original_symbol = contract["symbol"]
                             normalized_symbol = normalize_contract_key(original_symbol)
-                            if original_symbol != normalized_symbol:
-                                logger.debug(f"Normalized contract symbol: {original_symbol} -> {normalized_symbol}")
-                                # Keep the original symbol but add the normalized version for reference
-                                contract["normalized_symbol"] = normalized_symbol
+                            contract["original_symbol"] = original_symbol
+                            contract["symbol"] = normalized_symbol
                         
                         all_options.append(contract)
         
@@ -339,11 +339,6 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
                 # Process each strike price
                 for strike_price, contracts in strikes.items():
                     for contract in contracts:
-                        # Log all available fields for the first few contracts to help with debugging
-                        if len(all_options) < 10 and len(all_options) >= 5:
-                            logger.info(f"Contract fields for {contract.get('symbol', 'unknown')}: {list(contract.keys())}")
-                            logger.info(f"Contract data sample: {json.dumps({k: contract.get(k) for k in ['symbol', 'lastPrice', 'bidPrice', 'askPrice', 'bid', 'ask', 'last']}, indent=2)}")
-                        
                         contract["putCall"] = "PUT"
                         contract["expirationDate"] = exp_date
                         contract["strikePrice"] = float(strike_price)
@@ -351,72 +346,54 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
                         # Check for alternative field names that might contain price data
                         if "lastPrice" not in contract and "last" in contract:
                             contract["lastPrice"] = contract["last"]
-                            logger.debug(f"Used 'last' field for lastPrice for {contract.get('symbol', 'unknown')}")
                         
                         if "bidPrice" not in contract and "bid" in contract:
                             contract["bidPrice"] = contract["bid"]
-                            logger.debug(f"Used 'bid' field for bidPrice for {contract.get('symbol', 'unknown')}")
                         
                         if "askPrice" not in contract and "ask" in contract:
                             contract["askPrice"] = contract["ask"]
-                            logger.debug(f"Used 'ask' field for askPrice for {contract.get('symbol', 'unknown')}")
                         
-                        # Only add default values if fields are completely missing or None
-                        # This preserves actual values from the API
+                        # Only add default values if fields are completely missing
                         if "lastPrice" not in contract:
                             contract["lastPrice"] = None
-                            logger.debug(f"Added missing lastPrice field for {contract.get('symbol', 'unknown')}")
                         
                         if "bidPrice" not in contract:
                             contract["bidPrice"] = None
-                            logger.debug(f"Added missing bidPrice field for {contract.get('symbol', 'unknown')}")
                         
                         if "askPrice" not in contract:
                             contract["askPrice"] = None
-                            logger.debug(f"Added missing askPrice field for {contract.get('symbol', 'unknown')}")
                         
                         # Normalize the contract symbol for consistent matching with streaming data
                         if "symbol" in contract:
                             original_symbol = contract["symbol"]
                             normalized_symbol = normalize_contract_key(original_symbol)
-                            if original_symbol != normalized_symbol:
-                                logger.debug(f"Normalized contract symbol: {original_symbol} -> {normalized_symbol}")
-                                # Keep the original symbol but add the normalized version for reference
-                                contract["normalized_symbol"] = normalized_symbol
+                            contract["original_symbol"] = original_symbol
+                            contract["symbol"] = normalized_symbol
                         
                         all_options.append(contract)
         
         # Convert to DataFrame
-        if all_options:
-            options_df = pd.DataFrame(all_options)
+        options_df = pd.DataFrame(all_options)
+        
+        # Sort expiration dates
+        expiration_dates.sort()
+        
+        if not options_df.empty:
+            sample_row = options_df.iloc[0]
+            logger.info(f"Sample option data - Symbol: {sample_row.get('symbol')}, Last: {sample_row.get('lastPrice')}, Bid: {sample_row.get('bidPrice')}, Ask: {sample_row.get('askPrice')}")
             
-            # Ensure required columns exist in the DataFrame
-            required_columns = ["lastPrice", "bidPrice", "askPrice"]
-            for col in required_columns:
-                if col not in options_df.columns:
-                    options_df[col] = None
-                    logger.warning(f"Added missing column {col} to options DataFrame")
-            
-            # Log a sample of the data to verify fields
-            if not options_df.empty:
-                sample_row = options_df.iloc[0]
-                logger.info(f"Sample option data - Symbol: {sample_row.get('symbol')}, Last: {sample_row.get('lastPrice')}, Bid: {sample_row.get('bidPrice')}, Ask: {sample_row.get('askPrice')}")
-                
-                # Count how many contracts have non-None price fields
-                non_none_last = options_df['lastPrice'].notna().sum()
-                non_none_bid = options_df['bidPrice'].notna().sum()
-                non_none_ask = options_df['askPrice'].notna().sum()
-                logger.info(f"Price field statistics - Total contracts: {len(options_df)}, With lastPrice: {non_none_last}, With bidPrice: {non_none_bid}, With askPrice: {non_none_ask}")
-            
-            logger.info(f"Successfully fetched options chain for {symbol} with {len(options_df)} contracts across {len(expiration_dates)} expiration dates")
-            return options_df, expiration_dates, None
-        else:
-            logger.warning(f"No options data returned for {symbol}")
-            return pd.DataFrame(), expiration_dates, f"No options data returned for {symbol}"
+            # Count how many contracts have non-None price fields
+            non_none_last = options_df['lastPrice'].notna().sum()
+            non_none_bid = options_df['bidPrice'].notna().sum()
+            non_none_ask = options_df['askPrice'].notna().sum()
+            logger.info(f"Price field statistics - Total contracts: {len(options_df)}, With lastPrice: {non_none_last}, With bidPrice: {non_none_bid}, With askPrice: {non_none_ask}")
+        
+        logger.info(f"Successfully fetched options chain for {symbol} with {len(options_df)} contracts across {len(expiration_dates)} expiration dates")
+        return options_df, expiration_dates, underlying_price, None
     
     except Exception as e:
         logger.error(f"Exception while fetching options chain for {symbol}: {e}", exc_info=True)
-        return pd.DataFrame(), [], f"Exception while fetching options chain: {str(e)}"
+        return pd.DataFrame(), [], 0, f"Exception while fetching options chain: {str(e)}"
 
 def get_option_contract_keys(client: schwabdev.Client, symbol: str, expiration_date: str = None, option_type: str = None):
     """
@@ -431,7 +408,7 @@ def get_option_contract_keys(client: schwabdev.Client, symbol: str, expiration_d
     Returns:
         List of option contract keys, error message (if any)
     """
-    options_df, expiration_dates, error = get_options_chain_data(client, symbol)
+    options_df, expiration_dates, underlying_price, error = get_options_chain_data(client, symbol)
     
     if error:
         return [], error

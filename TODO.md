@@ -14,6 +14,8 @@
 - [x] Fix Dash obsolete attribute error (app.run_server → app.run)
 - [x] Fix recommendations tab with robust data validation and field handling
 - [x] Fix recommendation engine to generate recommendations properly
+  - [x] Lower confidence threshold to allow recommendations to be generated
+  - [x] Fix underlying price extraction and passing to recommendation engine
 - [ ] Test dashboard with various symbols and extended data periods
 
 ## Medium Priority
@@ -38,3 +40,4 @@
 - Batched minute data retrieval → Integration with dashboard application (COMPLETED)
 - Error handling → Parallel processing implementation
 - Data caching → Optimization for large datasets
+- Underlying price extraction → Recommendation engine functionality (COMPLETED)

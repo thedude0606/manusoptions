@@ -1,104 +1,53 @@
 # Key Architectural Decisions
 
-## Recommendation Engine Data Handling
+## Technology Stack
+- **Python**: Primary programming language for backend and data processing
+- **Dash**: Web application framework for building interactive dashboards
+- **Pandas**: Data manipulation and analysis
+- **NumPy**: Numerical computing
+- **SchwabDev**: API client for accessing Schwab trading data
+- **Technical Analysis Libraries**: For market indicators and signals
 
-- **Decision**: Implement robust data validation and field handling in the recommendation engine
-- **Rationale**: The recommendation engine needs to handle various field name inconsistencies and missing data in the options chain API responses
-- **Alternatives Considered**: 
-  - Strict schema validation (too rigid for varying API responses)
-  - Minimal validation with error handling (insufficient for reliable recommendations)
-- **Consequences**: 
-  - Increased resilience to API response variations
-  - Graceful fallbacks for missing or differently named fields
-  - More detailed logging for troubleshooting
-  - Slightly increased code complexity but significantly improved reliability
-  - Better user experience with more consistent recommendations
+## Design Patterns
+- **MVC Pattern**: Separation of data (models), user interface (views), and business logic (controllers)
+- **Observer Pattern**: Used in dashboard callbacks to respond to data changes
+- **Factory Pattern**: For creating different types of technical indicators
+- **Strategy Pattern**: For implementing different recommendation strategies
 
-## Recommendation Engine Confidence Threshold
+## Key Decisions
 
-- **Decision**: Lower the confidence threshold from 60 to 40 for recommendation filtering
-- **Rationale**: The original threshold was too high, causing all potential recommendations to be filtered out
-- **Alternatives Considered**: 
-  - Adjusting the scoring algorithm (more complex, might introduce new issues)
-  - Removing the threshold entirely (would include low-quality recommendations)
-- **Consequences**: 
-  - More recommendations will be displayed to users
-  - Slightly lower average quality of recommendations, but better than no recommendations
-  - Improved user experience with visible recommendations
-  - Maintains the original filtering logic structure
+### Data Retrieval
+- **Batched Data Retrieval**: Implemented batched retrieval of minute data for 60 days to support extended analysis periods
+- **Incremental Updates**: Added support for incremental data updates to reduce API calls and improve performance
+- **Data Caching**: Implemented caching mechanism to store and reuse data between sessions
 
-## Dashboard Framework Updates
+### Technical Analysis
+- **Modular Indicator System**: Created a modular system for technical indicators that can be easily extended
+- **Timeframe Aggregation**: Implemented candle aggregation to support multiple timeframes (1min to 1day)
+- **Combined Signal Approach**: Used a combination of technical indicators for market direction analysis
 
-- **Decision**: Update from app.run_server to app.run in Dash application
-- **Rationale**: The app.run_server method has been deprecated in newer versions of Dash in favor of app.run
-- **Alternatives Considered**: Downgrading Dash version (not viable for long-term maintenance)
-- **Consequences**: 
-  - Ensures compatibility with current and future Dash versions
-  - Eliminates obsolete attribute exceptions
-  - Maintains consistent API usage with Dash best practices
+### Recommendation Engine
+- **Confidence Threshold**: Lowered confidence threshold from 60 to 40 to ensure recommendations are generated while maintaining quality
+- **Underlying Price Extraction**: Modified options chain data retrieval to properly extract and pass the underlying price to the recommendation engine
+- **Multi-factor Scoring**: Implemented a scoring system that considers multiple factors for generating recommendations
 
-## Authentication
+### Dashboard Interface
+- **Tab-based Layout**: Organized dashboard into tabs for different types of data and analysis
+- **Real-time Updates**: Implemented periodic updates to keep data current
+- **Responsive Design**: Ensured dashboard works well on different screen sizes
 
-- **Decision**: Use Schwabdev library for authentication
-- **Rationale**: Provides a robust and well-tested implementation for Schwab API authentication
-- **Alternatives Considered**: Custom OAuth implementation
-- **Consequences**: Dependency on third-party library, but significantly reduces development time and potential security issues
+### Error Handling
+- **Centralized Error Store**: Implemented a central error store to capture and display errors
+- **Graceful Degradation**: Designed system to continue functioning with partial data when errors occur
 
-## Data Retrieval
+## Rationale for Critical Fixes
 
-- **Decision**: Implement batched retrieval for minute data
-- **Rationale**: Schwab API has a limitation where it only returns 1 day of minute data per request regardless of the date range specified
-- **Alternatives Considered**: 
-  - Single request with extended date range (not viable due to API limitation)
-  - Streaming data (more complex, requires continuous connection)
-- **Consequences**: 
-  - Increased number of API calls
-  - Potential rate limiting concerns
-  - More complex error handling required
-  - Better resilience through smaller, atomic requests
+### Underlying Price Extraction Fix
+- **Problem**: The underlying price was not being extracted from the options chain API response and passed to the recommendation engine, causing recommendations to fail
+- **Solution**: Modified the `get_options_chain_data` function to extract the underlying price and return it as part of the function result, then updated the dashboard app to include this price in the options chain store data
+- **Rationale**: The recommendation engine requires the underlying price to calculate appropriate option recommendations. Without this value, it cannot determine which options are in/out of the money or calculate potential profit percentages
 
-## Dashboard Integration
-
-- **Decision**: Configure dashboard to request 60 days of minute data by default
-- **Rationale**: Provides users with a comprehensive view of historical data while handling API limitations transparently
-- **Alternatives Considered**:
-  - User-configurable time range (adds complexity)
-  - Separate batch processing outside the dashboard (less integrated experience)
-- **Consequences**:
-  - Increased initial load time
-  - Larger memory footprint
-  - More comprehensive data for analysis
-  - Better user experience with complete dataset available immediately
-
-## Data Storage
-
-- **Decision**: Store aggregated data in JSON format
-- **Rationale**: Simple, human-readable format that can be easily loaded into various analysis tools
-- **Alternatives Considered**: SQL database, CSV files
-- **Consequences**: May have performance implications for very large datasets, but provides flexibility and ease of use
-
-## Technical Analysis
-
-- **Decision**: Implement technical analysis using custom algorithms
-- **Rationale**: Provides full control over indicators and calculations
-- **Alternatives Considered**: Third-party libraries like TA-Lib
-- **Consequences**: More development effort but better customization options
-
-## Dashboard Application
-
-- **Decision**: Use Dash for interactive visualization
-- **Rationale**: Python-based, easy integration with data processing pipeline
-- **Alternatives Considered**: Streamlit, custom web application
-- **Consequences**: Some limitations in customization but rapid development
-
-## Minute Data Batching Implementation
-
-- **Decision**: Sequential day-by-day requests with aggregation
-- **Rationale**: Simplifies error handling and provides clear progress tracking
-- **Alternatives Considered**: 
-  - Parallel requests (could trigger rate limiting)
-  - Asynchronous requests (more complex error handling)
-- **Consequences**: 
-  - Slower overall retrieval but more reliable
-  - Easier to implement retry logic for specific days
-  - Better visibility into progress
+### Confidence Threshold Adjustment
+- **Problem**: The confidence threshold was set too high (60), causing all potential recommendations to be filtered out
+- **Solution**: Lowered the confidence threshold to 40 to allow more recommendations to pass through while still maintaining quality standards
+- **Rationale**: The original threshold was too restrictive for the current market conditions and signal strength. The adjusted value provides a better balance between recommendation quality and quantity

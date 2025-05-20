@@ -1,36 +1,31 @@
 # Progress Report
 
-## Completed Features
-
-- Initial project setup
-- Authentication with Schwab API
-- Basic minute data retrieval (1 day)
-- Options chain retrieval
-- Dashboard application setup
-- Technical analysis implementation
-- Recommendation engine implementation
-- Batched minute data retrieval for 60 days
-- Dashboard integration with 60-day minute data retrieval
-- Fixed Dash obsolete attribute error (replaced app.run_server with app.run)
-- Fixed recommendations tab with robust data validation and field handling
-- Fixed recommendation engine to properly generate recommendations by adjusting confidence threshold
+## Completed Features/Tasks
+- Set up initial project structure
+- Implemented authentication with Schwab API
+- Created basic minute data retrieval
+- Implemented options chain retrieval
+- Developed dashboard application
+- Implemented technical analysis
+- Created recommendation engine
+- Implemented batched minute data retrieval for 60 days
+- Integrated batched data retrieval with dashboard application
+- Fixed Dash obsolete attribute error (app.run_server → app.run)
+- Fixed recommendation engine to generate recommendations properly
+  - Fixed confidence threshold issue in recommendation engine
+  - Fixed underlying price extraction and passing to recommendation engine
 
 ## Current Work in Progress
-
-- Testing and optimizing the 60-day minute data retrieval in the dashboard
-- Enhancing error handling for multi-day data retrieval
+- Testing dashboard with various symbols and extended data periods
+- Validating recommendation engine fixes
 
 ## Known Issues or Challenges
-
-- Schwab API limitation: Only returns 1 day of minute data per request
-- Need to handle potential rate limiting when making multiple API requests
-- Need to ensure proper error handling for days with no market data
-- Large datasets may impact dashboard performance
+- Underlying price was not being properly extracted from options chain API response and passed to the recommendation engine
+- Confidence threshold was set too high, filtering out all potential recommendations
 
 ## Next Steps
-
-- Enhance error handling and retry logic for API requests
+- Add comprehensive error handling and retry logic
+- Implement data caching to reduce API calls
+- Optimize data storage for large datasets
 - Add progress visualization during data fetching
-- Optimize data storage and retrieval for large datasets
-- Consider adding caching mechanism to reduce API calls
 - Implement parallel processing for faster data retrieval
