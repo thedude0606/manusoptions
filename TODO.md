@@ -11,6 +11,7 @@
 - [x] Create recommendation engine
 - [x] Implement batched minute data retrieval for 60 days
 - [x] Integrate batched data retrieval with dashboard application
+- [x] Fix Dash obsolete attribute error (app.run_server → app.run)
 - [ ] Test dashboard with various symbols and extended data periods
 
 ## Medium Priority

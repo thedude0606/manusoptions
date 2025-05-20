@@ -1,5 +1,15 @@
 # Key Architectural Decisions
 
+## Dashboard Framework Updates
+
+- **Decision**: Update from app.run_server to app.run in Dash application
+- **Rationale**: The app.run_server method has been deprecated in newer versions of Dash in favor of app.run
+- **Alternatives Considered**: Downgrading Dash version (not viable for long-term maintenance)
+- **Consequences**: 
+  - Ensures compatibility with current and future Dash versions
+  - Eliminates obsolete attribute exceptions
+  - Maintains consistent API usage with Dash best practices
+
 ## Authentication
 
 - **Decision**: Use Schwabdev library for authentication
