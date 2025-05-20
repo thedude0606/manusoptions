@@ -1,23 +1,30 @@
 # Progress Report
 
-## May 20, 2025
+## Completed Features
 
-### Completed
-- Fixed issue with blank last, bid, and ask fields in the options chain tab
-  - Identified that the backend was fetching these fields but they were sometimes missing or null
-  - Created a new utility module `contract_utils.py` with functions for contract key normalization and formatting
-  - Updated `fetch_options_chain.py` and `streaming_manager.py` to use consistent contract key formatting
-  - Enhanced field mapping to handle both string and numeric field IDs from the stream
-  - Implemented robust type conversion for field values
+- Initial project setup
+- Authentication with Schwab API
+- Basic minute data retrieval (1 day)
+- Options chain retrieval
+- Dashboard application setup
+- Technical analysis implementation
+- Recommendation engine implementation
+- Batched minute data retrieval for 60 days
 
-### In Progress
-- Validating the fix in the web application
-- Pushing code changes to main branch
+## Current Work in Progress
 
-### Known Issues
-- None at this time
+- Testing and optimizing the 60-day minute data retrieval
+- Integrating the batched data retrieval with the dashboard application
 
-### Next Steps
-- Complete validation of the fix in the web application
-- Implement additional error handling for API responses
-- Consider adding unit tests for contract key normalization and formatting
+## Known Issues or Challenges
+
+- Schwab API limitation: Only returns 1 day of minute data per request
+- Need to handle potential rate limiting when making multiple API requests
+- Need to ensure proper error handling for days with no market data
+
+## Next Steps
+
+- Enhance error handling and retry logic for API requests
+- Add progress visualization during data fetching
+- Optimize data storage and retrieval for large datasets
+- Consider adding caching mechanism to reduce API calls

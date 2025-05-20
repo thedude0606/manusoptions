@@ -1,25 +1,36 @@
 # TODO List
 
 ## High Priority
-- [x] Fix blank last, bid, and ask fields in the options chain tab
-- [x] Implement contract key normalization for consistent matching between REST and streaming data
-- [x] Enhance field mapping to handle both string and numeric field IDs from the stream
-- [ ] Validate the fix in the web application
-- [ ] Implement additional error handling for API responses
+
+- [x] Set up initial project structure
+- [x] Implement authentication with Schwab API
+- [x] Create basic minute data retrieval
+- [x] Implement options chain retrieval
+- [x] Develop dashboard application
+- [x] Implement technical analysis
+- [x] Create recommendation engine
+- [x] Implement batched minute data retrieval for 60 days
+- [ ] Test batched minute data retrieval with various symbols
+- [ ] Integrate batched data retrieval with dashboard application
 
 ## Medium Priority
-- [ ] Improve UI responsiveness for large option chains
-- [ ] Add filtering capabilities to options tables
-- [ ] Enhance data visualization for technical indicators
+
+- [ ] Add comprehensive error handling and retry logic
+- [ ] Implement data caching to reduce API calls
+- [ ] Optimize data storage for large datasets
+- [ ] Add progress visualization during data fetching
+- [ ] Implement parallel processing for faster data retrieval
 
 ## Low Priority
-- [ ] Add unit tests for contract key normalization and formatting
-- [ ] Add unit tests for options chain data processing
-- [ ] Optimize performance for large datasets
-- [ ] Implement caching for frequently accessed data
+
+- [ ] Add unit tests for all components
+- [ ] Create user documentation
+- [ ] Implement data export functionality
+- [ ] Add additional technical indicators
+- [ ] Create visualization options for historical data
 
 ## Dependencies
-- Options chain display depends on proper data fetching from Schwab API
-- Contract key normalization is required for proper matching between REST and streaming data
-- Field mapping must handle both string and numeric field IDs for robust data processing
-- Technical indicator calculations depend on minute data availability
+
+- Batched minute data retrieval → Integration with dashboard application
+- Error handling → Parallel processing implementation
+- Data caching → Optimization for large datasets

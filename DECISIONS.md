@@ -1,42 +1,54 @@
-# Design Decisions
+# Key Architectural Decisions
 
-## Architecture
-- Using Dash for interactive web application framework
-- Modular design with separate modules for data fetching, analysis, and UI components
-- Asynchronous data loading to improve user experience
-- Centralized contract key normalization for consistent data matching
+## Authentication
 
-## Technology Selections
-- Python for backend processing and data analysis
-- Pandas for data manipulation and analysis
-- Dash and Plotly for interactive visualizations
-- Schwab API for real-time and historical market data
-- Regular expressions for robust contract key parsing and formatting
+- **Decision**: Use Schwabdev library for authentication
+- **Rationale**: Provides a robust and well-tested implementation for Schwab API authentication
+- **Alternatives Considered**: Custom OAuth implementation
+- **Consequences**: Dependency on third-party library, but significantly reduces development time and potential security issues
 
-## Design Patterns
-- Observer pattern for real-time data updates
-- Factory pattern for creating different types of technical indicators
-- Strategy pattern for implementing different trading strategies
-- Utility pattern for shared functionality like contract key normalization
+## Data Retrieval
 
-## Key Decisions
+- **Decision**: Implement batched retrieval for minute data
+- **Rationale**: Schwab API has a limitation where it only returns 1 day of minute data per request regardless of the date range specified
+- **Alternatives Considered**: 
+  - Single request with extended date range (not viable due to API limitation)
+  - Streaming data (more complex, requires continuous connection)
+- **Consequences**: 
+  - Increased number of API calls
+  - Potential rate limiting concerns
+  - More complex error handling required
+  - Better resilience through smaller, atomic requests
 
-### May 20, 2025
-- **Centralized Contract Key Normalization**: Created a dedicated utility module (`contract_utils.py`) to handle contract key normalization and formatting. This ensures consistent contract key formats between REST API data and streaming data, fixing the issue with blank price fields in the options chain dashboard.
+## Data Storage
 
-- **Enhanced Field Mapping**: Updated the field mapping logic to handle both string and numeric field IDs from the stream. This makes the application more robust against variations in the Schwab API response format and ensures all price data is properly captured and displayed.
+- **Decision**: Store aggregated data in JSON format
+- **Rationale**: Simple, human-readable format that can be easily loaded into various analysis tools
+- **Alternatives Considered**: SQL database, CSV files
+- **Consequences**: May have performance implications for very large datasets, but provides flexibility and ease of use
 
-- **Robust Type Conversion**: Implemented more robust type conversion for field values, ensuring that numeric values are properly parsed regardless of whether they're received as strings or native numeric types.
+## Technical Analysis
 
-- **Consistent Normalization Strategy**: Adopted a consistent normalization strategy across all modules that handle contract keys, ensuring that keys are always normalized before comparison or storage. This prevents mismatches between different data sources and improves data integrity.
+- **Decision**: Implement technical analysis using custom algorithms
+- **Rationale**: Provides full control over indicators and calculations
+- **Alternatives Considered**: Third-party libraries like TA-Lib
+- **Consequences**: More development effort but better customization options
 
-### Previous Decisions
-- **Options Chain Data Handling**: Modified the options chain data fetching logic to preserve actual API values for lastPrice, bidPrice, and askPrice fields. Only add default values (None) when fields are completely missing from the API response. This ensures the UI displays real market data rather than placeholder zeros.
+## Dashboard Application
 
-- **Data Validation**: Added validation at both the contract level and DataFrame level to ensure required fields are always present, improving application robustness.
+- **Decision**: Use Dash for interactive visualization
+- **Rationale**: Python-based, easy integration with data processing pipeline
+- **Alternatives Considered**: Streamlit, custom web application
+- **Consequences**: Some limitations in customization but rapid development
 
-- **Error Logging**: Enhanced logging to track when fields are missing or added, facilitating future debugging.
+## Minute Data Batching Implementation
 
-- Implemented streaming data architecture for real-time updates
-- Chose to separate data fetching from UI rendering for better maintainability
-- Decided to use Dash callbacks for reactive UI updates
+- **Decision**: Sequential day-by-day requests with aggregation
+- **Rationale**: Simplifies error handling and provides clear progress tracking
+- **Alternatives Considered**: 
+  - Parallel requests (could trigger rate limiting)
+  - Asynchronous requests (more complex error handling)
+- **Consequences**: 
+  - Slower overall retrieval but more reliable
+  - Easier to implement retry logic for specific days
+  - Better visibility into progress
