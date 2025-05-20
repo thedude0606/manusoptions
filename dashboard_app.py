@@ -1,4 +1,5 @@
 from dash import dcc, html, dash_table, ctx
+import dash
 from dash.dependencies import Input, Output, State, ALL
 import pandas as pd
 import numpy as np # For NaN handling
