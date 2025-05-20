@@ -13,6 +13,7 @@
 - Dashboard integration with 60-day minute data retrieval
 - Fixed Dash obsolete attribute error (replaced app.run_server with app.run)
 - Fixed recommendations tab with robust data validation and field handling
+- Fixed recommendation engine to properly generate recommendations by adjusting confidence threshold
 
 ## Current Work in Progress
 

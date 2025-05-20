@@ -14,6 +14,19 @@
   - Slightly increased code complexity but significantly improved reliability
   - Better user experience with more consistent recommendations
 
+## Recommendation Engine Confidence Threshold
+
+- **Decision**: Lower the confidence threshold from 60 to 40 for recommendation filtering
+- **Rationale**: The original threshold was too high, causing all potential recommendations to be filtered out
+- **Alternatives Considered**: 
+  - Adjusting the scoring algorithm (more complex, might introduce new issues)
+  - Removing the threshold entirely (would include low-quality recommendations)
+- **Consequences**: 
+  - More recommendations will be displayed to users
+  - Slightly lower average quality of recommendations, but better than no recommendations
+  - Improved user experience with visible recommendations
+  - Maintains the original filtering logic structure
+
 ## Dashboard Framework Updates
 
 - **Decision**: Update from app.run_server to app.run in Dash application

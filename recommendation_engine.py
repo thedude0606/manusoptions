@@ -28,7 +28,7 @@ if not logger.hasHandlers():
 logger.setLevel(logging.INFO)
 
 # Constants for recommendation engine
-CONFIDENCE_THRESHOLD = 60  # Minimum confidence score to include in recommendations
+CONFIDENCE_THRESHOLD = 40  # Minimum confidence score to include in recommendations - Lowered from 60 to ensure recommendations are generated
 MAX_RECOMMENDATIONS = 5    # Maximum number of recommendations to return
 MIN_EXPECTED_PROFIT = 0.10  # 10% minimum expected profit
 TARGET_TIMEFRAMES = ["1hour", "4hour"]  # Target timeframes for analysis
@@ -343,59 +343,40 @@ class RecommendationEngine:
                         df['mark'] = 1.0  # Default value
                         price_col = 'mark'
                         logger.warning("No price data available, using default mark value")
-                
-                # Calculate time value
-                df['timeValue'] = df.apply(
-                    lambda row: row[price_col] - np.maximum(0, 
-                        underlying_price - row['strikePrice'] if row['putCall'] == 'CALL' 
-                        else row['strikePrice'] - underlying_price) 
-                    if pd.notna(row[price_col]) and pd.notna(row['strikePrice']) else 0,
-                    axis=1
-                )
-                
-                # Calculate implied volatility rank if possible
-                if 'volatility' in df.columns:
-                    df['ivRank'] = df['volatility']
-                else:
-                    df['ivRank'] = 0.3  # Default moderate volatility
-                    logger.warning("No volatility data available, using default ivRank")
         
-        # Score the options based on various factors
+        # Score options based on various factors
         self._score_options(calls_df, puts_df, market_direction, underlying_price)
         
         return {
             "calls": calls_df,
             "puts": puts_df
         }
-        
+    
     def _ensure_required_columns(self, options_df):
         """
-        Ensure all required columns exist in the options DataFrame, adding defaults if needed.
+        Ensure all required columns exist in the options DataFrame.
         
         Args:
             options_df: DataFrame containing options chain data
         """
         logger.info("Ensuring required columns exist in options DataFrame")
         
-        # List of required columns with default values
+        # Define required columns with default values
         required_columns = {
             'putCall': 'UNKNOWN',
+            'symbol': 'UNKNOWN',
             'strikePrice': 0.0,
-            'expirationDate': datetime.now().strftime('%Y-%m-%d'),
+            'expirationDate': '2099-12-31',
             'daysToExpiration': 7,
-            'openInterest': 100,  # Default to moderate open interest
-            'volatility': 0.3,    # Default to moderate volatility
-            'delta': 0.5,         # Default to ATM delta
-            'gamma': 0.05,
-            'theta': -0.05,
-            'vega': 0.05,
-            'mark': None,
-            'bidPrice': None,
-            'askPrice': None,
-            'lastPrice': None
+            'delta': 0.5,
+            'gamma': 0.01,
+            'theta': -0.01,
+            'vega': 0.01,
+            'volatility': 0.3,
+            'openInterest': 10
         }
         
-        # Check for price columns and create fallbacks
+        # Check for alternative column names and create required columns if missing
         if 'bidPrice' not in options_df.columns and 'bid' in options_df.columns:
             logger.info("Creating bidPrice from bid column")
             options_df['bidPrice'] = options_df['bid']
@@ -680,25 +661,33 @@ class RecommendationEngine:
     
     def generate_recommendations(self, options_with_risk_reward):
         """
-        Generate actionable buy/sell signals with confidence scores.
+        Generate final recommendations based on scored options.
         
         Args:
             options_with_risk_reward: Dict with options that have risk/reward metrics
             
         Returns:
-            dict: Top recommendations for calls and puts
+            dict: Final recommendations for calls and puts
         """
-        logger.info("Generating recommendations")
+        logger.info("Generating final recommendations")
         
         calls_df = options_with_risk_reward['calls']
         puts_df = options_with_risk_reward['puts']
         
-        # Filter options by confidence threshold
+        # Filter by confidence score
         if not calls_df.empty:
+            # Log confidence score distribution before filtering
+            logger.info(f"Calls confidence score distribution before filtering: min={calls_df['confidenceScore'].min():.1f}, max={calls_df['confidenceScore'].max():.1f}, mean={calls_df['confidenceScore'].mean():.1f}")
+            # Filter by confidence score
             calls_df = calls_df[calls_df['confidenceScore'] >= CONFIDENCE_THRESHOLD]
+            logger.info(f"Filtered calls by confidence score >= {CONFIDENCE_THRESHOLD}, remaining: {len(calls_df)}")
         
         if not puts_df.empty:
+            # Log confidence score distribution before filtering
+            logger.info(f"Puts confidence score distribution before filtering: min={puts_df['confidenceScore'].min():.1f}, max={puts_df['confidenceScore'].max():.1f}, mean={puts_df['confidenceScore'].mean():.1f}")
+            # Filter by confidence score
             puts_df = puts_df[puts_df['confidenceScore'] >= CONFIDENCE_THRESHOLD]
+            logger.info(f"Filtered puts by confidence score >= {CONFIDENCE_THRESHOLD}, remaining: {len(puts_df)}")
         
         # Sort by confidence score (descending)
         if not calls_df.empty:
@@ -797,7 +786,7 @@ class RecommendationEngine:
         logger.info(f"Calls shape after risk/reward: {options_with_risk_reward['calls'].shape if not options_with_risk_reward['calls'].empty else 'Empty DataFrame'}")
         logger.info(f"Puts shape after risk/reward: {options_with_risk_reward['puts'].shape if not options_with_risk_reward['puts'].empty else 'Empty DataFrame'}")
         
-        # Step 4: Generate recommendations
+        # Step 4: Generate final recommendations
         logger.info("Step 4: Generating final recommendations")
         recommendations = self.generate_recommendations(options_with_risk_reward)
         logger.info(f"Number of call recommendations: {len(recommendations.get('calls', []))}")

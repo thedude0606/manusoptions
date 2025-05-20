@@ -13,6 +13,7 @@
 - [x] Integrate batched data retrieval with dashboard application
 - [x] Fix Dash obsolete attribute error (app.run_server → app.run)
 - [x] Fix recommendations tab with robust data validation and field handling
+- [x] Fix recommendation engine to generate recommendations properly
 - [ ] Test dashboard with various symbols and extended data periods
 
 ## Medium Priority
