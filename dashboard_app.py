@@ -1,4 +1,3 @@
-import dash
 from dash import dcc, html, dash_table, ctx
 from dash.dependencies import Input, Output, State, ALL
 import pandas as pd
@@ -61,6 +60,7 @@ CACHE_CONFIG = {
     'max_age_hours': 24,  # Maximum age of cached data before forcing a full refresh
     'update_interval_seconds': 30,  # Interval for periodic updates
     'buffer_minutes': 5,  # Buffer time to avoid gaps in data
+    'days_history': 60,  # Number of days of minute data to fetch (changed from default 1 to 60)
 }
 
 # Initialize the Dash app BEFORE defining layout or callbacks
@@ -421,7 +421,8 @@ def update_minute_data(selected_symbol, n_refresh, n_intervals):
         
         # Fetch new data
         app_logger.info(f"Fetching minute data for {symbol}")
-        minute_df, error = get_minute_data(client, symbol)
+        # Use the days_history from CACHE_CONFIG (now set to 60 days)
+        minute_df, error = get_minute_data(client, symbol, days_history=CACHE_CONFIG["days_history"])
         
         if error:
             app_logger.error(f"Error fetching minute data: {error}")
@@ -613,7 +614,7 @@ def update_options_chain(selected_symbol, n_refresh, n_intervals):
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
         
-        # Fetch options chain data
+        app_logger.info(f"Fetching options chain for {symbol}")
         options_df, expiration_dates, error = get_options_chain_data(client, symbol)
         
         if error:
@@ -628,29 +629,24 @@ def update_options_chain(selected_symbol, n_refresh, n_intervals):
             app_logger.warning(f"No options data available for {symbol}")
             return None, [], None, f"No options data available for {symbol}", None
         
-        # Get underlying price
-        underlying_price = None
-        if "underlyingPrice" in options_df.columns:
-            underlying_price = options_df["underlyingPrice"].iloc[0]
-        
-        # Create dropdown options
+        # Prepare dropdown options
         dropdown_options = [{"label": date, "value": date} for date in expiration_dates]
         
-        # Set default value to first expiration date
-        default_value = expiration_dates[0] if expiration_dates else None
+        # Select first expiration date by default
+        default_expiration = expiration_dates[0] if expiration_dates else None
         
         # Prepare data for store
-        options_chain_data = {
+        options_data = {
             "symbol": symbol,
-            "options": options_df.to_dict("records"),
+            "data": options_df.to_dict("records"),
             "expiration_dates": expiration_dates,
-            "underlyingPrice": underlying_price
+            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         
         status_message = f"Loaded {len(options_df)} option contracts for {symbol}"
         app_logger.info(status_message)
         
-        return options_chain_data, dropdown_options, default_value, status_message, None
+        return options_data, dropdown_options, default_expiration, status_message, None
     
     except Exception as e:
         error_msg = f"Error updating options chain: {str(e)}"
@@ -669,20 +665,20 @@ def update_options_chain(selected_symbol, n_refresh, n_intervals):
     prevent_initial_call=True
 )
 def update_minute_data_table(minute_data):
-    """Updates the minute data table with the latest data."""
+    """Updates the minute data table with the fetched data."""
     if not minute_data or not minute_data.get("data"):
         return [], []
     
     data = minute_data["data"]
     
-    # Create columns configuration
+    # Define columns
     columns = [
         {"name": "Timestamp", "id": "timestamp"},
-        {"name": "Open", "id": "open", "type": "numeric", "format": {"specifier": ".2f"}},
-        {"name": "High", "id": "high", "type": "numeric", "format": {"specifier": ".2f"}},
-        {"name": "Low", "id": "low", "type": "numeric", "format": {"specifier": ".2f"}},
-        {"name": "Close", "id": "close", "type": "numeric", "format": {"specifier": ".2f"}},
-        {"name": "Volume", "id": "volume", "type": "numeric", "format": {"specifier": ",d"}}
+        {"name": "Open", "id": "open"},
+        {"name": "High", "id": "high"},
+        {"name": "Low", "id": "low"},
+        {"name": "Close", "id": "close"},
+        {"name": "Volume", "id": "volume"}
     ]
     
     return data, columns
@@ -695,114 +691,68 @@ def update_minute_data_table(minute_data):
     prevent_initial_call=True
 )
 def update_tech_indicators_table(tech_indicators_data):
-    """Updates the technical indicators table with the latest data."""
+    """Updates the technical indicators table with the calculated data."""
     if not tech_indicators_data or not tech_indicators_data.get("timeframe_data"):
         return [], []
     
     timeframe = tech_indicators_data.get("timeframe", "1min")
-    timeframe_data = tech_indicators_data["timeframe_data"].get(timeframe, [])
+    data = tech_indicators_data["timeframe_data"].get(timeframe, [])
     
-    if not timeframe_data:
+    if not data:
         return [], []
     
-    # Create columns configuration
-    first_row = timeframe_data[0] if timeframe_data else {}
-    columns = []
+    # Get column names from the first row
+    first_row = data[0] if data else {}
+    columns = [{"name": k, "id": k} for k in first_row.keys()]
     
-    # Add timestamp column first
-    if "timestamp" in first_row:
-        columns.append({"name": "Timestamp", "id": "timestamp"})
-    
-    # Add OHLCV columns next
-    for col in ["open", "high", "low", "close", "volume"]:
-        if col in first_row:
-            col_name = col.capitalize()
-            col_format = {"specifier": ".2f"} if col != "volume" else {"specifier": ",d"}
-            columns.append({"name": col_name, "id": col, "type": "numeric", "format": col_format})
-    
-    # Add technical indicator columns
-    for col in first_row:
-        if col not in ["timestamp", "open", "high", "low", "close", "volume"]:
-            columns.append({"name": col, "id": col, "type": "numeric", "format": {"specifier": ".4f"}})
-    
-    return timeframe_data, columns
+    return data, columns
 
 # Options Chain Tables Callback
 @app.callback(
-    [
-        Output("calls-table", "data"),
-        Output("calls-table", "columns"),
-        Output("puts-table", "data"),
-        Output("puts-table", "columns")
-    ],
-    [
-        Input("options-chain-store", "data"),
-        Input("expiration-date-dropdown", "value")
-    ],
+    Output("calls-table", "data"),
+    Output("calls-table", "columns"),
+    Output("puts-table", "data"),
+    Output("puts-table", "columns"),
+    Input("options-chain-store", "data"),
+    Input("expiration-date-dropdown", "value"),
     prevent_initial_call=True
 )
-def update_options_tables(options_chain_data, selected_expiration):
-    """Updates the options chain tables with the latest data."""
-    if not options_chain_data or not options_chain_data.get("options") or not selected_expiration:
+def update_options_tables(options_data, selected_expiration):
+    """Updates the calls and puts tables with the fetched options data."""
+    if not options_data or not options_data.get("data") or not selected_expiration:
         return [], [], [], []
     
-    options_data = options_chain_data["options"]
+    # Convert to DataFrame for easier filtering
+    options_df = pd.DataFrame(options_data["data"])
     
     # Filter by expiration date
-    filtered_options = [opt for opt in options_data if opt.get("expirationDate") == selected_expiration]
+    filtered_df = options_df[options_df["expirationDate"] == selected_expiration]
     
-    # Separate calls and puts
-    calls_raw = [opt for opt in filtered_options if opt.get("putCall") == "CALL"]
-    puts_raw = [opt for opt in filtered_options if opt.get("putCall") == "PUT"]
+    # Split into calls and puts
+    calls_df = filtered_df[filtered_df["putCall"] == "CALL"].copy()
+    puts_df = filtered_df[filtered_df["putCall"] == "PUT"].copy()
     
-    # Sanitize data for DataTable (remove non-primitive types)
-    def sanitize_option_data(options_list):
-        sanitized_list = []
-        for opt in options_list:
-            sanitized_opt = {}
-            for key, value in opt.items():
-                # Skip complex objects or convert them to strings
-                if isinstance(value, (str, int, float, bool)) or value is None:
-                    sanitized_opt[key] = value
-                elif key == "optionDeliverablesList":
-                    # Convert complex object to string representation or skip
-                    try:
-                        sanitized_opt[key] = str(value)
-                    except:
-                        # If conversion fails, skip this field
-                        pass
-                else:
-                    # For other complex objects, try to convert to string
-                    try:
-                        sanitized_opt[key] = str(value)
-                    except:
-                        # If conversion fails, skip this field
-                        pass
-            sanitized_list.append(sanitized_opt)
-        return sanitized_list
+    # Sort by strike price
+    calls_df = calls_df.sort_values(by="strikePrice")
+    puts_df = puts_df.sort_values(by="strikePrice")
     
-    # Apply sanitization
-    calls = sanitize_option_data(calls_raw)
-    puts = sanitize_option_data(puts_raw)
-    
-    # Create columns configuration
-    columns = [
-        {"name": "Strike", "id": "strikePrice", "type": "numeric", "format": {"specifier": ".2f"}},
-        {"name": "Symbol", "id": "symbol"},
-        {"name": "Last", "id": "lastPrice", "type": "numeric", "format": {"specifier": ".2f"}},
-        {"name": "Bid", "id": "bidPrice", "type": "numeric", "format": {"specifier": ".2f"}},
-        {"name": "Ask", "id": "askPrice", "type": "numeric", "format": {"specifier": ".2f"}},
-        {"name": "Change", "id": "netChange", "type": "numeric", "format": {"specifier": ".2f"}},
-        {"name": "Volume", "id": "totalVolume", "type": "numeric", "format": {"specifier": ",d"}},
-        {"name": "Open Int", "id": "openInterest", "type": "numeric", "format": {"specifier": ",d"}},
-        {"name": "IV", "id": "volatility", "type": "numeric", "format": {"specifier": ".2f"}},
-        {"name": "Delta", "id": "delta", "type": "numeric", "format": {"specifier": ".4f"}},
-        {"name": "Gamma", "id": "gamma", "type": "numeric", "format": {"specifier": ".4f"}},
-        {"name": "Theta", "id": "theta", "type": "numeric", "format": {"specifier": ".4f"}},
-        {"name": "Vega", "id": "vega", "type": "numeric", "format": {"specifier": ".4f"}}
+    # Define columns to display
+    display_columns = [
+        "symbol", "strikePrice", "lastPrice", "bidPrice", "askPrice", 
+        "delta", "gamma", "theta", "vega", "rho", "openInterest", "totalVolume"
     ]
     
-    return calls, columns, puts, columns
+    # Filter columns that exist in the DataFrame
+    display_columns = [col for col in display_columns if col in calls_df.columns]
+    
+    # Create column definitions
+    columns = [{"name": col, "id": col} for col in display_columns]
+    
+    # Convert to records for table
+    calls_data = calls_df[display_columns].to_dict("records") if not calls_df.empty else []
+    puts_data = puts_df[display_columns].to_dict("records") if not puts_df.empty else []
+    
+    return calls_data, columns, puts_data, columns
 
 # Export Minute Data Callback
 @app.callback(
@@ -825,50 +775,43 @@ def export_minute_data(n_clicks, minute_data):
     # Create CSV string
     csv_string = df.to_csv(index=False)
     
-    # Create download data
+    # Return download data
     return dict(
         content=csv_string,
-        filename=f"{symbol}_minute_data_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        type="text/csv"
+        filename=f"{symbol}_minute_data_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     )
 
 # Export Technical Indicators Callback
 @app.callback(
     Output("download-tech-indicators-csv", "data"),
     Input("export-tech-indicators-button", "n_clicks"),
-    [
-        State("tech-indicators-store", "data"),
-        State("tech-indicators-timeframe-dropdown", "value")
-    ],
+    State("tech-indicators-store", "data"),
     prevent_initial_call=True
 )
-def export_tech_indicators(n_clicks, tech_indicators_data, timeframe):
+def export_tech_indicators(n_clicks, tech_indicators_data):
     """Exports technical indicators to CSV."""
     if not tech_indicators_data or not tech_indicators_data.get("timeframe_data"):
         return None
     
     symbol = tech_indicators_data.get("symbol", "unknown")
-    timeframe_data = tech_indicators_data["timeframe_data"].get(timeframe, [])
-    
-    if not timeframe_data:
-        return None
+    timeframe = tech_indicators_data.get("timeframe", "1min")
+    data = tech_indicators_data["timeframe_data"].get(timeframe, [])
     
     # Convert to DataFrame
-    df = pd.DataFrame(timeframe_data)
+    df = pd.DataFrame(data)
     
     # Create CSV string
     csv_string = df.to_csv(index=False)
     
-    # Create download data
+    # Return download data
     return dict(
         content=csv_string,
-        filename=f"{symbol}_{timeframe}_indicators_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        type="text/csv"
+        filename=f"{symbol}_{timeframe}_indicators_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     )
 
-# Register recommendation tab callbacks
+# Register recommendation callbacks
 register_recommendation_callbacks(app)
 
 # Run the app
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0")
+    app.run_server(debug=True, host="0.0.0.0", port=8050)
