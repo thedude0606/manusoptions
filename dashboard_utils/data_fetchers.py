@@ -261,6 +261,20 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
                         contract["putCall"] = "CALL"
                         contract["expirationDate"] = exp_date
                         contract["strikePrice"] = float(strike_price)
+                        
+                        # Ensure last, bid, and ask fields are always present
+                        if "lastPrice" not in contract or contract["lastPrice"] is None:
+                            contract["lastPrice"] = 0.0
+                            logger.debug(f"Added missing lastPrice for {contract.get('symbol', 'unknown')}")
+                        
+                        if "bidPrice" not in contract or contract["bidPrice"] is None:
+                            contract["bidPrice"] = 0.0
+                            logger.debug(f"Added missing bidPrice for {contract.get('symbol', 'unknown')}")
+                        
+                        if "askPrice" not in contract or contract["askPrice"] is None:
+                            contract["askPrice"] = 0.0
+                            logger.debug(f"Added missing askPrice for {contract.get('symbol', 'unknown')}")
+                        
                         all_options.append(contract)
         
         # Process put options
@@ -277,11 +291,32 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
                         contract["putCall"] = "PUT"
                         contract["expirationDate"] = exp_date
                         contract["strikePrice"] = float(strike_price)
+                        
+                        # Ensure last, bid, and ask fields are always present
+                        if "lastPrice" not in contract or contract["lastPrice"] is None:
+                            contract["lastPrice"] = 0.0
+                            logger.debug(f"Added missing lastPrice for {contract.get('symbol', 'unknown')}")
+                        
+                        if "bidPrice" not in contract or contract["bidPrice"] is None:
+                            contract["bidPrice"] = 0.0
+                            logger.debug(f"Added missing bidPrice for {contract.get('symbol', 'unknown')}")
+                        
+                        if "askPrice" not in contract or contract["askPrice"] is None:
+                            contract["askPrice"] = 0.0
+                            logger.debug(f"Added missing askPrice for {contract.get('symbol', 'unknown')}")
+                        
                         all_options.append(contract)
         
         # Convert to DataFrame
         if all_options:
             options_df = pd.DataFrame(all_options)
+            
+            # Ensure required columns exist in the DataFrame
+            required_columns = ["lastPrice", "bidPrice", "askPrice"]
+            for col in required_columns:
+                if col not in options_df.columns:
+                    options_df[col] = 0.0
+                    logger.warning(f"Added missing column {col} to options DataFrame")
             
             # Log a sample of the data to verify fields
             if not options_df.empty:

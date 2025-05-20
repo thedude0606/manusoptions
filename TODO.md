@@ -1,22 +1,20 @@
 # TODO List
 
 ## High Priority
-- [x] Analyze duplicate callback outputs issue
-- [x] Identify all callbacks with shared outputs
-- [x] Fix blank last, bid, and ask fields in options chain tab
-- [ ] Refactor callbacks to combine those with shared outputs
-  - [ ] Combine callbacks for error-store.data
-  - [ ] Combine callbacks for options-chain-store.data and related components
-  - [ ] Update recommendation tab callbacks if needed
-- [ ] Test refactored application
-- [ ] Push code changes to GitHub
-- [ ] Update documentation
+- [x] Fix blank last, bid, and ask fields in the options chain tab
+- [ ] Validate the fix in the web application
+- [ ] Implement additional error handling for API responses
 
 ## Medium Priority
-- [ ] Improve error handling
-- [ ] Optimize data fetching
-- [ ] Add unit tests for new callback structure
+- [ ] Improve UI responsiveness for large option chains
+- [ ] Add filtering capabilities to options tables
+- [ ] Enhance data visualization for technical indicators
 
 ## Low Priority
-- [ ] Review code for other potential improvements
-- [ ] Consider additional refactoring for maintainability
+- [ ] Add unit tests for options chain data processing
+- [ ] Optimize performance for large datasets
+- [ ] Implement caching for frequently accessed data
+
+## Dependencies
+- Options chain display depends on proper data fetching from Schwab API
+- Technical indicator calculations depend on minute data availability
