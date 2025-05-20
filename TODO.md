@@ -3,6 +3,7 @@
 ## High Priority
 - [x] Analyze duplicate callback outputs issue
 - [x] Identify all callbacks with shared outputs
+- [x] Fix blank last, bid, and ask fields in options chain tab
 - [ ] Refactor callbacks to combine those with shared outputs
   - [ ] Combine callbacks for error-store.data
   - [ ] Combine callbacks for options-chain-store.data and related components
