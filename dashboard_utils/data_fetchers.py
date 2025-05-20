@@ -262,7 +262,8 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
                         contract["expirationDate"] = exp_date
                         contract["strikePrice"] = float(strike_price)
                         
-                        # Ensure last, bid, and ask fields are always present
+                        # Only set default values if the fields are missing or null
+                        # This preserves actual values when they exist
                         if "lastPrice" not in contract or contract["lastPrice"] is None:
                             contract["lastPrice"] = 0.0
                             logger.debug(f"Added default lastPrice for {contract.get('symbol', 'unknown')}")
@@ -292,7 +293,8 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
                         contract["expirationDate"] = exp_date
                         contract["strikePrice"] = float(strike_price)
                         
-                        # Ensure last, bid, and ask fields are always present
+                        # Only set default values if the fields are missing or null
+                        # This preserves actual values when they exist
                         if "lastPrice" not in contract or contract["lastPrice"] is None:
                             contract["lastPrice"] = 0.0
                             logger.debug(f"Added default lastPrice for {contract.get('symbol', 'unknown')}")
