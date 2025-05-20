@@ -5,7 +5,8 @@
 ### Completed
 - Fixed issue with blank last, bid, and ask fields in the options chain tab
   - Identified that the backend was fetching these fields but they were sometimes missing or null
-  - Modified `get_options_chain_data()` in `dashboard_utils/data_fetchers.py` to ensure these fields are always present with default values
+  - Initially modified `get_options_chain_data()` to ensure fields were present but incorrectly defaulted values to 0
+  - Updated fix to preserve actual API values and only use defaults when fields are truly missing
   - Added validation to ensure the DataFrame always contains these columns
 
 ### In Progress

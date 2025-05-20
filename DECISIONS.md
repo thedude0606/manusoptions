@@ -19,7 +19,7 @@
 ## Key Decisions
 
 ### May 20, 2025
-- **Options Chain Data Handling**: Modified the options chain data fetching logic to ensure lastPrice, bidPrice, and askPrice fields are always present with default values (0.0) when missing from API response. This approach ensures consistent data structure throughout the application and prevents UI display issues.
+- **Options Chain Data Handling (Updated)**: Modified the options chain data fetching logic to preserve actual API values for lastPrice, bidPrice, and askPrice fields. Only add default values (None) when fields are completely missing from the API response. This ensures the UI displays real market data rather than placeholder zeros.
 - **Data Validation**: Added validation at both the contract level and DataFrame level to ensure required fields are always present, improving application robustness.
 - **Error Logging**: Enhanced logging to track when fields are missing or added, facilitating future debugging.
 

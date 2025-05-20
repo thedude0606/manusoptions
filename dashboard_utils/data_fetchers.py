@@ -262,18 +262,19 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
                         contract["expirationDate"] = exp_date
                         contract["strikePrice"] = float(strike_price)
                         
-                        # Ensure last, bid, and ask fields are always present
-                        if "lastPrice" not in contract or contract["lastPrice"] is None:
-                            contract["lastPrice"] = 0.0
-                            logger.debug(f"Added missing lastPrice for {contract.get('symbol', 'unknown')}")
+                        # Only add default values if fields are completely missing or None
+                        # This preserves actual values from the API
+                        if "lastPrice" not in contract:
+                            contract["lastPrice"] = None
+                            logger.debug(f"Added missing lastPrice field for {contract.get('symbol', 'unknown')}")
                         
-                        if "bidPrice" not in contract or contract["bidPrice"] is None:
-                            contract["bidPrice"] = 0.0
-                            logger.debug(f"Added missing bidPrice for {contract.get('symbol', 'unknown')}")
+                        if "bidPrice" not in contract:
+                            contract["bidPrice"] = None
+                            logger.debug(f"Added missing bidPrice field for {contract.get('symbol', 'unknown')}")
                         
-                        if "askPrice" not in contract or contract["askPrice"] is None:
-                            contract["askPrice"] = 0.0
-                            logger.debug(f"Added missing askPrice for {contract.get('symbol', 'unknown')}")
+                        if "askPrice" not in contract:
+                            contract["askPrice"] = None
+                            logger.debug(f"Added missing askPrice field for {contract.get('symbol', 'unknown')}")
                         
                         all_options.append(contract)
         
@@ -292,18 +293,19 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
                         contract["expirationDate"] = exp_date
                         contract["strikePrice"] = float(strike_price)
                         
-                        # Ensure last, bid, and ask fields are always present
-                        if "lastPrice" not in contract or contract["lastPrice"] is None:
-                            contract["lastPrice"] = 0.0
-                            logger.debug(f"Added missing lastPrice for {contract.get('symbol', 'unknown')}")
+                        # Only add default values if fields are completely missing or None
+                        # This preserves actual values from the API
+                        if "lastPrice" not in contract:
+                            contract["lastPrice"] = None
+                            logger.debug(f"Added missing lastPrice field for {contract.get('symbol', 'unknown')}")
                         
-                        if "bidPrice" not in contract or contract["bidPrice"] is None:
-                            contract["bidPrice"] = 0.0
-                            logger.debug(f"Added missing bidPrice for {contract.get('symbol', 'unknown')}")
+                        if "bidPrice" not in contract:
+                            contract["bidPrice"] = None
+                            logger.debug(f"Added missing bidPrice field for {contract.get('symbol', 'unknown')}")
                         
-                        if "askPrice" not in contract or contract["askPrice"] is None:
-                            contract["askPrice"] = 0.0
-                            logger.debug(f"Added missing askPrice for {contract.get('symbol', 'unknown')}")
+                        if "askPrice" not in contract:
+                            contract["askPrice"] = None
+                            logger.debug(f"Added missing askPrice field for {contract.get('symbol', 'unknown')}")
                         
                         all_options.append(contract)
         
@@ -315,7 +317,7 @@ def get_options_chain_data(client: schwabdev.Client, symbol: str):
             required_columns = ["lastPrice", "bidPrice", "askPrice"]
             for col in required_columns:
                 if col not in options_df.columns:
-                    options_df[col] = 0.0
+                    options_df[col] = None
                     logger.warning(f"Added missing column {col} to options DataFrame")
             
             # Log a sample of the data to verify fields
