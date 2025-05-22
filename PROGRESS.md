@@ -17,10 +17,13 @@
 - Fixed numpy/pandas binary incompatibility issue by specifying compatible versions
 - Added platform-specific installation instructions for Python 3.12 on Apple Silicon (ARM)
 - Provided multiple installation options for Python 3.12 on Apple Silicon compatibility
+- Fixed options chain table display issues by creating dedicated utility module
+- Fixed minute data error handling and display issues
 
 ## Current Work in Progress
 - Testing dashboard with various symbols and extended data periods
 - Validating recommendation engine fixes
+- Validating options chain and minute data fixes
 
 ## Known Issues or Challenges
 - Underlying price was not being properly extracted from options chain API response and passed to the recommendation engine
@@ -28,6 +31,8 @@
 - Binary incompatibility between numpy and pandas versions causing application startup failure
 - Python 3.12 on Apple Silicon (ARM) requires special handling for numpy/pandas installation
 - Numpy 1.24.4 is not directly compatible with Python 3.12 on ARM via conda
+- Options chain table was not displaying due to inconsistent data processing
+- Minute data errors occurred due to improper error handling
 
 ## Next Steps
 - Add comprehensive error handling and retry logic

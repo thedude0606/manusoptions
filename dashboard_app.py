@@ -1,94 +1,64 @@
-from dash import dcc, html, dash_table, ctx
 import dash
-from dash.dependencies import Input, Output, State, ALL
+from dash import dcc, html, dash_table, callback_context
+from dash.dependencies import Input, Output, State
 import pandas as pd
-import numpy as np # For NaN handling
+import numpy as np
+import plotly.graph_objs as go
+import os
+import json
 import datetime
-import os # For account ID
-import logging # For app-level logging
-import json # For pretty printing dicts in logs
-import re # For parsing option key
-import base64 # For CSV download
-import io # For CSV download
-# Import utility functions
-from dashboard_utils.data_fetchers import get_schwab_client, get_minute_data, get_options_chain_data, get_option_contract_keys
-from dashboard_utils.streaming_manager import StreamingManager
-# Import technical analysis functions
-from technical_analysis import aggregate_candles, calculate_all_technical_indicators
-# Import recommendation tab components
-from dashboard_utils.recommendation_tab import create_recommendation_tab, register_recommendation_callbacks
+import logging
+import schwabdev
+from dotenv import load_dotenv
+import time
+import sys
+from dashboard_utils.data_fetchers import get_minute_data, get_options_chain_data
+from dashboard_utils.recommendation_tab import register_recommendation_callbacks
+from dashboard_utils.options_chain_utils import process_options_chain_data, split_options_by_type
 
-# Configure logging for the app with both console and file handlers
-app_logger = logging.getLogger(__name__)
+# Load environment variables
+load_dotenv()
 
-# Always define log_file regardless of handler state
-log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
-os.makedirs(log_dir, exist_ok=True)
-log_file = os.path.join(log_dir, f"app_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+app_logger = logging.getLogger('dashboard_app')
 
-if not app_logger.hasHandlers():
-    # Console handler
-    app_handler = logging.StreamHandler()
-    app_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    app_handler.setFormatter(app_formatter)
-    app_logger.addHandler(app_handler)
-    
-    # File handler
-    file_handler = logging.FileHandler(log_file)
-    file_handler.setFormatter(app_formatter)
-    app_logger.addHandler(file_handler)
-    
-app_logger.setLevel(logging.INFO)
-app_logger.info(f"App logger initialized. Logging to console and file: {log_file}")
-
-# Global cache for minute data and technical indicators
-# Structure:
-# {
-#     'SYMBOL': {
-#         'data': pandas_dataframe,
-#         'last_update': datetime_object,
-#         'timeframe_data': {
-#             '1min': dataframe_or_records,
-#             '5min': dataframe_or_records,
-#             # other timeframes
-#         }
-#     }
-# }
-MINUTE_DATA_CACHE = {}
+# API credentials
+APP_KEY = os.getenv("APP_KEY")
+APP_SECRET = os.getenv("APP_SECRET")
+CALLBACK_URL = os.getenv("CALLBACK_URL")
+TOKENS_FILE = "token.json"
 
 # Cache configuration
 CACHE_CONFIG = {
-    'max_age_hours': 24,  # Maximum age of cached data before forcing a full refresh
-    'update_interval_seconds': 30,  # Interval for periodic updates
-    'buffer_minutes': 5,  # Buffer time to avoid gaps in data
-    'days_history': 60,  # Number of days of minute data to fetch (changed from default 1 to 60)
+    'update_interval_seconds': 60,  # Update data every 60 seconds
+    'cache_expiry_seconds': 300,    # Cache expires after 5 minutes
 }
 
-# Initialize the Dash app BEFORE defining layout or callbacks
+# Initialize Dash app
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
-app.title = "Trading Dashboard"
-app_logger.info("Dash app initialized")
 
-# --- Schwab Client and Account ID Setup ---
-def schwab_client_provider():
-    """Provides the Schwab client instance."""
-    client, _ = get_schwab_client()
-    return client
-
-# --- Layout ---
+# App layout
 app.layout = html.Div([
     # Header
-    html.Div([
-        html.H1("Trading Dashboard", className="app-header"),
-        html.Div([
-            dcc.Input(id="symbol-input", type="text", placeholder="Enter Symbol", value="AAPL", className="symbol-input"),
-            html.Button("Load", id="load-button", n_clicks=0, className="load-button"),
-            html.Button("Refresh", id="refresh-button", n_clicks=0, className="refresh-button"),
-            html.Div(id="status-message", className="status-message")
-        ], className="header-controls"),
-    ], className="header-container"),
+    html.H1("Options Analysis Dashboard"),
     
-    # Store components for data
+    # Symbol input
+    html.Div([
+        html.Label("Symbol:"),
+        dcc.Input(id="symbol-input", type="text", value="AAPL"),
+        html.Button("Load Data", id="load-button", n_clicks=0),
+        html.Button("Refresh", id="refresh-button", n_clicks=0),
+        html.Div(id="status-message")
+    ], style={'margin-bottom': '20px'}),
+    
+    # Data stores
     dcc.Store(id="selected-symbol-store"),
     dcc.Store(id="minute-data-store"),
     dcc.Store(id="tech-indicators-store"),
@@ -113,228 +83,155 @@ app.layout = html.Div([
                     dcc.Dropdown(
                         id="timeframe-dropdown",
                         options=[
-                            {"label": "1 Minute", "value": "1min"},
-                            {"label": "5 Minutes", "value": "5min"},
-                            {"label": "15 Minutes", "value": "15min"},
-                            {"label": "30 Minutes", "value": "30min"},
-                            {"label": "1 Hour", "value": "1hour"},
-                            {"label": "4 Hours", "value": "4hour"},
-                            {"label": "1 Day", "value": "1day"}
+                            {'label': '1 Minute', 'value': '1min'},
+                            {'label': '5 Minutes', 'value': '5min'},
+                            {'label': '15 Minutes', 'value': '15min'},
+                            {'label': '30 Minutes', 'value': '30min'},
+                            {'label': '1 Hour', 'value': '1hour'},
+                            {'label': '1 Day', 'value': '1day'}
                         ],
-                        value="1hour",
-                        clearable=False,
-                        className="timeframe-dropdown"
+                        value='1min'
                     )
-                ], className="control-group"),
+                ], style={'width': '200px', 'display': 'inline-block', 'margin-right': '20px'}),
                 
-                # Data table
+                # Period selector
                 html.Div([
-                    dash_table.DataTable(
-                        id="minute-data-table",
-                        page_size=10,
-                        style_table={'overflowX': 'auto'},
-                        style_cell={
-                            'textAlign': 'left',
-                            'padding': '5px'
-                        },
-                        style_header={
-                            'backgroundColor': 'rgb(230, 230, 230)',
-                            'fontWeight': 'bold'
-                        }
+                    html.Label("Period:"),
+                    dcc.Dropdown(
+                        id="period-dropdown",
+                        options=[
+                            {'label': 'Last 1 Day', 'value': '1d'},
+                            {'label': 'Last 5 Days', 'value': '5d'},
+                            {'label': 'Last 10 Days', 'value': '10d'},
+                            {'label': 'Last 30 Days', 'value': '30d'},
+                            {'label': 'Last 60 Days', 'value': '60d'}
+                        ],
+                        value='1d'
                     )
-                ], className="data-table-container")
-            ], className="tab-content")
+                ], style={'width': '200px', 'display': 'inline-block'})
+            ], style={'margin-bottom': '20px'}),
+            
+            # Minute data table
+            html.Div([
+                html.H3("Minute Data"),
+                dash_table.DataTable(
+                    id="minute-data-table",
+                    page_size=10,
+                    style_table={'overflowX': 'auto'},
+                    style_cell={
+                        'textAlign': 'left',
+                        'padding': '5px'
+                    },
+                    style_header={
+                        'backgroundColor': 'rgb(230, 230, 230)',
+                        'fontWeight': 'bold'
+                    }
+                )
+            ])
         ]),
         
         # Technical Indicators Tab
         dcc.Tab(label="Technical Indicators", children=[
             html.Div([
-                # Timeframe selector
-                html.Div([
-                    html.Label("Timeframe:"),
-                    dcc.Dropdown(
-                        id="tech-timeframe-dropdown",
-                        options=[
-                            {"label": "1 Minute", "value": "1min"},
-                            {"label": "5 Minutes", "value": "5min"},
-                            {"label": "15 Minutes", "value": "15min"},
-                            {"label": "30 Minutes", "value": "30min"},
-                            {"label": "1 Hour", "value": "1hour"},
-                            {"label": "4 Hours", "value": "4hour"},
-                            {"label": "1 Day", "value": "1day"}
-                        ],
-                        value="1hour",
-                        clearable=False,
-                        className="timeframe-dropdown"
-                    )
-                ], className="control-group"),
-                
-                # Data table
-                html.Div([
-                    dash_table.DataTable(
-                        id="tech-indicators-table",
-                        page_size=10,
-                        style_table={'overflowX': 'auto'},
-                        style_cell={
-                            'textAlign': 'left',
-                            'padding': '5px'
-                        },
-                        style_header={
-                            'backgroundColor': 'rgb(230, 230, 230)',
-                            'fontWeight': 'bold'
-                        }
-                    )
-                ], className="data-table-container")
-            ], className="tab-content")
+                html.H3("Technical Indicators"),
+                dash_table.DataTable(
+                    id="tech-indicators-table",
+                    page_size=10,
+                    style_table={'overflowX': 'auto'},
+                    style_cell={
+                        'textAlign': 'left',
+                        'padding': '5px'
+                    },
+                    style_header={
+                        'backgroundColor': 'rgb(230, 230, 230)',
+                        'fontWeight': 'bold'
+                    }
+                )
+            ])
         ]),
         
         # Options Chain Tab
         dcc.Tab(label="Options Chain", children=[
             html.Div([
-                # Controls
+                # Options chain controls
                 html.Div([
+                    # Expiration date selector
                     html.Div([
                         html.Label("Expiration Date:"),
-                        dcc.Dropdown(
-                            id="expiration-date-dropdown",
-                            options=[],
-                            className="expiration-dropdown"
-                        )
-                    ], className="control-group"),
+                        dcc.Dropdown(id="expiration-date-dropdown")
+                    ], style={'width': '200px', 'display': 'inline-block', 'margin-right': '20px'}),
+                    
+                    # Option type selector
                     html.Div([
                         html.Label("Option Type:"),
                         dcc.RadioItems(
                             id="option-type-radio",
                             options=[
-                                {"label": "Calls", "value": "CALL"},
-                                {"label": "Puts", "value": "PUT"},
-                                {"label": "Both", "value": "BOTH"}
+                                {'label': 'Calls', 'value': 'CALL'},
+                                {'label': 'Puts', 'value': 'PUT'},
+                                {'label': 'Both', 'value': 'BOTH'}
                             ],
-                            value="BOTH",
-                            className="option-type-radio"
+                            value='BOTH',
+                            inline=True
                         )
-                    ], className="control-group"),
-                    html.Div(id="options-chain-status", className="options-status")
-                ], className="options-controls"),
+                    ], style={'display': 'inline-block'})
+                ], style={'margin-bottom': '20px'}),
                 
-                # Options chain tables
+                # Status message
+                html.Div(id="options-chain-status"),
+                
+                # Options tables
                 html.Div([
+                    # Calls table
                     html.Div([
-                        html.H3("Calls", className="table-header"),
-                        html.Div([
-                            dash_table.DataTable(
-                                id="calls-table",
-                                columns=[
-                                    {"name": "Strike", "id": "strikePrice", "type": "numeric", "format": {"specifier": ".2f"}},
-                                    {"name": "Last", "id": "lastPrice", "type": "numeric", "format": {"specifier": ".2f"}},
-                                    {"name": "Bid", "id": "bidPrice", "type": "numeric", "format": {"specifier": ".2f"}},
-                                    {"name": "Ask", "id": "askPrice", "type": "numeric", "format": {"specifier": ".2f"}},
-                                    {"name": "Volume", "id": "totalVolume", "type": "numeric"},
-                                    {"name": "OI", "id": "openInterest", "type": "numeric"},
-                                    {"name": "IV", "id": "volatility", "type": "numeric", "format": {"specifier": ".2f"}},
-                                    {"name": "Delta", "id": "delta", "type": "numeric", "format": {"specifier": ".3f"}},
-                                    {"name": "Gamma", "id": "gamma", "type": "numeric", "format": {"specifier": ".3f"}},
-                                    {"name": "Theta", "id": "theta", "type": "numeric", "format": {"specifier": ".3f"}},
-                                    {"name": "Vega", "id": "vega", "type": "numeric", "format": {"specifier": ".3f"}}
-                                ],
-                                page_size=10,
-                                style_table={'overflowX': 'auto'},
-                                style_cell={
-                                    'textAlign': 'left',
-                                    'padding': '5px'
-                                },
-                                style_header={
-                                    'backgroundColor': 'rgb(230, 230, 230)',
-                                    'fontWeight': 'bold'
-                                },
-                                style_data_conditional=[
-                                    {
-                                        'if': {'column_id': 'strikePrice', 'filter_query': '{inTheMoney} eq true'},
-                                        'backgroundColor': 'rgba(0, 255, 0, 0.1)',
-                                        'fontWeight': 'bold'
-                                    }
-                                ],
-                                # Tooltip for filter usage
-                                tooltip_delay=0,
-                                tooltip_duration=None
-                            )
-                        ], className="calls-container")
-                    ]),
+                        html.H3("Calls"),
+                        dash_table.DataTable(
+                            id="calls-table",
+                            page_size=10,
+                            style_table={'overflowX': 'auto'},
+                            style_cell={
+                                'textAlign': 'left',
+                                'padding': '5px'
+                            },
+                            style_header={
+                                'backgroundColor': 'rgb(230, 230, 230)',
+                                'fontWeight': 'bold'
+                            }
+                        )
+                    ], style={'width': '49%', 'display': 'inline-block', 'vertical-align': 'top'}),
+                    
+                    # Puts table
                     html.Div([
-                        html.H3("Puts", className="table-header"),
-                        html.Div([
-                            dash_table.DataTable(
-                                id="puts-table",
-                                columns=[
-                                    {"name": "Strike", "id": "strikePrice", "type": "numeric", "format": {"specifier": ".2f"}},
-                                    {"name": "Last", "id": "lastPrice", "type": "numeric", "format": {"specifier": ".2f"}},
-                                    {"name": "Bid", "id": "bidPrice", "type": "numeric", "format": {"specifier": ".2f"}},
-                                    {"name": "Ask", "id": "askPrice", "type": "numeric", "format": {"specifier": ".2f"}},
-                                    {"name": "Volume", "id": "totalVolume", "type": "numeric"},
-                                    {"name": "OI", "id": "openInterest", "type": "numeric"},
-                                    {"name": "IV", "id": "volatility", "type": "numeric", "format": {"specifier": ".2f"}},
-                                    {"name": "Delta", "id": "delta", "type": "numeric", "format": {"specifier": ".3f"}},
-                                    {"name": "Gamma", "id": "gamma", "type": "numeric", "format": {"specifier": ".3f"}},
-                                    {"name": "Theta", "id": "theta", "type": "numeric", "format": {"specifier": ".3f"}},
-                                    {"name": "Vega", "id": "vega", "type": "numeric", "format": {"specifier": ".3f"}}
-                                ],
-                                page_size=10,
-                                style_table={'overflowX': 'auto'},
-                                style_cell={
-                                    'textAlign': 'left',
-                                    'padding': '5px'
-                                },
-                                style_header={
-                                    'backgroundColor': 'rgb(230, 230, 230)',
-                                    'fontWeight': 'bold'
-                                },
-                                style_data_conditional=[
-                                    {
-                                        'if': {'column_id': 'strikePrice', 'filter_query': '{inTheMoney} eq true'},
-                                        'backgroundColor': 'rgba(0, 255, 0, 0.1)',
-                                        'fontWeight': 'bold'
-                                    },
-                                ],
-                                # Tooltip for filter usage
-                                tooltip_delay=0,
-                                tooltip_duration=None
-                            )
-                        ], className="puts-container")
-                    ])
-                ], className="options-tables-container")
-            ], className="tab-content")
+                        html.H3("Puts"),
+                        dash_table.DataTable(
+                            id="puts-table",
+                            page_size=10,
+                            style_table={'overflowX': 'auto'},
+                            style_cell={
+                                'textAlign': 'left',
+                                'padding': '5px'
+                            },
+                            style_header={
+                                'backgroundColor': 'rgb(230, 230, 230)',
+                                'fontWeight': 'bold'
+                            }
+                        )
+                    ], style={'width': '49%', 'display': 'inline-block', 'vertical-align': 'top'})
+                ])
+            ])
         ]),
         
-        # Recommendation Engine Tab
-        dcc.Tab(label="Recommendations", children=create_recommendation_tab())
-    ], id="tabs", className="tabs-container"),
+        # Recommendations Tab
+        dcc.Tab(label="Recommendations", id="recommendations-tab", children=[
+            html.Div(id="recommendations-content")
+        ])
+    ]),
     
-    # Error display
-    html.Div(id="error-display", className="error-display")
-], className="app-container")
+    # Error messages
+    html.Div(id="error-messages", style={'margin-top': '20px', 'color': 'red'})
+])
 
-# --- Callbacks ---
-
-# Error Store Callback
-@app.callback(
-    Output("error-display", "children"),
-    Input("error-store", "data")
-)
-def update_error_display(error_data):
-    if error_data:
-        source = error_data.get("source", "Unknown")
-        message = error_data.get("message", "An unknown error occurred")
-        timestamp = error_data.get("timestamp", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        
-        return html.Div([
-            html.H4(f"Error in {source}"),
-            html.P(message),
-            html.P(f"Time: {timestamp}", className="error-timestamp")
-        ], className="error-message")
-    
-    return None
-
-# Symbol Selection Callback
+# Symbol selection callback
 @app.callback(
     Output("selected-symbol-store", "data"),
     Output("status-message", "children"),
@@ -343,264 +240,199 @@ def update_error_display(error_data):
     prevent_initial_call=True
 )
 def update_selected_symbol(n_clicks, symbol):
-    """Updates the selected symbol."""
+    """Updates the selected symbol and triggers data loading."""
     if not symbol:
         return None, "Please enter a symbol"
     
-    # Normalize symbol
-    symbol = symbol.strip().upper()
-    
-    app_logger.info(f"Selected symbol: {symbol}")
-    
-    return {"symbol": symbol}, f"Symbol selected: {symbol}"
+    return {"symbol": symbol.upper(), "timestamp": datetime.datetime.now().isoformat()}, f"Loading data for {symbol.upper()}..."
 
-# Minute Data Callback
+# Minute Data Tab Callback
 @app.callback(
-    [
-        Output("minute-data-store", "data"),
-        Output("status-message", "children", allow_duplicate=True),
-        Output("error-store", "data")
-    ],
-    [
-        Input("selected-symbol-store", "data"),
-        Input("refresh-button", "n_clicks"),
-        Input("update-interval", "n_intervals")
-    ],
+    Output("minute-data-store", "data"),
+    Output("error-store", "data", allow_duplicate=True),
+    Input("selected-symbol-store", "data"),
+    Input("refresh-button", "n_clicks"),
+    Input("update-interval", "n_intervals"),
+    State("error-store", "data"),
     prevent_initial_call=True
 )
-def update_minute_data(selected_symbol, n_refresh, n_intervals):
+def update_minute_data(selected_symbol, n_refresh, n_intervals, error_data):
     """Fetches minute data for the selected symbol."""
-    global MINUTE_DATA_CACHE
-    
     ctx_msg = dash.callback_context
     trigger_id = ctx_msg.triggered[0]["prop_id"].split(".")[0] if ctx_msg.triggered else None
     
     if not selected_symbol or not selected_symbol.get("symbol"):
-        return None, "No symbol selected", None
+        return None, error_data
     
     symbol = selected_symbol["symbol"]
-    app_logger.info(f"Updating minute data for {symbol} (trigger: {trigger_id})")
+    app_logger.info(f"Fetching minute data for {symbol}")
     
     try:
-        client = schwab_client_provider()
-        if not client:
-            error_msg = "Failed to initialize Schwab client"
-            app_logger.error(error_msg)
-            return None, "Error: Schwab client initialization failed", {
-                "source": "Minute Data",
-                "message": error_msg,
-                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
+        # Initialize Schwab client
+        client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file=TOKENS_FILE, capture_callback=False)
         
-        # Check if we need to fetch new data or can use cached data
-        force_refresh = trigger_id in ["refresh-button", "selected-symbol-store"]
-        
-        if symbol in MINUTE_DATA_CACHE and not force_refresh:
-            # Check if cache is still valid
-            last_update = MINUTE_DATA_CACHE[symbol].get("last_update")
-            if last_update:
-                age_hours = (datetime.datetime.now() - last_update).total_seconds() / 3600
-                if age_hours < CACHE_CONFIG["max_age_hours"]:
-                    # Cache is still valid, use it
-                    app_logger.info(f"Using cached minute data for {symbol} (age: {age_hours:.2f} hours)")
-                    return MINUTE_DATA_CACHE[symbol], f"Using cached data for {symbol}", None
-        
-        # Fetch new data
-        days_history = CACHE_CONFIG["days_history"]
-        app_logger.info(f"Fetching {days_history} days of minute data for {symbol}")
-        
-        # If we have cached data, use the latest timestamp as the starting point
-        since_timestamp = None
-        if symbol in MINUTE_DATA_CACHE and "data" in MINUTE_DATA_CACHE[symbol]:
-            cached_df = pd.DataFrame(MINUTE_DATA_CACHE[symbol]["data"])
-            if not cached_df.empty and "timestamp" in cached_df.columns:
-                # Get the latest timestamp and subtract a buffer to ensure no gaps
-                latest_timestamp = pd.to_datetime(cached_df["timestamp"]).max()
-                buffer_minutes = CACHE_CONFIG["buffer_minutes"]
-                since_timestamp = latest_timestamp - datetime.timedelta(minutes=buffer_minutes)
-                app_logger.info(f"Using incremental fetch since {since_timestamp} (with {buffer_minutes} minute buffer)")
-        
-        minute_df, error = get_minute_data(client, symbol, days_history, since_timestamp)
+        # Fetch minute data
+        minute_data, error = get_minute_data(client, symbol)
         
         if error:
             app_logger.error(f"Error fetching minute data: {error}")
-            return None, f"Error: {error}", {
+            return None, {
                 "source": "Minute Data",
                 "message": error,
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
         
-        if minute_df.empty:
-            app_logger.warning(f"No minute data available for {symbol}")
-            return None, f"No minute data available for {symbol}", None
+        # Format data for the table
+        formatted_data = []
+        for candle in minute_data:
+            timestamp = datetime.datetime.fromtimestamp(candle["datetime"] / 1000).strftime("%Y-%m-%d %H:%M:%S")
+            formatted_data.append({
+                "timestamp": timestamp,
+                "open": candle["open"],
+                "high": candle["high"],
+                "low": candle["low"],
+                "close": candle["close"],
+                "volume": candle["volume"]
+            })
         
-        # If we have existing cached data and did an incremental fetch, merge with cached data
-        if symbol in MINUTE_DATA_CACHE and "data" in MINUTE_DATA_CACHE[symbol] and since_timestamp:
-            cached_df = pd.DataFrame(MINUTE_DATA_CACHE[symbol]["data"])
-            if not cached_df.empty:
-                # Convert timestamp columns to datetime for proper comparison
-                if "timestamp" in cached_df.columns:
-                    cached_df["timestamp"] = pd.to_datetime(cached_df["timestamp"])
-                
-                if "timestamp" in minute_df.columns:
-                    minute_df["timestamp"] = pd.to_datetime(minute_df["timestamp"])
-                
-                # Remove any overlap (keep newer data)
-                if since_timestamp:
-                    cached_df = cached_df[cached_df["timestamp"] < since_timestamp]
-                
-                # Combine old and new data
-                combined_df = pd.concat([minute_df, cached_df], ignore_index=True)
-                
-                # Remove duplicates
-                combined_df.drop_duplicates(subset=["timestamp"], keep="first", inplace=True)
-                
-                # Sort by timestamp (descending)
-                combined_df.sort_values(by="timestamp", ascending=False, inplace=True)
-                
-                minute_df = combined_df
-                app_logger.info(f"Merged new data with cached data, total rows: {len(minute_df)}")
+        app_logger.info(f"Successfully fetched {len(formatted_data)} minute data points for {symbol}")
         
-        # Convert timestamp to string for JSON serialization
-        if "timestamp" in minute_df.columns:
-            minute_df["timestamp"] = minute_df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Update cache
-        MINUTE_DATA_CACHE[symbol] = {
-            "data": minute_df.to_dict("records"),
-            "last_update": datetime.datetime.now()
-        }
-        
-        # Prepare data for store
-        minute_data = {
+        return {
             "symbol": symbol,
-            "data": minute_df.to_dict("records"),
+            "data": formatted_data,
             "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        
-        status_message = f"Loaded {len(minute_df)} minute data rows for {symbol}"
-        app_logger.info(status_message)
-        
-        return minute_data, status_message, None
+        }, error_data
     
     except Exception as e:
-        error_msg = f"Error updating minute data: {str(e)}"
+        error_msg = f"Error fetching minute data: {str(e)}"
         app_logger.error(error_msg, exc_info=True)
-        return None, f"Error: {str(e)}", {
+        return None, {
             "source": "Minute Data",
             "message": error_msg,
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
 
-# Technical Indicators Callback
+# Technical Indicators Tab Callback
 @app.callback(
-    [
-        Output("tech-indicators-store", "data"),
-        Output("error-store", "data", allow_duplicate=True)
-    ],
-    [
-        Input("minute-data-store", "data"),
-        Input("tech-timeframe-dropdown", "value")
-    ],
+    Output("tech-indicators-store", "data"),
+    Output("error-store", "data", allow_duplicate=True),
+    Input("minute-data-store", "data"),
+    State("error-store", "data"),
     prevent_initial_call=True
 )
-def update_technical_indicators(minute_data, timeframe):
-    """Calculates technical indicators for the selected timeframe."""
-    global MINUTE_DATA_CACHE
-    
+def update_tech_indicators(minute_data, error_data):
+    """Calculates technical indicators from minute data."""
     if not minute_data or not minute_data.get("data"):
-        return None, None
+        return None, error_data
     
-    symbol = minute_data.get("symbol", "")
-    app_logger.info(f"Updating technical indicators for {symbol} ({timeframe})")
+    symbol = minute_data["symbol"]
+    data = minute_data["data"]
+    
+    app_logger.info(f"Calculating technical indicators for {symbol}")
     
     try:
-        # Convert minute data to DataFrame
-        minute_df = pd.DataFrame(minute_data["data"])
+        # Convert to DataFrame
+        df = pd.DataFrame(data)
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        df.set_index("timestamp", inplace=True)
         
-        if minute_df.empty:
-            app_logger.warning(f"Empty minute data DataFrame for {symbol}")
-            return None, {
-                "source": "Technical Indicators",
-                "message": "No minute data available",
-                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
-        
-        # Convert timestamp to datetime
-        if "timestamp" in minute_df.columns:
-            minute_df["timestamp"] = pd.to_datetime(minute_df["timestamp"])
-            minute_df.set_index("timestamp", inplace=True)
-        
-        # Check if we need to recalculate or can use cached data
-        recalculate = True
-        if symbol in MINUTE_DATA_CACHE and "timeframe_data" in MINUTE_DATA_CACHE[symbol]:
-            if timeframe in MINUTE_DATA_CACHE[symbol]["timeframe_data"]:
-                # We already have this timeframe, check if we need to update
-                last_update = MINUTE_DATA_CACHE[symbol].get("last_update")
-                last_calc = MINUTE_DATA_CACHE[symbol].get("last_calc_" + timeframe)
-                
-                if last_calc and last_update and last_calc >= last_update:
-                    # No new data since last calculation, use cached data
-                    app_logger.info(f"Using cached {timeframe} data for {symbol}")
-                    recalculate = False
-        
-        if recalculate:
-            app_logger.info(f"Calculating {timeframe} indicators for {symbol}")
-            
-            # Aggregate to the selected timeframe
-            if timeframe != "1min":
-                rule_map = {
-                    "1min": "1min",
-                    "5min": "5min",
-                    "15min": "15min",
-                    "30min": "30min",
-                    "1hour": "1H",
-                    "4hour": "4H",
-                    "1day": "1D"
-                }
-                rule = rule_map.get(timeframe, "1H")
-                
-                # Aggregate candles
-                agg_df = aggregate_candles(minute_df, rule)
-                
-                if agg_df.empty:
-                    app_logger.warning(f"Aggregation returned empty DataFrame for {symbol} ({timeframe})")
-                    return None, {
-                        "source": "Technical Indicators",
-                        "message": f"Failed to aggregate data to {timeframe}",
-                        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    }
-            else:
-                # Use minute data as is
-                agg_df = minute_df.copy()
-            
-            # Reset index to get timestamp as column
-            agg_df = agg_df.reset_index()
-            
-            # Calculate technical indicators
-            tech_df = calculate_all_technical_indicators(agg_df, symbol)
-            
-            # Update cache
-            if symbol in MINUTE_DATA_CACHE:
-                if "timeframe_data" not in MINUTE_DATA_CACHE[symbol]:
-                    MINUTE_DATA_CACHE[symbol]["timeframe_data"] = {}
-                
-                MINUTE_DATA_CACHE[symbol]["timeframe_data"][timeframe] = tech_df
-                MINUTE_DATA_CACHE[symbol]["last_calc_" + timeframe] = datetime.datetime.now()
-        else:
-            # Use cached data
-            tech_df = pd.DataFrame(MINUTE_DATA_CACHE[symbol]["timeframe_data"][timeframe])
-        
-        # Prepare data for store
-        tech_indicators_data = {
-            "symbol": symbol,
-            "timeframe": timeframe,
-            "timeframe_data": {
-                timeframe: tech_df.to_dict("records")
-            }
+        # Calculate indicators for different timeframes
+        timeframes = {
+            "1min": df,
+            "5min": df.resample("5T").agg({
+                "open": "first",
+                "high": "max",
+                "low": "min",
+                "close": "last",
+                "volume": "sum"
+            }).dropna(),
+            "15min": df.resample("15T").agg({
+                "open": "first",
+                "high": "max",
+                "low": "min",
+                "close": "last",
+                "volume": "sum"
+            }).dropna(),
+            "30min": df.resample("30T").agg({
+                "open": "first",
+                "high": "max",
+                "low": "min",
+                "close": "last",
+                "volume": "sum"
+            }).dropna(),
+            "1hour": df.resample("1H").agg({
+                "open": "first",
+                "high": "max",
+                "low": "min",
+                "close": "last",
+                "volume": "sum"
+            }).dropna()
         }
         
-        return tech_indicators_data, None
+        # Calculate indicators for each timeframe
+        timeframe_data = {}
+        for timeframe, tf_df in timeframes.items():
+            if len(tf_df) > 0:
+                # Calculate RSI
+                delta = tf_df["close"].diff()
+                gain = delta.where(delta > 0, 0)
+                loss = -delta.where(delta < 0, 0)
+                avg_gain = gain.rolling(window=14).mean()
+                avg_loss = loss.rolling(window=14).mean()
+                rs = avg_gain / avg_loss
+                rsi = 100 - (100 / (1 + rs))
+                
+                # Calculate MACD
+                ema12 = tf_df["close"].ewm(span=12, adjust=False).mean()
+                ema26 = tf_df["close"].ewm(span=26, adjust=False).mean()
+                macd = ema12 - ema26
+                signal = macd.ewm(span=9, adjust=False).mean()
+                histogram = macd - signal
+                
+                # Calculate Bollinger Bands
+                sma20 = tf_df["close"].rolling(window=20).mean()
+                std20 = tf_df["close"].rolling(window=20).std()
+                upper_band = sma20 + (std20 * 2)
+                lower_band = sma20 - (std20 * 2)
+                
+                # Prepare data for the table
+                indicators_df = pd.DataFrame({
+                    "timestamp": tf_df.index,
+                    "close": tf_df["close"],
+                    "rsi": rsi,
+                    "macd": macd,
+                    "macd_signal": signal,
+                    "macd_histogram": histogram,
+                    "bb_middle": sma20,
+                    "bb_upper": upper_band,
+                    "bb_lower": lower_band
+                }).dropna()
+                
+                # Format data for the table
+                formatted_data = []
+                for _, row in indicators_df.iterrows():
+                    formatted_data.append({
+                        "Timestamp": row["timestamp"].strftime("%Y-%m-%d %H:%M:%S"),
+                        "Close": round(row["close"], 2),
+                        "RSI": round(row["rsi"], 2),
+                        "MACD": round(row["macd"], 2),
+                        "MACD Signal": round(row["macd_signal"], 2),
+                        "MACD Histogram": round(row["macd_histogram"], 2),
+                        "BB Middle": round(row["bb_middle"], 2),
+                        "BB Upper": round(row["bb_upper"], 2),
+                        "BB Lower": round(row["bb_lower"], 2)
+                    })
+                
+                timeframe_data[timeframe] = formatted_data
+        
+        app_logger.info(f"Successfully calculated technical indicators for {symbol}")
+        
+        return {
+            "symbol": symbol,
+            "timeframe_data": timeframe_data,
+            "timeframe": "1min",
+            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }, error_data
     
     except Exception as e:
         error_msg = f"Error calculating technical indicators: {str(e)}"
@@ -611,7 +443,7 @@ def update_technical_indicators(minute_data, timeframe):
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
 
-# Combined Options Chain Callback
+# Options Chain Tab Callback
 @app.callback(
     [
         Output("options-chain-store", "data"),
@@ -636,20 +468,13 @@ def update_options_chain(selected_symbol, n_refresh, n_intervals):
         return None, [], None, "No symbol selected", None
     
     symbol = selected_symbol["symbol"]
-    app_logger.info(f"Updating options chain for {symbol} (trigger: {trigger_id})")
+    app_logger.info(f"Fetching options chain for {symbol}")
     
     try:
-        client = schwab_client_provider()
-        if not client:
-            error_msg = "Failed to initialize Schwab client"
-            app_logger.error(error_msg)
-            return None, [], None, "Error: Schwab client initialization failed", {
-                "source": "Options Chain",
-                "message": error_msg,
-                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
+        # Initialize Schwab client
+        client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file=TOKENS_FILE, capture_callback=False)
         
-        app_logger.info(f"Fetching options chain for {symbol}")
+        # Fetch options chain data
         options_df, expiration_dates, underlying_price, error = get_options_chain_data(client, symbol)
         
         if error:
@@ -660,17 +485,11 @@ def update_options_chain(selected_symbol, n_refresh, n_intervals):
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
         
-        if options_df.empty or not expiration_dates:
-            app_logger.warning(f"No options data available for {symbol}")
-            return None, [], None, f"No options data available for {symbol}", None
-        
         # Prepare dropdown options
         dropdown_options = [{"label": date, "value": date} for date in expiration_dates]
-        
-        # Select first expiration date by default
         default_expiration = expiration_dates[0] if expiration_dates else None
         
-        # Prepare data for store
+        # Prepare data for the store
         options_data = {
             "symbol": symbol,
             "options": options_df.to_dict("records"),
@@ -762,49 +581,28 @@ def update_options_tables(options_data, expiration_date, option_type):
     if not options_data or not options_data.get("options"):
         return [], []
     
-    options = options_data["options"]
-    
-    # Convert to DataFrame for easier filtering
-    options_df = pd.DataFrame(options)
-    
-    # Filter by expiration date if provided
-    if expiration_date and "expirationDate" in options_df.columns:
-        options_df = options_df[options_df["expirationDate"] == expiration_date]
-    
-    # Split into calls and puts
-    if "putCall" in options_df.columns:
-        calls_df = options_df[options_df["putCall"] == "CALL"]
-        puts_df = options_df[options_df["putCall"] == "PUT"]
-    else:
-        # If putCall column is missing, try to infer from symbol
-        if "symbol" in options_df.columns:
-            options_df["putCall"] = options_df["symbol"].apply(
-                lambda x: "CALL" if "C" in str(x).upper() else ("PUT" if "P" in str(x).upper() else "UNKNOWN")
-            )
-            calls_df = options_df[options_df["putCall"] == "CALL"]
-            puts_df = options_df[options_df["putCall"] == "PUT"]
-        else:
-            # Can't determine option type
-            return [], []
-    
-    # Sort by strike price
-    if "strikePrice" in calls_df.columns:
-        calls_df = calls_df.sort_values(by="strikePrice")
-    
-    if "strikePrice" in puts_df.columns:
-        puts_df = puts_df.sort_values(by="strikePrice")
-    
-    # Filter by option type if "BOTH" is not selected
-    if option_type == "CALL":
-        puts_df = pd.DataFrame()  # Empty DataFrame for puts
-    elif option_type == "PUT":
-        calls_df = pd.DataFrame()  # Empty DataFrame for calls
-    
-    # Convert to records for Dash table
-    calls_data = calls_df.to_dict("records") if not calls_df.empty else []
-    puts_data = puts_df.to_dict("records") if not puts_df.empty else []
+    # Use the utility function to split options by type
+    options_df = pd.DataFrame(options_data["options"])
+    calls_data, puts_data = split_options_by_type(options_df, expiration_date, option_type)
     
     return calls_data, puts_data
+
+# Error message callback
+@app.callback(
+    Output("error-messages", "children"),
+    Input("error-store", "data"),
+    prevent_initial_call=True
+)
+def update_error_messages(error_data):
+    """Updates the error message display."""
+    if not error_data:
+        return ""
+    
+    source = error_data.get("source", "Unknown")
+    message = error_data.get("message", "An unknown error occurred")
+    timestamp = error_data.get("timestamp", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    
+    return f"Error in {source} at {timestamp}: {message}"
 
 # Register recommendation callbacks
 register_recommendation_callbacks(app)

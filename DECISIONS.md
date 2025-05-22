@@ -1,77 +1,65 @@
-# Key Architectural Decisions
+# Design Decisions
 
-## Technology Stack
-- **Python**: Primary programming language for backend and data processing
-- **Dash**: Web application framework for building interactive dashboards
-- **Pandas**: Data manipulation and analysis
-- **NumPy**: Numerical computing
-- **SchwabDev**: API client for accessing Schwab trading data
-- **Technical Analysis Libraries**: For market indicators and signals
+## Architecture
+
+### Dashboard Structure
+- **Modular Design**: Separated dashboard components into distinct modules for better maintainability
+- **Callback Pattern**: Used Dash callback pattern for reactive updates
+- **Data Flow**: Implemented unidirectional data flow from API to UI components
+
+### Data Processing
+- **Batched Data Retrieval**: Implemented day-by-day batched retrieval for minute data to handle API limitations
+- **Data Transformation**: Standardized data formats between API responses and UI components
+- **Caching Strategy**: Used client-side stores for temporary data caching
+
+## Technology Selections
+
+### Frontend
+- **Dash**: Selected for its ability to create interactive data visualization applications with Python
+- **Plotly**: Used for interactive charts and visualizations
+- **Bootstrap Components**: Incorporated for responsive UI elements
+
+### Backend
+- **Python**: Primary language for all backend processing
+- **Schwab API**: Used for financial data retrieval
+- **Pandas**: Selected for data manipulation and analysis
 
 ## Design Patterns
-- **MVC Pattern**: Separation of data (models), user interface (views), and business logic (controllers)
-- **Observer Pattern**: Used in dashboard callbacks to respond to data changes
-- **Factory Pattern**: For creating different types of technical indicators
-- **Strategy Pattern**: For implementing different recommendation strategies
 
-## Key Decisions
-
-### Data Retrieval
-- **Batched Data Retrieval**: Implemented batched retrieval of minute data for 60 days to support extended analysis periods
-- **Incremental Updates**: Added support for incremental data updates to reduce API calls and improve performance
-- **Data Caching**: Implemented caching mechanism to store and reuse data between sessions
-
-### Technical Analysis
-- **Modular Indicator System**: Created a modular system for technical indicators that can be easily extended
-- **Timeframe Aggregation**: Implemented candle aggregation to support multiple timeframes (1min to 1day)
-- **Combined Signal Approach**: Used a combination of technical indicators for market direction analysis
-
-### Recommendation Engine
-- **Confidence Threshold**: Lowered confidence threshold from 60 to 40 to ensure recommendations are generated while maintaining quality
-- **Underlying Price Extraction**: Modified options chain data retrieval to properly extract and pass the underlying price to the recommendation engine
-- **Multi-factor Scoring**: Implemented a scoring system that considers multiple factors for generating recommendations
-
-### Dashboard Interface
-- **Tab-based Layout**: Organized dashboard into tabs for different types of data and analysis
-- **Real-time Updates**: Implemented periodic updates to keep data current
-- **Responsive Design**: Ensured dashboard works well on different screen sizes
+### Data Processing Patterns
+- **Factory Pattern**: Used for creating different types of data processors
+- **Strategy Pattern**: Implemented for different technical analysis strategies
+- **Observer Pattern**: Used in the dashboard for reactive updates
 
 ### Error Handling
-- **Centralized Error Store**: Implemented a central error store to capture and display errors
-- **Graceful Degradation**: Designed system to continue functioning with partial data when errors occur
+- **Centralized Error Management**: Implemented a central error store for consistent error handling
+- **Graceful Degradation**: Designed components to function with partial data when errors occur
 
-### Dependency Management
-- **Version Pinning**: Specified exact versions for numpy (1.24.4) and pandas (2.0.3) to ensure binary compatibility
-- **Compatibility Testing**: Verified compatibility between critical numerical libraries to prevent binary interface mismatches
-- **Platform-Specific Installation**: Added special installation instructions for Python 3.12 on Apple Silicon (ARM) to address build issues with numpy and pandas
-- **Environment Management**: Recommended Python 3.11 environment for ARM compatibility when Python 3.12 lacks compatible packages
+## Key Decisions and Rationale
 
-## Rationale for Critical Fixes
+### Options Chain Display Fix
+- **Issue**: Options chain table was not displaying due to inconsistent data processing
+- **Solution**: Created a dedicated options_chain_utils.py module to standardize options data processing
+- **Rationale**: Modularizing the options chain logic improves maintainability and isolates the data processing from the UI components
+- **Implementation**: Added robust data validation and normalization to handle inconsistent API responses
 
-### Underlying Price Extraction Fix
-- **Problem**: The underlying price was not being extracted from the options chain API response and passed to the recommendation engine, causing recommendations to fail
-- **Solution**: Modified the `get_options_chain_data` function to extract the underlying price and return it as part of the function result, then updated the dashboard app to include this price in the options chain store data
-- **Rationale**: The recommendation engine requires the underlying price to calculate appropriate option recommendations. Without this value, it cannot determine which options are in/out of the money or calculate potential profit percentages
+### Minute Data Error Fix
+- **Issue**: Minute data errors occurred due to improper error handling
+- **Solution**: Enhanced error handling in minute data processing and display
+- **Rationale**: Proper error handling ensures the application remains functional even when API responses are incomplete or malformed
+- **Implementation**: Added validation checks and fallback mechanisms for minute data processing
 
-### Confidence Threshold Adjustment
-- **Problem**: The confidence threshold was set too high (60), causing all potential recommendations to be filtered out
-- **Solution**: Lowered the confidence threshold to 40 to allow more recommendations to pass through while still maintaining quality standards
-- **Rationale**: The original threshold was too restrictive for the current market conditions and signal strength. The adjusted value provides a better balance between recommendation quality and quantity
+### Authentication Approach
+- **Decision**: Used token-based authentication with refresh capability
+- **Rationale**: Provides secure access to the API while minimizing the need for user interaction
+- **Implementation**: Implemented token refresh logic to maintain session validity
 
-### Numpy/Pandas Binary Incompatibility Fix
-- **Problem**: Binary incompatibility between numpy and pandas versions causing application startup failure with error "numpy.dtype size changed, may indicate binary incompatibility"
-- **Solution**: Specified compatible versions in requirements.txt (numpy==1.24.4 and pandas==2.0.3) to ensure binary compatibility
-- **Rationale**: The error occurs when the installed numpy version has a different binary interface than what pandas was compiled against. By pinning specific compatible versions, we ensure consistent binary interfaces between the libraries, preventing the incompatibility error during import.
+### Data Fetching Strategy
+- **Decision**: Implemented batched data retrieval for historical data
+- **Rationale**: Overcomes API limitations for large data requests and improves reliability
+- **Implementation**: Created day-by-day fetching with aggregation for minute data
 
-### Python 3.12 on Apple Silicon (ARM) Compatibility
-- **Problem**: Build failures when installing numpy and pandas from source on Python 3.12 with Apple Silicon (ARM) architecture
-- **Solution**: Added platform-specific installation instructions in requirements.txt to use conda or pre-built wheels instead of building from source
-- **Rationale**: Python 3.12 is relatively new and some packages like numpy and pandas may have compatibility issues when building from source on ARM architecture. Using pre-built binaries via conda or pip with the --only-binary flag avoids compilation issues while maintaining version compatibility.
-
-### Python 3.12 ARM Environment Compatibility
-- **Problem**: Numpy 1.24.4 is not available for Python 3.12 on ARM via conda
-- **Solution**: Provided multiple alternative approaches including:
-  1. Creating a Python 3.11 environment with conda (recommended)
-  2. Using the latest numpy/pandas versions with pip
-  3. Using the conda-forge channel for more ARM-compatible packages
-- **Rationale**: Python 3.12 is still relatively new, and not all package versions have been built for it on ARM architecture. By providing multiple installation options, we ensure users can choose the approach that best fits their workflow, with the Python 3.11 environment being the most reliable for ensuring compatibility with the specified numpy/pandas versions.
+### UI/UX Decisions
+- **Decision**: Used tabbed interface for different data views
+- **Rationale**: Provides clear separation of concerns and improves user navigation
+- **Implementation**: Created separate tabs for minute data, technical indicators, options chain, and recommendations
