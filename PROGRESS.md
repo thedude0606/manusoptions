@@ -14,6 +14,7 @@
 - Fixed recommendation engine to generate recommendations properly
   - Fixed confidence threshold issue in recommendation engine
   - Fixed underlying price extraction and passing to recommendation engine
+- Fixed numpy/pandas binary incompatibility issue by specifying compatible versions
 
 ## Current Work in Progress
 - Testing dashboard with various symbols and extended data periods
@@ -22,6 +23,7 @@
 ## Known Issues or Challenges
 - Underlying price was not being properly extracted from options chain API response and passed to the recommendation engine
 - Confidence threshold was set too high, filtering out all potential recommendations
+- Binary incompatibility between numpy and pandas versions causing application startup failure
 
 ## Next Steps
 - Add comprehensive error handling and retry logic

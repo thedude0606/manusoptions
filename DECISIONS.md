@@ -40,6 +40,10 @@
 - **Centralized Error Store**: Implemented a central error store to capture and display errors
 - **Graceful Degradation**: Designed system to continue functioning with partial data when errors occur
 
+### Dependency Management
+- **Version Pinning**: Specified exact versions for numpy (1.24.4) and pandas (2.0.3) to ensure binary compatibility
+- **Compatibility Testing**: Verified compatibility between critical numerical libraries to prevent binary interface mismatches
+
 ## Rationale for Critical Fixes
 
 ### Underlying Price Extraction Fix
@@ -51,3 +55,8 @@
 - **Problem**: The confidence threshold was set too high (60), causing all potential recommendations to be filtered out
 - **Solution**: Lowered the confidence threshold to 40 to allow more recommendations to pass through while still maintaining quality standards
 - **Rationale**: The original threshold was too restrictive for the current market conditions and signal strength. The adjusted value provides a better balance between recommendation quality and quantity
+
+### Numpy/Pandas Binary Incompatibility Fix
+- **Problem**: Binary incompatibility between numpy and pandas versions causing application startup failure with error "numpy.dtype size changed, may indicate binary incompatibility"
+- **Solution**: Specified compatible versions in requirements.txt (numpy==1.24.4 and pandas==2.0.3) to ensure binary compatibility
+- **Rationale**: The error occurs when the installed numpy version has a different binary interface than what pandas was compiled against. By pinning specific compatible versions, we ensure consistent binary interfaces between the libraries, preventing the incompatibility error during import.
