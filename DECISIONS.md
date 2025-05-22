@@ -43,6 +43,7 @@
 ### Dependency Management
 - **Version Pinning**: Specified exact versions for numpy (1.24.4) and pandas (2.0.3) to ensure binary compatibility
 - **Compatibility Testing**: Verified compatibility between critical numerical libraries to prevent binary interface mismatches
+- **Platform-Specific Installation**: Added special installation instructions for Python 3.12 on Apple Silicon (ARM) to address build issues with numpy and pandas
 
 ## Rationale for Critical Fixes
 
@@ -60,3 +61,8 @@
 - **Problem**: Binary incompatibility between numpy and pandas versions causing application startup failure with error "numpy.dtype size changed, may indicate binary incompatibility"
 - **Solution**: Specified compatible versions in requirements.txt (numpy==1.24.4 and pandas==2.0.3) to ensure binary compatibility
 - **Rationale**: The error occurs when the installed numpy version has a different binary interface than what pandas was compiled against. By pinning specific compatible versions, we ensure consistent binary interfaces between the libraries, preventing the incompatibility error during import.
+
+### Python 3.12 on Apple Silicon (ARM) Compatibility
+- **Problem**: Build failures when installing numpy and pandas from source on Python 3.12 with Apple Silicon (ARM) architecture
+- **Solution**: Added platform-specific installation instructions in requirements.txt to use conda or pre-built wheels instead of building from source
+- **Rationale**: Python 3.12 is relatively new and some packages like numpy and pandas may have compatibility issues when building from source on ARM architecture. Using pre-built binaries via conda or pip with the --only-binary flag avoids compilation issues while maintaining version compatibility.

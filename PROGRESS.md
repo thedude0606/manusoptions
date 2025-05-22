@@ -15,6 +15,7 @@
   - Fixed confidence threshold issue in recommendation engine
   - Fixed underlying price extraction and passing to recommendation engine
 - Fixed numpy/pandas binary incompatibility issue by specifying compatible versions
+- Added platform-specific installation instructions for Python 3.12 on Apple Silicon (ARM)
 
 ## Current Work in Progress
 - Testing dashboard with various symbols and extended data periods
@@ -24,6 +25,7 @@
 - Underlying price was not being properly extracted from options chain API response and passed to the recommendation engine
 - Confidence threshold was set too high, filtering out all potential recommendations
 - Binary incompatibility between numpy and pandas versions causing application startup failure
+- Python 3.12 on Apple Silicon (ARM) requires special handling for numpy/pandas installation
 
 ## Next Steps
 - Add comprehensive error handling and retry logic
