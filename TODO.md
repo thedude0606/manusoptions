@@ -18,6 +18,7 @@
   - [x] Fix underlying price extraction and passing to recommendation engine
 - [x] Fix numpy/pandas binary incompatibility issue
   - [x] Add platform-specific installation instructions for Python 3.12 on Apple Silicon
+  - [x] Provide alternative installation options for Python 3.12 on ARM
 - [ ] Test dashboard with various symbols and extended data periods
 
 ## Medium Priority

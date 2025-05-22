@@ -44,6 +44,7 @@
 - **Version Pinning**: Specified exact versions for numpy (1.24.4) and pandas (2.0.3) to ensure binary compatibility
 - **Compatibility Testing**: Verified compatibility between critical numerical libraries to prevent binary interface mismatches
 - **Platform-Specific Installation**: Added special installation instructions for Python 3.12 on Apple Silicon (ARM) to address build issues with numpy and pandas
+- **Environment Management**: Recommended Python 3.11 environment for ARM compatibility when Python 3.12 lacks compatible packages
 
 ## Rationale for Critical Fixes
 
@@ -66,3 +67,11 @@
 - **Problem**: Build failures when installing numpy and pandas from source on Python 3.12 with Apple Silicon (ARM) architecture
 - **Solution**: Added platform-specific installation instructions in requirements.txt to use conda or pre-built wheels instead of building from source
 - **Rationale**: Python 3.12 is relatively new and some packages like numpy and pandas may have compatibility issues when building from source on ARM architecture. Using pre-built binaries via conda or pip with the --only-binary flag avoids compilation issues while maintaining version compatibility.
+
+### Python 3.12 ARM Environment Compatibility
+- **Problem**: Numpy 1.24.4 is not available for Python 3.12 on ARM via conda
+- **Solution**: Provided multiple alternative approaches including:
+  1. Creating a Python 3.11 environment with conda (recommended)
+  2. Using the latest numpy/pandas versions with pip
+  3. Using the conda-forge channel for more ARM-compatible packages
+- **Rationale**: Python 3.12 is still relatively new, and not all package versions have been built for it on ARM architecture. By providing multiple installation options, we ensure users can choose the approach that best fits their workflow, with the Python 3.11 environment being the most reliable for ensuring compatibility with the specified numpy/pandas versions.

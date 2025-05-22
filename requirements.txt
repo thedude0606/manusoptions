@@ -2,10 +2,19 @@ schwabdev
 python-dotenv
 dash
 dash-bootstrap-components
-# For Python 3.12 on Apple Silicon (ARM), use conda or pre-built wheels:
-# conda install numpy=1.24.4 pandas=2.0.3
-# or
-# pip install --only-binary=:all: numpy==1.24.4 pandas==2.0.3
+# For Python 3.12 on Apple Silicon (ARM), use one of these approaches:
+# Option 1: Create a Python 3.11 environment (recommended)
+#   conda create -n manusoptions python=3.11
+#   conda activate manusoptions
+#   conda install numpy=1.24.4 pandas=2.0.3
+#
+# Option 2: Use latest versions with pip (may have different behavior)
+#   pip install --upgrade numpy pandas
+#
+# Option 3: Use conda-forge channel
+#   conda install -c conda-forge numpy pandas
+#
+# For other environments:
 pandas==2.0.3
 numpy==1.24.4
 plotly
