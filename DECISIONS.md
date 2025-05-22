@@ -34,8 +34,15 @@
 ### Error Handling
 - **Centralized Error Management**: Implemented a central error store for consistent error handling
 - **Graceful Degradation**: Designed components to function with partial data when errors occur
+- **Error Trigger Pattern**: Used hidden stores as error triggers to avoid duplicate callback outputs
 
 ## Key Decisions and Rationale
+
+### Centralized Error Handling Fix
+- **Issue**: Duplicate callback outputs error when multiple callbacks tried to update error-store.data
+- **Solution**: Implemented a centralized error handling pattern with hidden trigger stores
+- **Rationale**: Prevents multiple callbacks from directly updating the same output, resolving Dash's duplicate output constraint
+- **Implementation**: Created separate error trigger stores for each data source and a single callback to update the main error store
 
 ### Options Chain Display Fix
 - **Issue**: Options chain table was not displaying due to inconsistent data processing

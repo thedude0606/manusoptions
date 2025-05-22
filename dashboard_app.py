@@ -246,23 +246,51 @@ def update_selected_symbol(n_clicks, symbol):
     
     return {"symbol": symbol.upper(), "timestamp": datetime.datetime.now().isoformat()}, f"Loading data for {symbol.upper()}..."
 
+# Centralized error store callback
+@app.callback(
+    Output("error-store", "data"),
+    Input("minute-data-error-trigger", "data"),
+    Input("tech-indicators-error-trigger", "data"),
+    Input("options-chain-error-trigger", "data"),
+    prevent_initial_call=True
+)
+def update_error_store(minute_data_error, tech_indicators_error, options_chain_error):
+    """Centralized callback to update error store from various sources."""
+    ctx = dash.callback_context
+    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else None
+    
+    if trigger_id == "minute-data-error-trigger" and minute_data_error:
+        return minute_data_error
+    elif trigger_id == "tech-indicators-error-trigger" and tech_indicators_error:
+        return tech_indicators_error
+    elif trigger_id == "options-chain-error-trigger" and options_chain_error:
+        return options_chain_error
+    
+    return dash.no_update
+
+# Add hidden stores for error triggers
+app.layout.children.extend([
+    dcc.Store(id="minute-data-error-trigger"),
+    dcc.Store(id="tech-indicators-error-trigger"),
+    dcc.Store(id="options-chain-error-trigger")
+])
+
 # Minute Data Tab Callback
 @app.callback(
     Output("minute-data-store", "data"),
-    Output("error-store", "data", allow_duplicate=True),
+    Output("minute-data-error-trigger", "data"),
     Input("selected-symbol-store", "data"),
     Input("refresh-button", "n_clicks"),
     Input("update-interval", "n_intervals"),
-    State("error-store", "data"),
     prevent_initial_call=True
 )
-def update_minute_data(selected_symbol, n_refresh, n_intervals, error_data):
+def update_minute_data(selected_symbol, n_refresh, n_intervals):
     """Fetches minute data for the selected symbol."""
     ctx_msg = dash.callback_context
     trigger_id = ctx_msg.triggered[0]["prop_id"].split(".")[0] if ctx_msg.triggered else None
     
     if not selected_symbol or not selected_symbol.get("symbol"):
-        return None, error_data
+        return None, None
     
     symbol = selected_symbol["symbol"]
     app_logger.info(f"Fetching minute data for {symbol}")
@@ -301,7 +329,7 @@ def update_minute_data(selected_symbol, n_refresh, n_intervals, error_data):
             "symbol": symbol,
             "data": formatted_data,
             "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }, error_data
+        }, None
     
     except Exception as e:
         error_msg = f"Error fetching minute data: {str(e)}"
@@ -315,15 +343,14 @@ def update_minute_data(selected_symbol, n_refresh, n_intervals, error_data):
 # Technical Indicators Tab Callback
 @app.callback(
     Output("tech-indicators-store", "data"),
-    Output("error-store", "data", allow_duplicate=True),
+    Output("tech-indicators-error-trigger", "data"),
     Input("minute-data-store", "data"),
-    State("error-store", "data"),
     prevent_initial_call=True
 )
-def update_tech_indicators(minute_data, error_data):
+def update_tech_indicators(minute_data):
     """Calculates technical indicators from minute data."""
     if not minute_data or not minute_data.get("data"):
-        return None, error_data
+        return None, None
     
     symbol = minute_data["symbol"]
     data = minute_data["data"]
@@ -432,7 +459,7 @@ def update_tech_indicators(minute_data, error_data):
             "timeframe_data": timeframe_data,
             "timeframe": "1min",
             "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }, error_data
+        }, None
     
     except Exception as e:
         error_msg = f"Error calculating technical indicators: {str(e)}"
@@ -450,7 +477,7 @@ def update_tech_indicators(minute_data, error_data):
         Output("expiration-date-dropdown", "options"),
         Output("expiration-date-dropdown", "value"),
         Output("options-chain-status", "children"),
-        Output("error-store", "data", allow_duplicate=True)
+        Output("options-chain-error-trigger", "data")
     ],
     [
         Input("selected-symbol-store", "data"),
