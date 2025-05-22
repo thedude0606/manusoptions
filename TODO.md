@@ -17,6 +17,7 @@
   - [x] Lower confidence threshold to allow recommendations to be generated
   - [x] Fix underlying price extraction and passing to recommendation engine
 - [x] Fix numpy/pandas binary incompatibility issue
+  - [x] Add platform-specific installation instructions for Python 3.12 on Apple Silicon
 - [ ] Test dashboard with various symbols and extended data periods
 
 ## Medium Priority
