@@ -9,7 +9,7 @@
 - [x] Push code changes to GitHub repository
 
 ## Medium Priority
-- [ ] Update any dependent code to handle multi-timeframe data
+- [x] Update any dependent code to handle multi-timeframe data
 - [ ] Create tests for the new functionality
 - [ ] Update documentation to reflect changes
 
