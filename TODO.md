@@ -23,6 +23,10 @@
   - [x] Create dedicated options chain utility module
   - [x] Implement robust data processing for options chain
 - [x] Fix minute data errors and display issues
+- [x] Fix authentication issues with token file path
+  - [x] Implement cross-platform token file path solution
+  - [x] Add .env configuration support for token path
+  - [x] Create fallback to user home directory when not specified
 - [ ] Test dashboard with various symbols and extended data periods
 
 ## Medium Priority
@@ -50,3 +54,4 @@
 - Underlying price extraction → Recommendation engine functionality (COMPLETED)
 - Compatible numpy/pandas versions → Application startup and functionality (COMPLETED)
 - Options chain utility module → Options chain table display (COMPLETED)
+- Cross-platform token path → Authentication reliability (COMPLETED)

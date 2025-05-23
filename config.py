@@ -4,6 +4,7 @@ This module provides consistent configuration values across all components.
 """
 
 import os
+import platform
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -15,8 +16,26 @@ APP_SECRET = os.getenv("APP_SECRET")
 CALLBACK_URL = os.getenv("CALLBACK_URL")
 
 # Token file path - centralized for consistency
-# Use absolute path with os.path.abspath to ensure consistency
-TOKEN_FILE_PATH = os.path.abspath("token.json")
+# First check if TOKEN_FILE_PATH is defined in .env
+# If not, create a platform-appropriate path in user's home directory
+def get_token_file_path():
+    # Check if TOKEN_FILE_PATH is defined in environment variables
+    env_token_path = os.getenv("TOKEN_FILE_PATH")
+    if env_token_path:
+        return env_token_path
+    
+    # If not defined, create a platform-appropriate path in user's home directory
+    home_dir = os.path.expanduser("~")
+    app_dir = os.path.join(home_dir, ".manusoptions")
+    
+    # Create the directory if it doesn't exist
+    if not os.path.exists(app_dir):
+        os.makedirs(app_dir, exist_ok=True)
+    
+    return os.path.join(app_dir, "token.json")
+
+# Set the token file path
+TOKEN_FILE_PATH = get_token_file_path()
 
 # Cache configuration
 CACHE_CONFIG = {

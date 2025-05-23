@@ -38,6 +38,20 @@
 
 ## Key Decisions and Rationale
 
+### Cross-Platform Token File Path Solution
+- **Issue**: Hardcoded absolute token file paths causing authentication failures across different environments
+- **Solution**: Implemented a robust, cross-platform token file path solution with environment variable support
+- **Rationale**: 
+  - Ensures consistent token handling across different operating systems and environments
+  - Provides flexibility through .env configuration
+  - Creates a secure fallback to user's home directory when not explicitly configured
+  - Automatically creates necessary directories, improving user experience
+- **Implementation**: 
+  - Updated config.py to check for TOKEN_FILE_PATH in environment variables
+  - Added fallback to create a platform-appropriate path in user's home directory
+  - Ensured directory creation if it doesn't exist
+  - Centralized this logic to be used consistently across all application components
+
 ### Centralized Configuration Approach
 - **Issue**: Inconsistent token file paths across different modules causing authentication issues
 - **Solution**: Created a centralized config.py module with standardized TOKEN_FILE_PATH
