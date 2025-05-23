@@ -1,29 +1,29 @@
 """
-Data fetching utilities for the dashboard application.
+Utility functions for fetching data for the dashboard.
 """
-
-import os
 import datetime
 import logging
 import pandas as pd
-import schwabdev
-from config import APP_KEY, APP_SECRET, CALLBACK_URL, TOKEN_FILE_PATH
+import numpy as np
+from technical_analysis import calculate_multi_timeframe_indicators
 
 # Configure logging
-logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger('data_fetchers')
 
-def get_minute_data(client, symbol, days=30):
+def get_minute_data(client, symbol):
     """
     Fetch minute data for a symbol.
     
     Args:
         client: Schwab API client
         symbol: Stock symbol to fetch data for
-        days: Number of days of data to fetch
         
     Returns:
         tuple: (minute_data, error_message)
     """
+    # Always fetch 60 days of data as per requirements
+    days = 60
     logger.info(f"Fetching minute data for {symbol} for the last {days} days")
     
     try:
@@ -41,24 +41,96 @@ def get_minute_data(client, symbol, days=30):
             needExtendedHoursData=False
         )
         
-        if response.ok:
-            price_data = response.json()
-            if price_data.get("candles"):
-                logger.info(f"Successfully fetched {len(price_data['candles'])} minute data points for {symbol}")
-                return price_data["candles"], None
-            elif price_data.get("empty") == True:
-                logger.warning(f"No minute data available for {symbol}")
-                return [], f"No minute data available for {symbol}"
-            else:
-                logger.error(f"Unexpected response format for minute data: {price_data}")
-                return [], "Unexpected response format for minute data"
-        else:
-            logger.error(f"Error fetching minute data: {response.status_code} - {response.text}")
-            return [], f"Error fetching minute data: {response.status_code}"
+        if not response.ok:
+            error_msg = f"Error fetching minute data: {response.status_code} - {response.text}"
+            logger.error(error_msg)
+            return None, error_msg
+        
+        price_data = response.json()
+        
+        if not price_data.get("candles"):
+            error_msg = "No candle data returned from API"
+            logger.error(error_msg)
+            return None, error_msg
+        
+        # Convert to DataFrame
+        candles = price_data["candles"]
+        df = pd.DataFrame(candles)
+        
+        # Convert datetime from milliseconds to datetime objects
+        df['timestamp'] = pd.to_datetime(df['datetime'], unit='ms')
+        
+        # Drop original datetime column to avoid confusion
+        df = df.drop(columns=['datetime'])
+        
+        # Reorder columns to put timestamp first
+        cols = ['timestamp'] + [col for col in df.columns if col != 'timestamp']
+        df = df[cols]
+        
+        # Convert to records for JSON serialization
+        minute_data = df.to_dict('records')
+        
+        logger.info(f"Successfully fetched {len(minute_data)} minute data points for {symbol}")
+        return minute_data, None
     
     except Exception as e:
-        logger.error(f"Exception while fetching minute data for {symbol}: {e}", exc_info=True)
-        return [], f"Exception while fetching minute data: {str(e)}"
+        error_msg = f"Exception while fetching minute data: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        return None, error_msg
+
+def get_technical_indicators(client, symbol):
+    """
+    Calculate technical indicators for a symbol.
+    
+    Args:
+        client: Schwab API client
+        symbol: Stock symbol to calculate indicators for
+        
+    Returns:
+        tuple: (technical_indicators_data, error_message)
+    """
+    logger.info(f"Calculating technical indicators for {symbol}")
+    
+    try:
+        # First, get minute data
+        minute_data, error = get_minute_data(client, symbol)
+        
+        if error:
+            return None, error
+        
+        if not minute_data:
+            error_msg = "No minute data available for technical analysis"
+            logger.error(error_msg)
+            return None, error_msg
+        
+        # Convert to DataFrame
+        df = pd.DataFrame(minute_data)
+        df.set_index('timestamp', inplace=True)
+        
+        # Calculate technical indicators for all timeframes
+        multi_tf_indicators = calculate_multi_timeframe_indicators(df, symbol=symbol)
+        
+        # Flatten the multi-timeframe results into a single table with a timeframe column
+        all_indicators = []
+        
+        for timeframe, tf_df in multi_tf_indicators.items():
+            # Reset index to get timestamp as a column
+            tf_df_reset = tf_df.reset_index()
+            
+            # Add timeframe column
+            tf_df_reset['timeframe'] = timeframe
+            
+            # Convert to records
+            records = tf_df_reset.to_dict('records')
+            all_indicators.extend(records)
+        
+        logger.info(f"Successfully calculated technical indicators for {symbol} across all timeframes")
+        return all_indicators, None
+    
+    except Exception as e:
+        error_msg = f"Exception while calculating technical indicators: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        return None, error_msg
 
 def get_options_chain_data(client, symbol):
     """
@@ -74,27 +146,28 @@ def get_options_chain_data(client, symbol):
     logger.info(f"Fetching options chain for {symbol}")
     
     try:
-        # Fetch options chain
-        response = client.option_chains(
+        # Get options chain
+        response = client.get_option_chain(
             symbol=symbol,
             contractType="ALL",
             strikeCount=20,
-            includeUnderlyingQuote=True,
+            includeQuotes=True,
             strategy="SINGLE",
             range="ALL",
             optionType="ALL"
         )
         
         if not response.ok:
-            logger.error(f"Error fetching options chain: {response.status_code} - {response.text}")
-            return pd.DataFrame(), [], 0, f"Error fetching options chain: {response.status_code}"
+            error_msg = f"Error fetching options chain: {response.status_code} - {response.text}"
+            logger.error(error_msg)
+            return pd.DataFrame(), [], 0, error_msg
         
         options_data = response.json()
         
         # Extract underlying price
         underlying_price = options_data.get("underlyingPrice", 0)
         
-        # Extract options and expiration dates
+        # Initialize lists
         all_options = []
         expiration_dates = []
         

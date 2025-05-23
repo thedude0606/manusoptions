@@ -1,105 +1,49 @@
 import dash
-from dash import dcc, html, dash_table, callback_context
+from dash import dcc, html, dash_table
 from dash.dependencies import Input, Output, State
 import pandas as pd
-import numpy as np
-import plotly.graph_objs as go
-import os
-import json
 import datetime
 import logging
 import schwabdev
-from dotenv import load_dotenv
-import time
-import sys
-from config import APP_KEY, APP_SECRET, CALLBACK_URL, TOKEN_FILE_PATH, CACHE_CONFIG
-from dashboard_utils.data_fetchers import get_minute_data, get_options_chain_data
+import json
+import os
+from config import APP_KEY, APP_SECRET, CALLBACK_URL, TOKEN_FILE_PATH
+from dashboard_utils.data_fetchers import get_minute_data, get_technical_indicators, get_options_chain_data
+from dashboard_utils.options_chain_utils import split_options_by_type
 from dashboard_utils.recommendation_tab import register_recommendation_callbacks
-from dashboard_utils.options_chain_utils import process_options_chain_data, split_options_by_type
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 app_logger = logging.getLogger('dashboard_app')
 
 # Initialize Dash app
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
+app.title = "Manus Options Dashboard"
 
-# App layout
+# Define app layout
 app.layout = html.Div([
     # Header
-    html.H1("Options Analysis Dashboard"),
+    html.H1("Manus Options Dashboard", style={'textAlign': 'center'}),
     
-    # Symbol input
+    # Symbol input and refresh button
     html.Div([
         html.Label("Symbol:"),
-        dcc.Input(id="symbol-input", type="text", value="AAPL"),
-        html.Button("Load Data", id="load-button", n_clicks=0),
-        html.Button("Refresh", id="refresh-button", n_clicks=0),
-        html.Div(id="status-message")
-    ], style={'margin-bottom': '20px'}),
+        dcc.Input(id="symbol-input", type="text", value="AAPL", style={'marginRight': '10px'}),
+        html.Button("Refresh Data", id="refresh-button", n_clicks=0)
+    ], style={'margin': '10px 0px'}),
     
-    # Data stores
-    dcc.Store(id="selected-symbol-store"),
-    dcc.Store(id="minute-data-store"),
-    dcc.Store(id="tech-indicators-store"),
-    dcc.Store(id="options-chain-store"),
-    dcc.Store(id="error-store"),
+    # Status message
+    html.Div(id="status-message", style={'margin': '10px 0px', 'color': 'blue'}),
     
-    # Interval component for periodic updates
-    dcc.Interval(
-        id='update-interval',
-        interval=CACHE_CONFIG['update_interval_seconds'] * 1000,  # in milliseconds
-        n_intervals=0
-    ),
+    # Error messages
+    html.Div(id="error-messages", style={'margin': '10px 0px', 'color': 'red'}),
     
-    # Tabs for different views
+    # Tabs for different data views
     dcc.Tabs([
         # Minute Data Tab
         dcc.Tab(label="Minute Data", children=[
             html.Div([
-                # Timeframe selector
-                html.Div([
-                    html.Label("Timeframe:"),
-                    dcc.Dropdown(
-                        id="timeframe-dropdown",
-                        options=[
-                            {'label': '1 Minute', 'value': '1min'},
-                            {'label': '5 Minutes', 'value': '5min'},
-                            {'label': '15 Minutes', 'value': '15min'},
-                            {'label': '30 Minutes', 'value': '30min'},
-                            {'label': '1 Hour', 'value': '1hour'},
-                            {'label': '1 Day', 'value': '1day'}
-                        ],
-                        value='1min'
-                    )
-                ], style={'width': '200px', 'display': 'inline-block', 'margin-right': '20px'}),
-                
-                # Period selector
-                html.Div([
-                    html.Label("Period:"),
-                    dcc.Dropdown(
-                        id="period-dropdown",
-                        options=[
-                            {'label': 'Last 1 Day', 'value': '1d'},
-                            {'label': 'Last 5 Days', 'value': '5d'},
-                            {'label': 'Last 10 Days', 'value': '10d'},
-                            {'label': 'Last 30 Days', 'value': '30d'},
-                            {'label': 'Last 60 Days', 'value': '60d'}
-                        ],
-                        value='1d'
-                    )
-                ], style={'width': '200px', 'display': 'inline-block'})
-            ], style={'margin-bottom': '20px'}),
-            
-            # Minute data table
-            html.Div([
-                html.H3("Minute Data"),
+                # Minute data table
                 dash_table.DataTable(
                     id="minute-data-table",
                     page_size=10,
@@ -119,7 +63,7 @@ app.layout = html.Div([
         # Technical Indicators Tab
         dcc.Tab(label="Technical Indicators", children=[
             html.Div([
-                html.H3("Technical Indicators"),
+                # Technical indicators table
                 dash_table.DataTable(
                     id="tech-indicators-table",
                     page_size=10,
@@ -153,18 +97,15 @@ app.layout = html.Div([
                         dcc.RadioItems(
                             id="option-type-radio",
                             options=[
+                                {'label': 'All', 'value': 'ALL'},
                                 {'label': 'Calls', 'value': 'CALL'},
-                                {'label': 'Puts', 'value': 'PUT'},
-                                {'label': 'Both', 'value': 'BOTH'}
+                                {'label': 'Puts', 'value': 'PUT'}
                             ],
-                            value='BOTH',
+                            value='ALL',
                             inline=True
                         )
                     ], style={'display': 'inline-block'})
-                ], style={'margin-bottom': '20px'}),
-                
-                # Status message
-                html.Div(id="options-chain-status"),
+                ], style={'margin': '10px 0px'}),
                 
                 # Options tables
                 html.Div([
@@ -184,7 +125,7 @@ app.layout = html.Div([
                                 'fontWeight': 'bold'
                             }
                         )
-                    ], style={'width': '49%', 'display': 'inline-block', 'vertical-align': 'top'}),
+                    ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top'}),
                     
                     # Puts table
                     html.Div([
@@ -202,84 +143,70 @@ app.layout = html.Div([
                                 'fontWeight': 'bold'
                             }
                         )
-                    ], style={'width': '49%', 'display': 'inline-block', 'vertical-align': 'top'})
+                    ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'marginLeft': '4%'})
                 ])
             ])
         ]),
         
         # Recommendations Tab
-        dcc.Tab(label="Recommendations", id="recommendations-tab", children=[
-            html.Div(id="recommendations-content")
+        dcc.Tab(label="Recommendations", children=[
+            html.Div([
+                # Recommendations controls
+                html.Div([
+                    html.Button("Generate Recommendations", id="generate-recommendations-button", n_clicks=0)
+                ], style={'margin': '10px 0px'}),
+                
+                # Recommendations table
+                dash_table.DataTable(
+                    id="recommendations-table",
+                    page_size=10,
+                    style_table={'overflowX': 'auto'},
+                    style_cell={
+                        'textAlign': 'left',
+                        'padding': '5px'
+                    },
+                    style_header={
+                        'backgroundColor': 'rgb(230, 230, 230)',
+                        'fontWeight': 'bold'
+                    }
+                )
+            ])
         ])
     ]),
     
-    # Error messages
-    html.Div(id="error-messages", style={'margin-top': '20px', 'color': 'red'})
+    # Hidden data stores
+    dcc.Store(id="minute-data-store"),
+    dcc.Store(id="tech-indicators-store"),
+    dcc.Store(id="options-chain-store"),
+    dcc.Store(id="error-store")
 ])
 
-# Add hidden stores for error triggers
-app.layout.children.extend([
-    dcc.Store(id="minute-data-error-trigger"),
-    dcc.Store(id="tech-indicators-error-trigger"),
-    dcc.Store(id="options-chain-error-trigger")
-])
-
-# Symbol selection callback
+# Refresh data callback
 @app.callback(
-    Output("selected-symbol-store", "data"),
-    Output("status-message", "children"),
-    Input("load-button", "n_clicks"),
-    State("symbol-input", "value"),
+    [
+        Output("minute-data-store", "data"),
+        Output("tech-indicators-store", "data"),
+        Output("options-chain-store", "data"),
+        Output("expiration-date-dropdown", "options"),
+        Output("expiration-date-dropdown", "value"),
+        Output("status-message", "children"),
+        Output("error-store", "data")
+    ],
+    [
+        Input("refresh-button", "n_clicks")
+    ],
+    [
+        State("symbol-input", "value")
+    ],
     prevent_initial_call=True
 )
-def update_selected_symbol(n_clicks, symbol):
-    """Updates the selected symbol and triggers data loading."""
-    if not symbol:
-        return None, "Please enter a symbol"
+def refresh_data(n_clicks, symbol):
+    """Refreshes all data for the given symbol."""
+    if not n_clicks or not symbol:
+        return None, None, None, [], None, "", None
     
-    return {"symbol": symbol.upper(), "timestamp": datetime.datetime.now().isoformat()}, f"Loading data for {symbol.upper()}..."
-
-# Centralized error store callback
-@app.callback(
-    Output("error-store", "data"),
-    Input("minute-data-error-trigger", "data"),
-    Input("tech-indicators-error-trigger", "data"),
-    Input("options-chain-error-trigger", "data"),
-    prevent_initial_call=True
-)
-def update_error_store(minute_data_error, tech_indicators_error, options_chain_error):
-    """Centralized callback to update error store from various sources."""
-    ctx = dash.callback_context
-    trigger_id = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else None
-    
-    if trigger_id == "minute-data-error-trigger" and minute_data_error:
-        return minute_data_error
-    elif trigger_id == "tech-indicators-error-trigger" and tech_indicators_error:
-        return tech_indicators_error
-    elif trigger_id == "options-chain-error-trigger" and options_chain_error:
-        return options_chain_error
-    
-    return dash.no_update
-
-# Minute Data Tab Callback
-@app.callback(
-    Output("minute-data-store", "data"),
-    Output("minute-data-error-trigger", "data"),
-    Input("selected-symbol-store", "data"),
-    Input("refresh-button", "n_clicks"),
-    Input("update-interval", "n_intervals"),
-    prevent_initial_call=True
-)
-def update_minute_data(selected_symbol, n_refresh, n_intervals):
-    """Fetches minute data for the selected symbol."""
-    ctx_msg = dash.callback_context
-    trigger_id = ctx_msg.triggered[0]["prop_id"].split(".")[0] if ctx_msg.triggered else None
-    
-    if not selected_symbol or not selected_symbol.get("symbol"):
-        return None, None
-    
-    symbol = selected_symbol["symbol"]
-    app_logger.info(f"Fetching minute data for {symbol}")
+    symbol = symbol.upper()
+    app_logger.info(f"Refreshing data for {symbol}")
     
     try:
         # Initialize Schwab client with consistent token file path
@@ -290,209 +217,29 @@ def update_minute_data(selected_symbol, n_refresh, n_intervals):
         
         if error:
             app_logger.error(f"Error fetching minute data: {error}")
-            return None, {
+            return None, None, None, [], None, f"Error: {error}", {
                 "source": "Minute Data",
                 "message": error,
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
         
-        # Format data for the table
-        formatted_data = []
-        for candle in minute_data:
-            timestamp = datetime.datetime.fromtimestamp(candle["datetime"] / 1000).strftime("%Y-%m-%d %H:%M:%S")
-            formatted_data.append({
-                "timestamp": timestamp,
-                "open": candle["open"],
-                "high": candle["high"],
-                "low": candle["low"],
-                "close": candle["close"],
-                "volume": candle["volume"]
-            })
+        # Calculate technical indicators
+        tech_indicators, error = get_technical_indicators(client, symbol)
         
-        app_logger.info(f"Successfully fetched {len(formatted_data)} minute data points for {symbol}")
+        if error:
+            app_logger.error(f"Error calculating technical indicators: {error}")
+            return {"data": minute_data}, None, None, [], None, f"Error: {error}", {
+                "source": "Technical Indicators",
+                "message": error,
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
         
-        return {
-            "symbol": symbol,
-            "data": formatted_data,
-            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }, None
-    
-    except Exception as e:
-        error_msg = f"Error fetching minute data: {str(e)}"
-        app_logger.error(error_msg, exc_info=True)
-        return None, {
-            "source": "Minute Data",
-            "message": error_msg,
-            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-
-# Technical Indicators Tab Callback
-@app.callback(
-    Output("tech-indicators-store", "data"),
-    Output("tech-indicators-error-trigger", "data"),
-    Input("minute-data-store", "data"),
-    prevent_initial_call=True
-)
-def update_tech_indicators(minute_data):
-    """Calculates technical indicators from minute data."""
-    if not minute_data or not minute_data.get("data"):
-        return None, None
-    
-    symbol = minute_data["symbol"]
-    data = minute_data["data"]
-    
-    app_logger.info(f"Calculating technical indicators for {symbol}")
-    
-    try:
-        # Convert to DataFrame
-        df = pd.DataFrame(data)
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
-        df.set_index("timestamp", inplace=True)
-        
-        # Calculate indicators for different timeframes
-        timeframes = {
-            "1min": df,
-            "5min": df.resample("5T").agg({
-                "open": "first",
-                "high": "max",
-                "low": "min",
-                "close": "last",
-                "volume": "sum"
-            }).dropna(),
-            "15min": df.resample("15T").agg({
-                "open": "first",
-                "high": "max",
-                "low": "min",
-                "close": "last",
-                "volume": "sum"
-            }).dropna(),
-            "30min": df.resample("30T").agg({
-                "open": "first",
-                "high": "max",
-                "low": "min",
-                "close": "last",
-                "volume": "sum"
-            }).dropna(),
-            "1hour": df.resample("1H").agg({
-                "open": "first",
-                "high": "max",
-                "low": "min",
-                "close": "last",
-                "volume": "sum"
-            }).dropna()
-        }
-        
-        # Calculate indicators for each timeframe
-        timeframe_data = {}
-        for timeframe, tf_df in timeframes.items():
-            if len(tf_df) > 0:
-                # Calculate RSI
-                delta = tf_df["close"].diff()
-                gain = delta.where(delta > 0, 0)
-                loss = -delta.where(delta < 0, 0)
-                avg_gain = gain.rolling(window=14).mean()
-                avg_loss = loss.rolling(window=14).mean()
-                rs = avg_gain / avg_loss
-                rsi = 100 - (100 / (1 + rs))
-                
-                # Calculate MACD
-                ema12 = tf_df["close"].ewm(span=12, adjust=False).mean()
-                ema26 = tf_df["close"].ewm(span=26, adjust=False).mean()
-                macd = ema12 - ema26
-                signal = macd.ewm(span=9, adjust=False).mean()
-                histogram = macd - signal
-                
-                # Calculate Bollinger Bands
-                sma20 = tf_df["close"].rolling(window=20).mean()
-                std20 = tf_df["close"].rolling(window=20).std()
-                upper_band = sma20 + (std20 * 2)
-                lower_band = sma20 - (std20 * 2)
-                
-                # Prepare data for the table
-                indicators_df = pd.DataFrame({
-                    "timestamp": tf_df.index,
-                    "close": tf_df["close"],
-                    "rsi": rsi,
-                    "macd": macd,
-                    "macd_signal": signal,
-                    "macd_histogram": histogram,
-                    "bb_middle": sma20,
-                    "bb_upper": upper_band,
-                    "bb_lower": lower_band
-                }).dropna()
-                
-                # Format data for the table
-                formatted_data = []
-                for _, row in indicators_df.iterrows():
-                    formatted_data.append({
-                        "Timestamp": row["timestamp"].strftime("%Y-%m-%d %H:%M:%S"),
-                        "Close": round(row["close"], 2),
-                        "RSI": round(row["rsi"], 2),
-                        "MACD": round(row["macd"], 2),
-                        "MACD Signal": round(row["macd_signal"], 2),
-                        "MACD Histogram": round(row["macd_histogram"], 2),
-                        "BB Middle": round(row["bb_middle"], 2),
-                        "BB Upper": round(row["bb_upper"], 2),
-                        "BB Lower": round(row["bb_lower"], 2)
-                    })
-                
-                timeframe_data[timeframe] = formatted_data
-        
-        app_logger.info(f"Successfully calculated technical indicators for {symbol}")
-        
-        return {
-            "symbol": symbol,
-            "timeframe_data": timeframe_data,
-            "timeframe": "1min",
-            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }, None
-    
-    except Exception as e:
-        error_msg = f"Error calculating technical indicators: {str(e)}"
-        app_logger.error(error_msg, exc_info=True)
-        return None, {
-            "source": "Technical Indicators",
-            "message": error_msg,
-            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-
-# Options Chain Tab Callback
-@app.callback(
-    [
-        Output("options-chain-store", "data"),
-        Output("expiration-date-dropdown", "options"),
-        Output("expiration-date-dropdown", "value"),
-        Output("options-chain-status", "children"),
-        Output("options-chain-error-trigger", "data")
-    ],
-    [
-        Input("selected-symbol-store", "data"),
-        Input("refresh-button", "n_clicks"),
-        Input("update-interval", "n_intervals")
-    ],
-    prevent_initial_call=True
-)
-def update_options_chain(selected_symbol, n_refresh, n_intervals):
-    """Fetches options chain data for the selected symbol."""
-    ctx_msg = dash.callback_context
-    trigger_id = ctx_msg.triggered[0]["prop_id"].split(".")[0] if ctx_msg.triggered else None
-    
-    if not selected_symbol or not selected_symbol.get("symbol"):
-        return None, [], None, "No symbol selected", None
-    
-    symbol = selected_symbol["symbol"]
-    app_logger.info(f"Fetching options chain for {symbol}")
-    
-    try:
-        # Initialize Schwab client with consistent token file path
-        client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file=TOKEN_FILE_PATH, capture_callback=False)
-        
-        # Fetch options chain data
+        # Fetch options chain
         options_df, expiration_dates, underlying_price, error = get_options_chain_data(client, symbol)
         
         if error:
             app_logger.error(f"Error fetching options chain: {error}")
-            return None, [], None, f"Error: {error}", {
+            return {"data": minute_data}, {"data": tech_indicators}, None, [], None, f"Error: {error}", {
                 "source": "Options Chain",
                 "message": error,
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -502,26 +249,37 @@ def update_options_chain(selected_symbol, n_refresh, n_intervals):
         dropdown_options = [{"label": date, "value": date} for date in expiration_dates]
         default_expiration = expiration_dates[0] if expiration_dates else None
         
-        # Prepare data for the store
+        # Prepare data for the stores
+        minute_data_store = {
+            "data": minute_data,
+            "symbol": symbol,
+            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+        tech_indicators_store = {
+            "data": tech_indicators,
+            "symbol": symbol,
+            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
         options_data = {
             "symbol": symbol,
             "options": options_df.to_dict("records"),
             "expiration_dates": expiration_dates,
-            "underlyingPrice": underlying_price,  # Include underlying price in the options data
+            "underlyingPrice": underlying_price,
             "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         
-        status_message = f"Loaded {len(options_df)} option contracts for {symbol}"
+        status_message = f"Data refreshed for {symbol} at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         app_logger.info(status_message)
-        app_logger.info(f"Underlying price for {symbol}: {underlying_price}")
         
-        return options_data, dropdown_options, default_expiration, status_message, None
+        return minute_data_store, tech_indicators_store, options_data, dropdown_options, default_expiration, status_message, None
     
     except Exception as e:
-        error_msg = f"Error updating options chain: {str(e)}"
+        error_msg = f"Error refreshing data: {str(e)}"
         app_logger.error(error_msg, exc_info=True)
-        return None, [], None, f"Error: {str(e)}", {
-            "source": "Options Chain",
+        return None, None, None, [], None, f"Error: {str(e)}", {
+            "source": "Data Refresh",
             "message": error_msg,
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
@@ -561,11 +319,10 @@ def update_minute_data_table(minute_data):
 )
 def update_tech_indicators_table(tech_indicators_data):
     """Updates the technical indicators table with the calculated data."""
-    if not tech_indicators_data or not tech_indicators_data.get("timeframe_data"):
+    if not tech_indicators_data or not tech_indicators_data.get("data"):
         return [], []
     
-    timeframe = tech_indicators_data.get("timeframe", "1min")
-    data = tech_indicators_data["timeframe_data"].get(timeframe, [])
+    data = tech_indicators_data["data"]
     
     if not data:
         return [], []
@@ -573,6 +330,11 @@ def update_tech_indicators_table(tech_indicators_data):
     # Get column names from the first row
     first_row = data[0]
     columns = [{"name": col, "id": col} for col in first_row.keys()]
+    
+    # Ensure timeframe column is first
+    if "timeframe" in first_row:
+        timeframe_col = {"name": "Timeframe", "id": "timeframe"}
+        columns = [timeframe_col] + [col for col in columns if col["id"] != "timeframe"]
     
     return data, columns
 
