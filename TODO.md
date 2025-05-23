@@ -16,6 +16,7 @@
 - [x] Test real-time updates with various symbols
 - [x] Fix mapping issue between streaming data contract keys and options table data
 - [x] Implement robust field mapping for all streamer contract fields
+- [x] Fix contract key normalization mismatch between streaming data and DataFrame rows
 
 ## Medium Priority
 - [x] Update any dependent code to handle multi-timeframe data
@@ -23,6 +24,7 @@
 - [x] Update documentation to reflect changes
 - [ ] Optimize streaming performance and error handling
 - [ ] Add visual indicators for fields updated via streaming data
+- [ ] Implement caching for normalized contract keys to improve performance
 
 ## Low Priority
 - [ ] Optimize performance for multi-timeframe calculations
@@ -36,6 +38,7 @@
 - Recommendations tab functionality depends on selected-symbol-store being properly populated
 - Real-time options updates depend on StreamingManager integration with dashboard_app.py
 - Complete UI updates depend on proper mapping between streaming data fields and DataFrame columns
+- Proper matching of streaming data to DataFrame rows depends on consistent contract key normalization
 
 ## Status Legend
 - [x] Completed

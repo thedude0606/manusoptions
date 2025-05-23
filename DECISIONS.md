@@ -79,3 +79,26 @@ Implement a robust, dynamic mapping system between streaming data contract field
 - Dynamic mapping allows for future expansion without code changes
 - Improved error handling for missing or mismatched fields
 - Better debugging capabilities through detailed logging of field updates
+
+## Contract Key Normalization
+
+### Decision
+Synchronize contract key normalization between streaming data and DataFrame rows to ensure proper matching.
+
+### Rationale
+- Streaming data uses normalized contract keys (e.g., AAPL_250523C190.0)
+- DataFrame rows use non-normalized symbols (e.g., AAPL  250523C00190000)
+- This mismatch prevents the UI from updating with streaming data
+- Consistent normalization ensures proper matching between streaming data and DataFrame rows
+
+### Implementation Details
+- Added normalization of DataFrame 'symbol' column in the update_options_tables callback
+- Created a mapping from normalized symbols to DataFrame indices for efficient lookups
+- Used the existing normalize_contract_key function from contract_utils.py
+- Enhanced logging to track the number of contracts and fields updated
+
+### Technical Considerations
+- Normalization is performed only during the update process, not modifying the original data
+- The temporary normalized_symbol column is removed after processing
+- This approach maintains compatibility with other parts of the application
+- Performance impact is minimal as normalization is only done once per update cycle

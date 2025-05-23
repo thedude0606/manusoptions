@@ -13,6 +13,7 @@ from dashboard_utils.options_chain_utils import split_options_by_type
 from dashboard_utils.recommendation_tab import register_recommendation_callbacks
 from dashboard_utils.streaming_manager import StreamingManager
 from dashboard_utils.streaming_field_mapper import StreamingFieldMapper
+from dashboard_utils.contract_utils import normalize_contract_key
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -522,15 +523,24 @@ def update_options_tables(options_data, streaming_data, expiration_date, option_
             # Create a copy of the options DataFrame to avoid modifying the original
             options_df_copy = options_df.copy()
             
+            # Create a normalized symbol column for matching with streaming data
+            options_df_copy['normalized_symbol'] = options_df_copy['symbol'].apply(normalize_contract_key)
+            
+            # Create a mapping from normalized symbol to DataFrame index
+            normalized_symbol_to_index = {}
+            for index, row in options_df_copy.iterrows():
+                normalized_symbol = row.get('normalized_symbol')
+                if normalized_symbol:
+                    normalized_symbol_to_index[normalized_symbol] = index
+            
             # Track how many contracts were updated
             updated_contracts = 0
             updated_fields = set()
             
             # Update the options data with streaming data
-            for index, row in options_df_copy.iterrows():
-                symbol = row.get("symbol")
-                if symbol in streaming_options:
-                    stream_data = streaming_options[symbol]
+            for normalized_key, stream_data in streaming_options.items():
+                if normalized_key in normalized_symbol_to_index:
+                    index = normalized_symbol_to_index[normalized_key]
                     updated_contracts += 1
                     
                     # Use the StreamingFieldMapper to map streaming data to DataFrame columns
@@ -550,6 +560,10 @@ def update_options_tables(options_data, streaming_data, expiration_date, option_
                             app_logger.debug(f"Column '{column_name}' not found in options DataFrame for field '{field_name}'")
             
             app_logger.info(f"Updated {updated_contracts} contracts with streaming data. Updated fields: {sorted(list(updated_fields))}")
+            
+            # Remove the temporary normalized_symbol column
+            if 'normalized_symbol' in options_df_copy.columns:
+                options_df_copy = options_df_copy.drop(columns=['normalized_symbol'])
             
             # Use the updated DataFrame
             options_df = options_df_copy

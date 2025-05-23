@@ -22,6 +22,7 @@
 - Identified and fixed mapping issue between streaming data contract keys and options table data
 - Implemented robust StreamingFieldMapper to dynamically map all streamer fields to DataFrame columns
 - Integrated StreamingFieldMapper into dashboard_app_streaming.py for comprehensive real-time updates
+- Identified and fixed contract key normalization mismatch between streaming data and DataFrame rows
 
 ## Completed Tasks
 - Repository analysis and code review
@@ -46,6 +47,7 @@
 - Created StreamingFieldMapper module to provide comprehensive mapping between streaming data fields and DataFrame columns
 - Fixed options chain UI update issue by implementing dynamic field mapping in update_options_tables callback
 - Enhanced logging to track which fields are being updated from streaming data
+- Implemented contract key normalization in the update_options_tables callback to ensure proper matching between streaming data and DataFrame rows
 
 ## In Progress
 - Testing real-time updates with various symbols
@@ -60,6 +62,7 @@
 - Resolved: Options chain not updating in real-time due to missing StreamingManager integration
 - Resolved: Real-time updates now enabled by default per user request
 - Resolved: Options chain UI not updating due to incomplete mapping between streaming data contract keys and options table data
+- Resolved: Contract key normalization mismatch between streaming data and DataFrame rows
 
 ## Next Steps
 1. Test real-time updates with various symbols
@@ -67,3 +70,4 @@
 3. Optimize performance for multi-timeframe calculations if needed
 4. Continue updating documentation to reflect the new functionality
 5. Consider adding visual indicators for fields that have been updated via streaming data
+6. Implement caching for normalized contract keys to improve performance
