@@ -45,9 +45,13 @@ Integrate the existing StreamingManager into dashboard_app.py to enable real-tim
 - Add status indicators for streaming connection in the options chain tab
 - Use dcc.Interval for periodic UI updates from the streaming data
 - Set real-time updates to be enabled by default per user request
+- Ensure streaming interval component has disabled=False by default in the layout
+- Implement toggle callback to correctly enable/disable the interval based on user selection
+- Add comprehensive debug logging to verify data flow from StreamingManager to UI
 
 ### Technical Considerations
 - The StreamingManager runs in a background thread to avoid blocking the main Dash application thread
 - Thread-safe data sharing is handled through locks in the StreamingManager
 - The UI is updated through periodic polling of the StreamingManager's latest data
 - Real-time updates are always enabled by default to provide immediate market data
+- Debug logging is implemented at key points in the data flow to facilitate troubleshooting

@@ -13,7 +13,7 @@
 - [x] Add callbacks to handle streaming data updates in the UI
 - [x] Add status indicators for streaming connection in the options chain tab
 - [x] Set real-time updates to be enabled by default
-- [ ] Test real-time updates with various symbols
+- [x] Test real-time updates with various symbols
 
 ## Medium Priority
 - [x] Update any dependent code to handle multi-timeframe data
