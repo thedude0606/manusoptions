@@ -7,11 +7,12 @@
 - [x] Implement multi-timeframe technical indicator calculations
 - [x] Update configuration files if needed
 - [x] Push code changes to GitHub repository
+- [x] Fix options chain tab API method error
 
 ## Medium Priority
 - [x] Update any dependent code to handle multi-timeframe data
 - [ ] Create tests for the new functionality
-- [ ] Update documentation to reflect changes
+- [x] Update documentation to reflect changes
 
 ## Low Priority
 - [ ] Optimize performance for multi-timeframe calculations
@@ -20,6 +21,7 @@
 ## Dependencies
 - Multi-timeframe indicator implementation depends on standardized 60-day data pull
 - Dashboard updates depend on multi-timeframe indicator implementation
+- Options chain functionality depends on correct Schwab API method usage
 
 ## Status Legend
 - [x] Completed

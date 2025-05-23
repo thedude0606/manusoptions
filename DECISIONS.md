@@ -1,5 +1,21 @@
 # Design Decisions
 
+## Schwab API Options Chain Method
+
+### Issue Identified
+- Options chain tab was failing with error: `'Client' object has no attribute 'get_option_chain'`
+- Code was inconsistently using both `get_option_chain` and `option_chains` methods
+
+### Investigation
+- Reviewed Schwab API client documentation and source code
+- Confirmed that the correct method name is `option_chains`, not `get_option_chain`
+- Identified all occurrences of the incorrect method name in the codebase
+
+### Implementation Approach
+- Updated `data_fetchers.py` to use the correct `option_chains` method
+- Ensured parameter names match the API documentation (e.g., `includeUnderlyingQuote` instead of `includeQuotes`)
+- Verified no other occurrences of the incorrect method name remained in the codebase
+
 ## Minute Data Handling
 
 ### Current Implementation

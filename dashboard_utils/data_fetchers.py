@@ -147,11 +147,11 @@ def get_options_chain_data(client, symbol):
     
     try:
         # Get options chain
-        response = client.get_option_chain(
+        response = client.option_chains(
             symbol=symbol,
             contractType="ALL",
             strikeCount=20,
-            includeQuotes=True,
+            includeUnderlyingQuote=True,
             strategy="SINGLE",
             range="ALL",
             optionType="ALL"
