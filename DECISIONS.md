@@ -29,29 +29,29 @@ Standardize minute data pulls to always use 60 days of data.
 - Updated `fetch_minute_data.py` to consistently use 60-day data pull
 - Modified `get_minute_data` in data_fetchers.py to always use 60 days
 
-## Options Chain Real-Time Updates
+## Streaming Functionality Troubleshooting
 
 ### Decision
-Integrate the existing StreamingManager into dashboard_app.py to enable real-time updates for the options chain.
+Investigate and fix the streaming functionality that is not working despite correct configuration.
 
 ### Rationale
-- The current implementation relies on polling and REST API calls, which doesn't provide real-time updates
-- A fully implemented StreamingManager exists but is not being used in dashboard_app.py
-- WebSocket-based streaming provides more efficient and timely updates compared to polling
+- The streaming interval component is correctly set to disabled=False by default
+- The toggle callback logic is properly implemented
+- Debug logging is present throughout the code
+- Yet streaming functionality is still not working
 
 ### Implementation Details
-- Integrate StreamingManager into dashboard_app.py
-- Add callbacks to handle streaming data updates in the UI
-- Add status indicators for streaming connection in the options chain tab
-- Use dcc.Interval for periodic UI updates from the streaming data
-- Set real-time updates to be enabled by default per user request
-- Ensure streaming interval component has disabled=False by default in the layout
-- Implement toggle callback to correctly enable/disable the interval based on user selection
-- Add comprehensive debug logging to verify data flow from StreamingManager to UI
+- Created logs directory which was missing, preventing proper logging
+- Enhanced debug logging to trace the streaming lifecycle
+- Identified potential issues:
+  1. StreamingManager may not be initializing properly
+  2. Callback wiring may be incorrect
+  3. Authentication or connection issues with Schwab API
+  4. File system permissions may be preventing log creation
 
 ### Technical Considerations
-- The StreamingManager runs in a background thread to avoid blocking the main Dash application thread
-- Thread-safe data sharing is handled through locks in the StreamingManager
-- The UI is updated through periodic polling of the StreamingManager's latest data
-- Real-time updates are always enabled by default to provide immediate market data
-- Debug logging is implemented at key points in the data flow to facilitate troubleshooting
+- The absence of logs directory suggests the StreamingManager initialization code may not be executing
+- Need to verify that dashboard_app_streaming.py is being used instead of dashboard_app.py
+- Need to ensure proper authentication with Schwab API
+- Need to verify WebSocket connection establishment
+- Need to trace data flow from StreamingManager to UI components
