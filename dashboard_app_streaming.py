@@ -236,7 +236,7 @@ app.layout = html.Div([
     dcc.Store(id="error-store"),
     dcc.Store(id="streaming-options-store"),
     dcc.Interval(id="update-interval", interval=60000, n_intervals=0),
-    dcc.Interval(id="streaming-update-interval", interval=1000, n_intervals=0, disabled=True)
+    dcc.Interval(id="streaming-update-interval", interval=1000, n_intervals=0, disabled=False)
 ])
 
 # Refresh data callback
@@ -433,6 +433,8 @@ def update_tech_indicators_table(tech_indicators_data):
 )
 def toggle_streaming(streaming_toggle, expiration_date, option_type, selected_symbol_store):
     """Toggles the streaming functionality based on user selection."""
+    app_logger.info(f"Toggle streaming callback triggered: toggle={streaming_toggle}, expiration={expiration_date}, option_type={option_type}")
+    
     if streaming_toggle == "OFF":
         # Stop streaming if it's running
         if streaming_manager.is_running:
@@ -487,12 +489,25 @@ def toggle_streaming(streaming_toggle, expiration_date, option_type, selected_sy
 )
 def update_streaming_data(n_intervals):
     """Updates the streaming options store with the latest data from the streaming manager."""
+    app_logger.info(f"Streaming update callback triggered: n_intervals={n_intervals}")
+    
     if not streaming_manager.is_running:
+        app_logger.info("Streaming manager is not running")
         return {"data": {}, "status": "Not running", "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
     
     # Get the latest data from the streaming manager
     latest_data = streaming_manager.get_latest_data()
     status = streaming_manager.get_streaming_status()
+    
+    # Log some information about the data
+    data_count = len(latest_data)
+    app_logger.info(f"Received streaming data for {data_count} contracts. Status: {status.get('status_message', 'Unknown')}")
+    
+    if data_count > 0:
+        # Log a sample of the data
+        sample_key = next(iter(latest_data))
+        sample_data = latest_data[sample_key]
+        app_logger.info(f"Sample data for {sample_key}: {sample_data}")
     
     # Return the data and status
     return {
@@ -518,7 +533,10 @@ def update_streaming_data(n_intervals):
 )
 def update_options_tables(options_data, streaming_data, expiration_date, option_type, streaming_toggle):
     """Updates the options chain tables with either fetched data or streaming data."""
+    app_logger.info(f"Update options tables callback triggered: expiration={expiration_date}, option_type={option_type}, streaming={streaming_toggle}")
+    
     if not options_data or not options_data.get("options"):
+        app_logger.warning("No options data available")
         return [], []
     
     # Use the base options data from the REST API
@@ -528,15 +546,21 @@ def update_options_tables(options_data, streaming_data, expiration_date, option_
     if streaming_toggle == "ON" and streaming_data and streaming_data.get("data"):
         streaming_options = streaming_data.get("data", {})
         
+        app_logger.info(f"Streaming data available for {len(streaming_options)} contracts")
+        
         if streaming_options:
             # Create a copy of the options DataFrame to avoid modifying the original
             options_df_copy = options_df.copy()
+            
+            # Track how many contracts were updated
+            updated_contracts = 0
             
             # Update the options data with streaming data
             for index, row in options_df_copy.iterrows():
                 symbol = row.get("symbol")
                 if symbol in streaming_options:
                     stream_data = streaming_options[symbol]
+                    updated_contracts += 1
                     
                     # Update price fields if they exist in the streaming data
                     if "lastPrice" in stream_data:
@@ -571,8 +595,12 @@ def update_options_tables(options_data, streaming_data, expiration_date, option_
                     if "vega" in stream_data:
                         options_df_copy.at[index, "vega"] = stream_data["vega"]
             
+            app_logger.info(f"Updated {updated_contracts} contracts with streaming data")
+            
             # Use the updated DataFrame
             options_df = options_df_copy
+    else:
+        app_logger.info("Using base options data without streaming updates")
     
     # Use the utility function to split options by type
     calls_data, puts_data = split_options_by_type(options_df, expiration_date, option_type)
