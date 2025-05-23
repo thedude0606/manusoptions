@@ -1,54 +1,31 @@
-# Progress Report
+# Project Progress
 
-## Completed Features/Tasks
-- Set up initial project structure
-- Implemented authentication with Schwab API
-- Created basic minute data retrieval
-- Implemented options chain retrieval
-- Developed dashboard application
-- Implemented technical analysis
-- Created recommendation engine
-- Implemented batched minute data retrieval for 60 days
-- Integrated batched data retrieval with dashboard application
-- Fixed Dash obsolete attribute error (app.run_server → app.run)
-- Fixed recommendation engine to generate recommendations properly
-  - Fixed confidence threshold issue in recommendation engine
-  - Fixed underlying price extraction and passing to recommendation engine
-- Fixed numpy/pandas binary incompatibility issue by specifying compatible versions
-- Added platform-specific installation instructions for Python 3.12 on Apple Silicon (ARM)
-- Provided multiple installation options for Python 3.12 on Apple Silicon compatibility
-- Fixed options chain table display issues by creating dedicated utility module
-- Fixed minute data error handling and display issues
-- Fixed duplicate callback outputs error with centralized error handling pattern
-- Fixed authentication issues by standardizing token file path across all modules
-- Enhanced token file path handling with cross-platform support and .env configuration
-  - Implemented fallback to user home directory when TOKEN_FILE_PATH is not specified in .env
-  - Added automatic directory creation for token storage
-  - Ensured consistent token path usage across all application components
+## Current Status
+- Analyzed repository structure and code
+- Identified issues with minute data handling and technical indicator calculations
+- Designed solutions for standardizing 60-day minute data pulls and implementing multi-timeframe indicators
+- Documented design decisions in DECISIONS.md
 
-## Current Work in Progress
-- Testing dashboard with various symbols and extended data periods
-- Validating recommendation engine fixes
-- Validating options chain and minute data fixes
-- Validating centralized error handling fix
-- Validating authentication flow with standardized token file path
-- Validating cross-platform token file path solution
+## Completed Tasks
+- Repository analysis and code review
+- Identified that `fetch_minute_data.py` uses 90 days instead of the required 60 days
+- Confirmed `fetch_minute_data_batched.py` already implements 60-day pulls
+- Identified that technical indicators need to be calculated for multiple timeframes
+- Created design documentation for required changes
 
-## Known Issues or Challenges
-- Underlying price was not being properly extracted from options chain API response and passed to the recommendation engine
-- Confidence threshold was set too high, filtering out all potential recommendations
-- Binary incompatibility between numpy and pandas versions causing application startup failure
-- Python 3.12 on Apple Silicon (ARM) requires special handling for numpy/pandas installation
-- Numpy 1.24.4 is not directly compatible with Python 3.12 on ARM via conda
-- Options chain table was not displaying due to inconsistent data processing
-- Minute data errors occurred due to improper error handling
-- Duplicate callback outputs error when multiple callbacks tried to update error-store.data
-- Authentication issues due to inconsistent token file paths across different modules
-- Hardcoded absolute token file paths causing cross-platform compatibility issues
+## In Progress
+- Implementing standardized 60-day minute data pull in all data fetching scripts
+- Developing multi-timeframe technical indicator calculation functionality
+- Updating configuration to support the new requirements
+
+## Known Issues/Challenges
+- Need to ensure consistent 60-day data pull across all scripts
+- Technical indicators need to be calculated for 5 different timeframes (1min, 15min, 30min, 1hour, daily)
+- Integration with existing dashboard may require UI updates for timeframe selection
 
 ## Next Steps
-- Add comprehensive error handling and retry logic
-- Implement data caching to reduce API calls
-- Optimize data storage for large datasets
-- Add progress visualization during data fetching
-- Implement parallel processing for faster data retrieval
+1. Update `fetch_minute_data.py` to use 60 days consistently
+2. Implement multi-timeframe technical indicator calculations in `technical_analysis.py`
+3. Update any dependent code to handle the new multi-timeframe data structure
+4. Create tests to validate the changes
+5. Update documentation to reflect the new functionality

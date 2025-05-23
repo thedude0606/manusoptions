@@ -1,92 +1,93 @@
 # Design Decisions
 
-## Architecture
+## Minute Data Handling
 
-### Dashboard Structure
-- **Modular Design**: Separated dashboard components into distinct modules for better maintainability
-- **Callback Pattern**: Used Dash callback pattern for reactive updates
-- **Data Flow**: Implemented unidirectional data flow from API to UI components
+### Current Implementation
+- `fetch_minute_data.py` currently pulls 90 days of 1-minute data
+- `fetch_minute_data_batched.py` already implements a 60-day pull for 1-minute data
+- Configuration in `config.py` has `MINUTE_DATA_CONFIG` with `default_days: 60`
 
-### Data Processing
-- **Batched Data Retrieval**: Implemented day-by-day batched retrieval for minute data to handle API limitations
-- **Data Transformation**: Standardized data formats between API responses and UI components
-- **Caching Strategy**: Used client-side stores for temporary data caching
+### Required Changes
+- Standardize all minute data pulls to always use 60 days without a time frame option
+- Ensure consistency between both fetch scripts
+- Update any references to time frames in the codebase
 
-## Technology Selections
+### Implementation Approach
+- Modify `fetch_minute_data.py` to use the 60-day setting from config
+- Ensure `fetch_minute_data_batched.py` consistently uses 60 days
+- Remove any user-configurable time frame options for minute data pulls
 
-### Frontend
-- **Dash**: Selected for its ability to create interactive data visualization applications with Python
-- **Plotly**: Used for interactive charts and visualizations
-- **Bootstrap Components**: Incorporated for responsive UI elements
+## Technical Indicators Calculation
 
-### Backend
-- **Python**: Primary language for all backend processing
-- **Schwab API**: Used for financial data retrieval
-- **Pandas**: Selected for data manipulation and analysis
+### Current Implementation
+- `technical_analysis.py` has a flexible indicator calculation pipeline
+- Currently calculates indicators for a single timeframe (the input data timeframe)
+- Has `resample_ohlcv` function that can aggregate data to different timeframes
+- No explicit multi-timeframe support in the main calculation functions
 
-## Design Patterns
+### Required Changes
+- Implement technical indicator calculations for multiple timeframes:
+  - 1 minute
+  - 15 minute
+  - 30 minute
+  - 1 hour
+  - Daily
 
-### Data Processing Patterns
-- **Factory Pattern**: Used for creating different types of data processors
-- **Strategy Pattern**: Implemented for different technical analysis strategies
-- **Observer Pattern**: Used in the dashboard for reactive updates
+### Implementation Approach
+- Create a new function to handle multi-timeframe calculations
+- Use the existing `resample_ohlcv` function to generate different timeframe data
+- Calculate indicators for each timeframe
+- Return a dictionary of DataFrames, one for each timeframe with its indicators
+- Ensure proper error handling and logging for each timeframe calculation
 
-### Error Handling
-- **Centralized Error Management**: Implemented a central error store for consistent error handling
-- **Graceful Degradation**: Designed components to function with partial data when errors occur
-- **Error Trigger Pattern**: Used hidden stores as error triggers to avoid duplicate callback outputs
+## Data Structure Design
 
-## Key Decisions and Rationale
+### Current Implementation
+- Single DataFrame with indicators for one timeframe
 
-### Cross-Platform Token File Path Solution
-- **Issue**: Hardcoded absolute token file paths causing authentication failures across different environments
-- **Solution**: Implemented a robust, cross-platform token file path solution with environment variable support
-- **Rationale**: 
-  - Ensures consistent token handling across different operating systems and environments
-  - Provides flexibility through .env configuration
-  - Creates a secure fallback to user's home directory when not explicitly configured
-  - Automatically creates necessary directories, improving user experience
-- **Implementation**: 
-  - Updated config.py to check for TOKEN_FILE_PATH in environment variables
-  - Added fallback to create a platform-appropriate path in user's home directory
-  - Ensured directory creation if it doesn't exist
-  - Centralized this logic to be used consistently across all application components
+### New Implementation
+- Dictionary of DataFrames, keyed by timeframe string
+- Each DataFrame contains the indicators for that specific timeframe
+- Consistent column naming across timeframes
+- Example structure:
+  ```
+  {
+    '1min': DataFrame with 1-minute indicators,
+    '15min': DataFrame with 15-minute indicators,
+    '30min': DataFrame with 30-minute indicators,
+    '1hour': DataFrame with 1-hour indicators,
+    'daily': DataFrame with daily indicators
+  }
+  ```
 
-### Centralized Configuration Approach
-- **Issue**: Inconsistent token file paths across different modules causing authentication issues
-- **Solution**: Created a centralized config.py module with standardized TOKEN_FILE_PATH
-- **Rationale**: Ensures consistent token file handling across all components, preventing authentication failures
-- **Implementation**: Updated all modules to import and use the centralized token file path
+## Integration with Existing Code
 
-### Centralized Error Handling Fix
-- **Issue**: Duplicate callback outputs error when multiple callbacks tried to update error-store.data
-- **Solution**: Implemented a centralized error handling pattern with hidden trigger stores
-- **Rationale**: Prevents multiple callbacks from directly updating the same output, resolving Dash's duplicate output constraint
-- **Implementation**: Created separate error trigger stores for each data source and a single callback to update the main error store
+### Dashboard Integration
+- Update dashboard code to handle multi-timeframe data
+- Add timeframe selection in the UI
+- Display indicators for the selected timeframe
 
-### Options Chain Display Fix
-- **Issue**: Options chain table was not displaying due to inconsistent data processing
-- **Solution**: Created a dedicated options_chain_utils.py module to standardize options data processing
-- **Rationale**: Modularizing the options chain logic improves maintainability and isolates the data processing from the UI components
-- **Implementation**: Added robust data validation and normalization to handle inconsistent API responses
+### API Integration
+- Ensure API endpoints can handle multi-timeframe data
+- Update documentation to reflect new data structure
 
-### Minute Data Error Fix
-- **Issue**: Minute data errors occurred due to improper error handling
-- **Solution**: Enhanced error handling in minute data processing and display
-- **Rationale**: Proper error handling ensures the application remains functional even when API responses are incomplete or malformed
-- **Implementation**: Added validation checks and fallback mechanisms for minute data processing
+## Performance Considerations
 
-### Authentication Approach
-- **Decision**: Used token-based authentication with refresh capability
-- **Rationale**: Provides secure access to the API while minimizing the need for user interaction
-- **Implementation**: Implemented token refresh logic to maintain session validity
+### Data Volume
+- Processing multiple timeframes increases computation time
+- Consider implementing caching for higher timeframes
+- Optimize resampling operations
 
-### Data Fetching Strategy
-- **Decision**: Implemented batched data retrieval for historical data
-- **Rationale**: Overcomes API limitations for large data requests and improves reliability
-- **Implementation**: Created day-by-day fetching with aggregation for minute data
+### Memory Usage
+- Multiple DataFrames will increase memory usage
+- Consider implementing lazy loading or on-demand calculation for less frequently used timeframes
 
-### UI/UX Decisions
-- **Decision**: Used tabbed interface for different data views
-- **Rationale**: Provides clear separation of concerns and improves user navigation
-- **Implementation**: Created separate tabs for minute data, technical indicators, options chain, and recommendations
+## Testing Strategy
+
+### Unit Tests
+- Create tests for each timeframe calculation
+- Verify indicator values match expected results for each timeframe
+
+### Integration Tests
+- Test end-to-end flow from data fetching to multi-timeframe indicator calculation
+- Verify dashboard correctly displays indicators for each timeframe
