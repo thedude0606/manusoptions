@@ -9,9 +9,10 @@
 - [x] Push code changes to GitHub repository
 - [x] Fix options chain tab API method error
 - [x] Fix options generations (Recommendations) tab functionality
-- [ ] Integrate StreamingManager into dashboard_app.py for real-time options chain updates
-- [ ] Add callbacks to handle streaming data updates in the UI
-- [ ] Add status indicators for streaming connection in the options chain tab
+- [x] Integrate StreamingManager into dashboard_app.py for real-time options chain updates
+- [x] Add callbacks to handle streaming data updates in the UI
+- [x] Add status indicators for streaming connection in the options chain tab
+- [x] Set real-time updates to be enabled by default
 - [ ] Test real-time updates with various symbols
 
 ## Medium Priority

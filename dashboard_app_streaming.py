@@ -152,7 +152,7 @@ app.layout = html.Div([
                                 {'label': 'On', 'value': 'ON'},
                                 {'label': 'Off', 'value': 'OFF'}
                             ],
-                            value='OFF',
+                            value='ON',
                             inline=True
                         )
                     ], style={'display': 'inline-block'})
