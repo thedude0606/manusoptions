@@ -4,6 +4,7 @@ Utility functions for handling options chain data in the dashboard application.
 
 import pandas as pd
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -107,10 +108,55 @@ def split_options_by_type(options_df, expiration_date=None, option_type=None):
     elif option_type == "PUT":
         calls_df = pd.DataFrame()  # Empty DataFrame for calls
     
-    # Convert to records for Dash table
-    calls_data = calls_df.to_dict("records") if not calls_df.empty else []
-    puts_data = puts_df.to_dict("records") if not puts_df.empty else []
+    # Convert to records for Dash table, handling complex fields
+    calls_data = prepare_options_for_dash_table(calls_df) if not calls_df.empty else []
+    puts_data = prepare_options_for_dash_table(puts_df) if not puts_df.empty else []
     
     logger.info(f"Split options into {len(calls_data)} calls and {len(puts_data)} puts")
     
     return calls_data, puts_data
+
+def prepare_options_for_dash_table(options_df):
+    """
+    Prepare options DataFrame for Dash DataTable by handling complex fields.
+    
+    Args:
+        options_df (DataFrame): Options DataFrame
+        
+    Returns:
+        list: List of dictionaries with properly formatted data for Dash DataTable
+    """
+    if options_df.empty:
+        return []
+    
+    # Convert DataFrame to records
+    records = options_df.to_dict("records")
+    
+    # Process each record to handle complex fields
+    for record in records:
+        # Handle optionDeliverablesList - convert to string or remove
+        if "optionDeliverablesList" in record:
+            if record["optionDeliverablesList"] is None:
+                # If None, keep as is
+                pass
+            elif isinstance(record["optionDeliverablesList"], (list, dict)):
+                # Convert complex objects to string representation
+                try:
+                    record["optionDeliverablesList"] = json.dumps(record["optionDeliverablesList"])
+                except:
+                    # If conversion fails, set to a descriptive string
+                    record["optionDeliverablesList"] = str(record["optionDeliverablesList"])
+            else:
+                # Ensure it's a string, number, or boolean
+                record["optionDeliverablesList"] = str(record["optionDeliverablesList"])
+        
+        # Check for other complex fields that might cause issues
+        for key, value in list(record.items()):
+            if not isinstance(value, (str, int, float, bool, type(None))):
+                # Convert complex objects to string representation
+                try:
+                    record[key] = json.dumps(value)
+                except:
+                    record[key] = str(value)
+    
+    return records
