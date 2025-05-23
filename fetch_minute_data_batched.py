@@ -6,28 +6,22 @@ import json
 import time
 import pandas as pd
 from tqdm import tqdm
-
-load_dotenv()
-
-APP_KEY = os.getenv("APP_KEY")
-APP_SECRET = os.getenv("APP_SECRET")
-CALLBACK_URL = os.getenv("CALLBACK_URL")
-TOKENS_FILE = "tokens.json"
+from config import APP_KEY, APP_SECRET, CALLBACK_URL, TOKEN_FILE_PATH, MINUTE_DATA_CONFIG
 
 # Placeholder for symbol, user can provide this later
-SYMBOL = "AAPL"
+SYMBOL = MINUTE_DATA_CONFIG['default_symbol']
 
 def fetch_minute_data_for_day(client, symbol, day_date):
     """
-    Fetch minute data for a specific day
+    Fetch minute data for a specific day.
     
     Args:
-        client: Schwabdev client
-        symbol: Stock symbol
-        day_date: Date to fetch data for (datetime object)
+        client: Schwab API client
+        symbol: Stock symbol to fetch data for
+        day_date: Date to fetch data for
         
     Returns:
-        List of candles for the day or empty list if error
+        list: List of candle data for the day
     """
     try:
         # Set start and end time for the day (market hours)
@@ -69,20 +63,16 @@ def fetch_minute_data_for_day(client, symbol, day_date):
 
 def main():
     print(f"Attempting to fetch 60 days of minute data for {SYMBOL}")
-
-    if not os.path.exists(TOKENS_FILE):
-        print(f"Error: Tokens file not found at {TOKENS_FILE}. Please run the authentication script first.")
+    if not os.path.exists(TOKEN_FILE_PATH):
+        print(f"Error: Tokens file not found at {TOKEN_FILE_PATH}. Please run the authentication script first.")
         return
-
     try:
-        client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file=TOKENS_FILE, capture_callback=False)
-
+        client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file=TOKEN_FILE_PATH, capture_callback=False)
         # Verify authentication by checking for access token
         if not (client.tokens and client.tokens.access_token):
             print("Error: No valid access token found. Please re-authenticate.")
             return
         print("Client initialized and token appears to be loaded.")
-
         # Calculate start and end dates for the last 60 days
         end_date = datetime.datetime.now()
         start_date = end_date - datetime.timedelta(days=60)
@@ -141,7 +131,6 @@ def main():
             for candle in all_candles[:3]:
                 dt = datetime.datetime.fromtimestamp(candle['datetime']/1000)
                 print(f"{dt}: Open: {candle['open']}, High: {candle['high']}, Low: {candle['low']}, Close: {candle['close']}, Volume: {candle['volume']}")
-
     except Exception as e:
         print(f"An error occurred: {e}")
 

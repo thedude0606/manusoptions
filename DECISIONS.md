@@ -38,6 +38,12 @@
 
 ## Key Decisions and Rationale
 
+### Centralized Configuration Approach
+- **Issue**: Inconsistent token file paths across different modules causing authentication issues
+- **Solution**: Created a centralized config.py module with standardized TOKEN_FILE_PATH
+- **Rationale**: Ensures consistent token file handling across all components, preventing authentication failures
+- **Implementation**: Updated all modules to import and use the centralized token file path
+
 ### Centralized Error Handling Fix
 - **Issue**: Duplicate callback outputs error when multiple callbacks tried to update error-store.data
 - **Solution**: Implemented a centralized error handling pattern with hidden trigger stores

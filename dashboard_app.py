@@ -12,12 +12,10 @@ import schwabdev
 from dotenv import load_dotenv
 import time
 import sys
+from config import APP_KEY, APP_SECRET, CALLBACK_URL, TOKEN_FILE_PATH, CACHE_CONFIG
 from dashboard_utils.data_fetchers import get_minute_data, get_options_chain_data
 from dashboard_utils.recommendation_tab import register_recommendation_callbacks
 from dashboard_utils.options_chain_utils import process_options_chain_data, split_options_by_type
-
-# Load environment variables
-load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -28,18 +26,6 @@ logging.basicConfig(
     ]
 )
 app_logger = logging.getLogger('dashboard_app')
-
-# API credentials
-APP_KEY = os.getenv("APP_KEY")
-APP_SECRET = os.getenv("APP_SECRET")
-CALLBACK_URL = os.getenv("CALLBACK_URL")
-TOKENS_FILE = "token.json"
-
-# Cache configuration
-CACHE_CONFIG = {
-    'update_interval_seconds': 60,  # Update data every 60 seconds
-    'cache_expiry_seconds': 300,    # Cache expires after 5 minutes
-}
 
 # Initialize Dash app
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
@@ -231,6 +217,13 @@ app.layout = html.Div([
     html.Div(id="error-messages", style={'margin-top': '20px', 'color': 'red'})
 ])
 
+# Add hidden stores for error triggers
+app.layout.children.extend([
+    dcc.Store(id="minute-data-error-trigger"),
+    dcc.Store(id="tech-indicators-error-trigger"),
+    dcc.Store(id="options-chain-error-trigger")
+])
+
 # Symbol selection callback
 @app.callback(
     Output("selected-symbol-store", "data"),
@@ -268,13 +261,6 @@ def update_error_store(minute_data_error, tech_indicators_error, options_chain_e
     
     return dash.no_update
 
-# Add hidden stores for error triggers
-app.layout.children.extend([
-    dcc.Store(id="minute-data-error-trigger"),
-    dcc.Store(id="tech-indicators-error-trigger"),
-    dcc.Store(id="options-chain-error-trigger")
-])
-
 # Minute Data Tab Callback
 @app.callback(
     Output("minute-data-store", "data"),
@@ -296,8 +282,8 @@ def update_minute_data(selected_symbol, n_refresh, n_intervals):
     app_logger.info(f"Fetching minute data for {symbol}")
     
     try:
-        # Initialize Schwab client
-        client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file=TOKENS_FILE, capture_callback=False)
+        # Initialize Schwab client with consistent token file path
+        client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file=TOKEN_FILE_PATH, capture_callback=False)
         
         # Fetch minute data
         minute_data, error = get_minute_data(client, symbol)
@@ -498,8 +484,8 @@ def update_options_chain(selected_symbol, n_refresh, n_intervals):
     app_logger.info(f"Fetching options chain for {symbol}")
     
     try:
-        # Initialize Schwab client
-        client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file=TOKENS_FILE, capture_callback=False)
+        # Initialize Schwab client with consistent token file path
+        client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file=TOKEN_FILE_PATH, capture_callback=False)
         
         # Fetch options chain data
         options_df, expiration_dates, underlying_price, error = get_options_chain_data(client, symbol)
