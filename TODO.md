@@ -14,12 +14,15 @@
 - [x] Add status indicators for streaming connection in the options chain tab
 - [x] Set real-time updates to be enabled by default
 - [x] Test real-time updates with various symbols
+- [x] Fix mapping issue between streaming data contract keys and options table data
+- [x] Implement robust field mapping for all streamer contract fields
 
 ## Medium Priority
 - [x] Update any dependent code to handle multi-timeframe data
 - [ ] Create tests for the new functionality
 - [x] Update documentation to reflect changes
 - [ ] Optimize streaming performance and error handling
+- [ ] Add visual indicators for fields updated via streaming data
 
 ## Low Priority
 - [ ] Optimize performance for multi-timeframe calculations
@@ -32,6 +35,7 @@
 - Options chain functionality depends on correct Schwab API method usage
 - Recommendations tab functionality depends on selected-symbol-store being properly populated
 - Real-time options updates depend on StreamingManager integration with dashboard_app.py
+- Complete UI updates depend on proper mapping between streaming data fields and DataFrame columns
 
 ## Status Legend
 - [x] Completed

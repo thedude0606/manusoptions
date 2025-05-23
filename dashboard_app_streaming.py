@@ -12,6 +12,7 @@ from dashboard_utils.data_fetchers import get_minute_data, get_technical_indicat
 from dashboard_utils.options_chain_utils import split_options_by_type
 from dashboard_utils.recommendation_tab import register_recommendation_callbacks
 from dashboard_utils.streaming_manager import StreamingManager
+from dashboard_utils.streaming_field_mapper import StreamingFieldMapper
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -418,82 +419,51 @@ def update_tech_indicators_table(tech_indicators_data):
 @app.callback(
     [
         Output("streaming-update-interval", "disabled"),
-        Output("streaming-status", "children"),
-        Output("streaming-status", "style")
+        Output("streaming-status", "children")
     ],
     [
         Input("streaming-toggle", "value"),
-        Input("expiration-date-dropdown", "value"),
-        Input("option-type-radio", "value")
-    ],
-    [
-        State("selected-symbol-store", "data")
+        Input("options-chain-store", "data")
     ],
     prevent_initial_call=True
 )
-def toggle_streaming(streaming_toggle, expiration_date, option_type, selected_symbol_store):
-    """Toggles the streaming functionality based on user selection."""
-    app_logger.info(f"Toggle streaming callback triggered: toggle={streaming_toggle}, expiration={expiration_date}, option_type={option_type}")
+def toggle_streaming(streaming_toggle, options_data):
+    """Toggles streaming data updates."""
+    app_logger.info(f"Streaming toggle: {streaming_toggle}")
     
     if streaming_toggle == "OFF":
-        # Stop streaming if it's running
-        if streaming_manager.is_running:
-            streaming_manager.stop_streaming()
-            app_logger.info("Streaming stopped by user")
-        
-        return True, "Real-time updates disabled", {'margin': '10px 0px', 'fontStyle': 'italic', 'color': 'gray'}
+        # Stop streaming
+        streaming_manager.stop_streaming()
+        return True, "Streaming: Disabled"
     
-    # Streaming toggle is ON
-    if not selected_symbol_store or not selected_symbol_store.get("symbol"):
-        return True, "Error: No symbol selected. Please refresh data first.", {'margin': '10px 0px', 'fontStyle': 'italic', 'color': 'red'}
+    # Check if we have options data
+    if not options_data or not options_data.get("options"):
+        return True, "Streaming: No options data available"
     
-    if not expiration_date:
-        return True, "Error: No expiration date selected. Please select an expiration date.", {'margin': '10px 0px', 'fontStyle': 'italic', 'color': 'red'}
+    # Get option contract keys
+    options = options_data.get("options", [])
+    option_keys = [option.get("symbol") for option in options if option.get("symbol")]
     
-    symbol = selected_symbol_store.get("symbol")
+    if not option_keys:
+        return True, "Streaming: No option contracts found"
     
-    # Get option contract keys for the selected symbol, expiration date, and option type
-    client = get_schwab_client()
-    if not client:
-        return True, "Error: Failed to initialize Schwab client.", {'margin': '10px 0px', 'fontStyle': 'italic', 'color': 'red'}
+    # Start streaming
+    success = streaming_manager.start_streaming(option_keys)
     
-    # Convert option_type from ALL to None for the get_option_contract_keys function
-    filter_option_type = None if option_type == "ALL" else option_type
-    
-    contract_keys, error = get_option_contract_keys(client, symbol, expiration_date, filter_option_type)
-    
-    if error:
-        return True, f"Error: {error}", {'margin': '10px 0px', 'fontStyle': 'italic', 'color': 'red'}
-    
-    if not contract_keys:
-        return True, f"No option contracts found for {symbol} with expiration date {expiration_date}", {'margin': '10px 0px', 'fontStyle': 'italic', 'color': 'orange'}
-    
-    # Start streaming with the contract keys
-    app_logger.info(f"Starting streaming for {len(contract_keys)} contracts")
-    streaming_success = streaming_manager.start_streaming(contract_keys)
-    
-    if not streaming_success:
-        status = streaming_manager.get_streaming_status()
-        error_message = status.get("error_message", "Unknown error")
-        return True, f"Error starting stream: {error_message}", {'margin': '10px 0px', 'fontStyle': 'italic', 'color': 'red'}
-    
-    return False, f"Streaming {len(contract_keys)} option contracts for {symbol}", {'margin': '10px 0px', 'fontStyle': 'italic', 'color': 'green'}
+    if success:
+        return False, "Streaming: Enabled - Receiving real-time data"
+    else:
+        return True, "Streaming: Error starting streaming"
 
-# Streaming update callback
+# Streaming data update callback
 @app.callback(
     Output("streaming-options-store", "data"),
-    [
-        Input("streaming-update-interval", "n_intervals")
-    ],
+    Input("streaming-update-interval", "n_intervals"),
     prevent_initial_call=True
 )
 def update_streaming_data(n_intervals):
-    """Updates the streaming options store with the latest data from the streaming manager."""
-    app_logger.info(f"Streaming update callback triggered: n_intervals={n_intervals}")
-    
-    if not streaming_manager.is_running:
-        app_logger.info("Streaming manager is not running")
-        return {"data": {}, "status": "Not running", "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+    """Updates the streaming data store with the latest data."""
+    app_logger.debug(f"Streaming update interval triggered: {n_intervals}")
     
     # Get the latest data from the streaming manager
     latest_data = streaming_manager.get_latest_data()
@@ -554,6 +524,7 @@ def update_options_tables(options_data, streaming_data, expiration_date, option_
             
             # Track how many contracts were updated
             updated_contracts = 0
+            updated_fields = set()
             
             # Update the options data with streaming data
             for index, row in options_df_copy.iterrows():
@@ -562,40 +533,23 @@ def update_options_tables(options_data, streaming_data, expiration_date, option_
                     stream_data = streaming_options[symbol]
                     updated_contracts += 1
                     
-                    # Update price fields if they exist in the streaming data
-                    if "lastPrice" in stream_data:
-                        options_df_copy.at[index, "lastPrice"] = stream_data["lastPrice"]
-                    
-                    if "bidPrice" in stream_data:
-                        options_df_copy.at[index, "bidPrice"] = stream_data["bidPrice"]
-                    
-                    if "askPrice" in stream_data:
-                        options_df_copy.at[index, "askPrice"] = stream_data["askPrice"]
-                    
-                    # Update other fields as needed
-                    if "totalVolume" in stream_data:
-                        options_df_copy.at[index, "totalVolume"] = stream_data["totalVolume"]
-                    
-                    if "openInterest" in stream_data:
-                        options_df_copy.at[index, "openInterest"] = stream_data["openInterest"]
-                    
-                    if "volatility" in stream_data:
-                        options_df_copy.at[index, "volatility"] = stream_data["volatility"]
-                    
-                    # Update Greeks if they exist in the streaming data
-                    if "delta" in stream_data:
-                        options_df_copy.at[index, "delta"] = stream_data["delta"]
-                    
-                    if "gamma" in stream_data:
-                        options_df_copy.at[index, "gamma"] = stream_data["gamma"]
-                    
-                    if "theta" in stream_data:
-                        options_df_copy.at[index, "theta"] = stream_data["theta"]
-                    
-                    if "vega" in stream_data:
-                        options_df_copy.at[index, "vega"] = stream_data["vega"]
+                    # Use the StreamingFieldMapper to map streaming data to DataFrame columns
+                    for field_name, value in stream_data.items():
+                        if field_name == "key":
+                            continue  # Skip the key field
+                        
+                        # Get the corresponding column name using the mapper
+                        column_name = StreamingFieldMapper.get_column_name(field_name)
+                        
+                        # Update the DataFrame if the column exists
+                        if column_name in options_df_copy.columns:
+                            options_df_copy.at[index, column_name] = value
+                            updated_fields.add(column_name)
+                        else:
+                            # If the column doesn't exist but we have a value, log it for debugging
+                            app_logger.debug(f"Column '{column_name}' not found in options DataFrame for field '{field_name}'")
             
-            app_logger.info(f"Updated {updated_contracts} contracts with streaming data")
+            app_logger.info(f"Updated {updated_contracts} contracts with streaming data. Updated fields: {sorted(list(updated_fields))}")
             
             # Use the updated DataFrame
             options_df = options_df_copy

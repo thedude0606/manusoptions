@@ -55,3 +55,27 @@ Investigate and fix the streaming functionality that is not working despite corr
 - Need to ensure proper authentication with Schwab API
 - Need to verify WebSocket connection establishment
 - Need to trace data flow from StreamingManager to UI components
+
+## Streaming Data Field Mapping
+
+### Decision
+Implement a robust, dynamic mapping system between streaming data contract fields and options table DataFrame columns.
+
+### Rationale
+- The original implementation used hardcoded field mappings that were incomplete
+- Streaming data contract fields use numeric indices (0-55) that need to be mapped to meaningful column names
+- Different field names may be used between the streaming contract and the DataFrame columns
+- A comprehensive mapping ensures all relevant data is updated in real-time
+
+### Implementation Details
+- Created a dedicated `StreamingFieldMapper` class in a new module
+- Implemented a complete mapping of all 56 streamer field numbers (0-55) to field names
+- Added a secondary mapping from field names to DataFrame column names
+- Integrated the mapper into the options table update callback
+- Enhanced logging to track which fields are being updated from streaming data
+
+### Technical Considerations
+- The mapper provides a single source of truth for field mappings
+- Dynamic mapping allows for future expansion without code changes
+- Improved error handling for missing or mismatched fields
+- Better debugging capabilities through detailed logging of field updates
