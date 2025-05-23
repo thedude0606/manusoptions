@@ -178,7 +178,9 @@ app.layout = html.Div([
     dcc.Store(id="minute-data-store"),
     dcc.Store(id="tech-indicators-store"),
     dcc.Store(id="options-chain-store"),
-    dcc.Store(id="error-store")
+    dcc.Store(id="selected-symbol-store"),
+    dcc.Store(id="error-store"),
+    dcc.Interval(id="update-interval", interval=60000, n_intervals=0)
 ])
 
 # Refresh data callback
@@ -187,6 +189,7 @@ app.layout = html.Div([
         Output("minute-data-store", "data"),
         Output("tech-indicators-store", "data"),
         Output("options-chain-store", "data"),
+        Output("selected-symbol-store", "data"),
         Output("expiration-date-dropdown", "options"),
         Output("expiration-date-dropdown", "value"),
         Output("status-message", "children"),
@@ -203,7 +206,7 @@ app.layout = html.Div([
 def refresh_data(n_clicks, symbol):
     """Refreshes all data for the given symbol."""
     if not n_clicks or not symbol:
-        return None, None, None, [], None, "", None
+        return None, None, None, None, [], None, "", None
     
     symbol = symbol.upper()
     app_logger.info(f"Refreshing data for {symbol}")
@@ -217,7 +220,7 @@ def refresh_data(n_clicks, symbol):
         
         if error:
             app_logger.error(f"Error fetching minute data: {error}")
-            return None, None, None, [], None, f"Error: {error}", {
+            return None, None, None, None, [], None, f"Error: {error}", {
                 "source": "Minute Data",
                 "message": error,
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -228,7 +231,7 @@ def refresh_data(n_clicks, symbol):
         
         if error:
             app_logger.error(f"Error calculating technical indicators: {error}")
-            return {"data": minute_data}, None, None, [], None, f"Error: {error}", {
+            return {"data": minute_data}, None, None, None, [], None, f"Error: {error}", {
                 "source": "Technical Indicators",
                 "message": error,
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -239,7 +242,7 @@ def refresh_data(n_clicks, symbol):
         
         if error:
             app_logger.error(f"Error fetching options chain: {error}")
-            return {"data": minute_data}, {"data": tech_indicators}, None, [], None, f"Error: {error}", {
+            return {"data": minute_data}, {"data": tech_indicators}, None, None, [], None, f"Error: {error}", {
                 "source": "Options Chain",
                 "message": error,
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -256,8 +259,18 @@ def refresh_data(n_clicks, symbol):
             "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         
+        # Prepare technical indicators store with timeframe data structure
+        timeframe_data = {}
+        if tech_indicators:
+            # Group indicators by timeframe
+            df = pd.DataFrame(tech_indicators)
+            if 'timeframe' in df.columns:
+                for timeframe in df['timeframe'].unique():
+                    timeframe_data[timeframe] = df[df['timeframe'] == timeframe].to_dict('records')
+            
         tech_indicators_store = {
             "data": tech_indicators,
+            "timeframe_data": timeframe_data,
             "symbol": symbol,
             "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
@@ -270,15 +283,22 @@ def refresh_data(n_clicks, symbol):
             "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         
+        # Create selected symbol store
+        selected_symbol_store = {
+            "symbol": symbol,
+            "price": underlying_price,
+            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
         status_message = f"Data refreshed for {symbol} at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         app_logger.info(status_message)
         
-        return minute_data_store, tech_indicators_store, options_data, dropdown_options, default_expiration, status_message, None
+        return minute_data_store, tech_indicators_store, options_data, selected_symbol_store, dropdown_options, default_expiration, status_message, None
     
     except Exception as e:
         error_msg = f"Error refreshing data: {str(e)}"
         app_logger.error(error_msg, exc_info=True)
-        return None, None, None, [], None, f"Error: {str(e)}", {
+        return None, None, None, None, [], None, f"Error: {str(e)}", {
             "source": "Data Refresh",
             "message": error_msg,
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")

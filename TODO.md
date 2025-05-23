@@ -8,6 +8,7 @@
 - [x] Update configuration files if needed
 - [x] Push code changes to GitHub repository
 - [x] Fix options chain tab API method error
+- [x] Fix options generations (Recommendations) tab functionality
 
 ## Medium Priority
 - [x] Update any dependent code to handle multi-timeframe data
@@ -22,6 +23,7 @@
 - Multi-timeframe indicator implementation depends on standardized 60-day data pull
 - Dashboard updates depend on multi-timeframe indicator implementation
 - Options chain functionality depends on correct Schwab API method usage
+- Recommendations tab functionality depends on selected-symbol-store being properly populated
 
 ## Status Legend
 - [x] Completed

@@ -8,6 +8,7 @@
 - Implemented multi-timeframe technical indicator calculations in technical_analysis.py
 - Updated dashboard to hardcode 60-day minute data pull and display all timeframe indicators in a single table
 - Fixed options chain tab error by correcting the Schwab API method name
+- Fixed options generations (Recommendations) tab by adding missing selected-symbol-store
 - Pushed all changes to GitHub repository
 
 ## Completed Tasks
@@ -23,7 +24,9 @@
 - Refactored `get_technical_indicators` to return a single table with a timeframe column
 - Updated dashboard_app.py to handle the new data structure
 - Fixed options chain tab by replacing incorrect `get_option_chain` method with the correct `option_chains` method in the Schwab API client
-- Updated documentation to reflect the options chain fix
+- Fixed options generations (Recommendations) tab by adding missing selected-symbol-store and update interval
+- Enhanced technical indicators store to include timeframe_data structure for Recommendations tab
+- Updated documentation to reflect all fixes and architectural changes
 - Pushed all changes to GitHub repository
 
 ## In Progress
@@ -33,10 +36,12 @@
 - Need to ensure the dashboard correctly displays all timeframes in a single table
 - Performance optimization for multi-timeframe calculations may be needed
 - Resolved: Options chain tab was failing due to incorrect API method name
+- Resolved: Options generations (Recommendations) tab was failing due to missing selected-symbol-store
 
 ## Next Steps
 1. Validate that the dashboard correctly displays all technical indicator timeframes
 2. Verify that the options chain tab now works correctly with the API method fix
-3. Create tests to validate the changes
-4. Optimize performance for multi-timeframe calculations if needed
-5. Continue updating documentation to reflect the new functionality
+3. Verify that the options generations (Recommendations) tab now works correctly with the selected-symbol-store fix
+4. Create tests to validate the changes
+5. Optimize performance for multi-timeframe calculations if needed
+6. Continue updating documentation to reflect the new functionality

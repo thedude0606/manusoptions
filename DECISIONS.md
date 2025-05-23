@@ -1,5 +1,24 @@
 # Design Decisions
 
+## Options Generations (Recommendations) Tab
+
+### Issue Identified
+- Options generations tab (implemented as the Recommendations tab) was not functioning
+- No visible errors in the UI, but the tab failed to display any recommendations
+
+### Investigation
+- Examined the recommendation_tab.py implementation and its callback dependencies
+- Found that the Recommendations tab relies on a data store called "selected-symbol-store"
+- This store was defined in dashboard_app_old.py but missing from the current dashboard_app.py
+- Without this store, the recommendation callbacks couldn't access the selected symbol data
+
+### Implementation Approach
+- Added the missing "selected-symbol-store" to dashboard_app.py
+- Added an update interval component for periodic refreshes
+- Updated the refresh_data callback to populate the selected-symbol-store
+- Enhanced the technical indicators store to include a timeframe_data structure for compatibility
+- Ensured all error handling paths correctly handle the new store
+
 ## Schwab API Options Chain Method
 
 ### Issue Identified
