@@ -1,128 +1,51 @@
 # Design Decisions
 
-## Options Generations (Recommendations) Tab
+## Multi-Timeframe Technical Indicators
 
-### Issue Identified
-- Options generations tab (implemented as the Recommendations tab) was not functioning
-- No visible errors in the UI, but the tab failed to display any recommendations
+### Decision
+Implement technical indicators calculation for multiple timeframes (1min, 15min, 30min, 1hour, daily) in a single function.
 
-### Investigation
-- Examined the recommendation_tab.py implementation and its callback dependencies
-- Found that the Recommendations tab relies on a data store called "selected-symbol-store"
-- This store was defined in dashboard_app_old.py but missing from the current dashboard_app.py
-- Without this store, the recommendation callbacks couldn't access the selected symbol data
+### Rationale
+- Users need to analyze market data across different timeframes to make informed trading decisions
+- Calculating indicators for multiple timeframes in a single function reduces code duplication
+- Storing all timeframe data in a single table with a timeframe column simplifies the UI implementation
 
-### Implementation Approach
-- Added the missing "selected-symbol-store" to dashboard_app.py
-- Added an update interval component for periodic refreshes
-- Updated the refresh_data callback to populate the selected-symbol-store
-- Enhanced the technical indicators store to include a timeframe_data structure for compatibility
-- Ensured all error handling paths correctly handle the new store
+### Implementation Details
+- Created `calculate_multi_timeframe_indicators` function in technical_analysis.py
+- Modified `get_technical_indicators` in data_fetchers.py to return a single table with a timeframe column
+- Updated dashboard_app.py to handle the new data structure
 
-## Schwab API Options Chain Method
+## Standardized 60-Day Minute Data Pull
 
-### Issue Identified
-- Options chain tab was failing with error: `'Client' object has no attribute 'get_option_chain'`
-- Code was inconsistently using both `get_option_chain` and `option_chains` methods
+### Decision
+Standardize minute data pulls to always use 60 days of data.
 
-### Investigation
-- Reviewed Schwab API client documentation and source code
-- Confirmed that the correct method name is `option_chains`, not `get_option_chain`
-- Identified all occurrences of the incorrect method name in the codebase
+### Rationale
+- Consistent data window ensures reliable technical indicator calculations
+- Reduces API calls and improves performance
+- Simplifies the UI by removing the need for a date range selector
 
-### Implementation Approach
-- Updated `data_fetchers.py` to use the correct `option_chains` method
-- Ensured parameter names match the API documentation (e.g., `includeUnderlyingQuote` instead of `includeQuotes`)
-- Verified no other occurrences of the incorrect method name remained in the codebase
+### Implementation Details
+- Updated `fetch_minute_data.py` to consistently use 60-day data pull
+- Modified `get_minute_data` in data_fetchers.py to always use 60 days
 
-## Minute Data Handling
+## Options Chain Real-Time Updates
 
-### Current Implementation
-- `fetch_minute_data.py` currently pulls 90 days of 1-minute data
-- `fetch_minute_data_batched.py` already implements a 60-day pull for 1-minute data
-- Configuration in `config.py` has `MINUTE_DATA_CONFIG` with `default_days: 60`
+### Decision
+Integrate the existing StreamingManager into dashboard_app.py to enable real-time updates for the options chain.
 
-### Required Changes
-- Standardize all minute data pulls to always use 60 days without a time frame option
-- Ensure consistency between both fetch scripts
-- Update any references to time frames in the codebase
+### Rationale
+- The current implementation relies on polling and REST API calls, which doesn't provide real-time updates
+- A fully implemented StreamingManager exists but is not being used in dashboard_app.py
+- WebSocket-based streaming provides more efficient and timely updates compared to polling
 
-### Implementation Approach
-- Modify `fetch_minute_data.py` to use the 60-day setting from config
-- Ensure `fetch_minute_data_batched.py` consistently uses 60 days
-- Remove any user-configurable time frame options for minute data pulls
+### Implementation Details
+- Integrate StreamingManager into dashboard_app.py
+- Add callbacks to handle streaming data updates in the UI
+- Add status indicators for streaming connection in the options chain tab
+- Use dcc.Interval for periodic UI updates from the streaming data
 
-## Technical Indicators Calculation
-
-### Current Implementation
-- `technical_analysis.py` has a flexible indicator calculation pipeline
-- Currently calculates indicators for a single timeframe (the input data timeframe)
-- Has `resample_ohlcv` function that can aggregate data to different timeframes
-- No explicit multi-timeframe support in the main calculation functions
-
-### Required Changes
-- Implement technical indicator calculations for multiple timeframes:
-  - 1 minute
-  - 15 minute
-  - 30 minute
-  - 1 hour
-  - Daily
-
-### Implementation Approach
-- Create a new function to handle multi-timeframe calculations
-- Use the existing `resample_ohlcv` function to generate different timeframe data
-- Calculate indicators for each timeframe
-- Return a dictionary of DataFrames, one for each timeframe with its indicators
-- Ensure proper error handling and logging for each timeframe calculation
-
-## Data Structure Design
-
-### Current Implementation
-- Single DataFrame with indicators for one timeframe
-
-### New Implementation
-- Dictionary of DataFrames, keyed by timeframe string
-- Each DataFrame contains the indicators for that specific timeframe
-- Consistent column naming across timeframes
-- Example structure:
-  ```
-  {
-    '1min': DataFrame with 1-minute indicators,
-    '15min': DataFrame with 15-minute indicators,
-    '30min': DataFrame with 30-minute indicators,
-    '1hour': DataFrame with 1-hour indicators,
-    'daily': DataFrame with daily indicators
-  }
-  ```
-
-## Integration with Existing Code
-
-### Dashboard Integration
-- Update dashboard code to handle multi-timeframe data
-- Add timeframe selection in the UI
-- Display indicators for the selected timeframe
-
-### API Integration
-- Ensure API endpoints can handle multi-timeframe data
-- Update documentation to reflect new data structure
-
-## Performance Considerations
-
-### Data Volume
-- Processing multiple timeframes increases computation time
-- Consider implementing caching for higher timeframes
-- Optimize resampling operations
-
-### Memory Usage
-- Multiple DataFrames will increase memory usage
-- Consider implementing lazy loading or on-demand calculation for less frequently used timeframes
-
-## Testing Strategy
-
-### Unit Tests
-- Create tests for each timeframe calculation
-- Verify indicator values match expected results for each timeframe
-
-### Integration Tests
-- Test end-to-end flow from data fetching to multi-timeframe indicator calculation
-- Verify dashboard correctly displays indicators for each timeframe
+### Technical Considerations
+- The StreamingManager runs in a background thread to avoid blocking the main Dash application thread
+- Thread-safe data sharing is handled through locks in the StreamingManager
+- The UI is updated through periodic polling of the StreamingManager's latest data
