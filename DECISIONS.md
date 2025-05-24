@@ -206,3 +206,34 @@ Fix the Recommendations tab button to properly trigger recommendations generatio
 - The solution maintains all existing functionality while adding the button-triggered behavior
 - Enhanced logging helps verify that the button click is properly detected
 - The fix improves user experience by making the UI behave as expected, with the button directly triggering the action it suggests
+
+## Enhanced Debug Modules for Options Chain and Recommendations
+
+### Decision
+Create dedicated debug modules with enhanced error handling, state preservation, and logging for both the options chain disappearance and non-functioning recommendations tab issues.
+
+### Rationale
+- Users reported that the options chain loads but disappears after ~5 seconds
+- The recommendations tab button doesn't do anything when clicked
+- These issues persist despite previous fixes, suggesting deeper problems
+- A more comprehensive approach to debugging and error handling is needed
+
+### Implementation Details
+- Created options_chain_fix.py with enhanced versions of key functions:
+  1. ensure_putcall_field_enhanced with better error handling and logging
+  2. split_options_by_type_enhanced with improved state preservation and fallback mechanisms
+  3. prepare_options_for_dash_table_enhanced with more robust error handling
+- Created recommendations_fix.py with enhanced callback registration:
+  1. register_recommendation_callbacks_enhanced with improved error handling
+  2. update_recommendations_enhanced with detailed debugging and error reporting
+  3. update_recommendation_tables_enhanced with better error handling
+- Added performance monitoring and timing metrics to track processing bottlenecks
+- Implemented comprehensive error handling with detailed traceback logging
+
+### Technical Considerations
+- The enhanced modules maintain the same API as the original functions for easy integration
+- The approach allows for incremental testing and deployment without disrupting existing functionality
+- Detailed logging helps identify the root causes of the issues
+- Performance metrics help identify potential bottlenecks
+- The modular design allows for selective application of fixes
+- The enhanced error handling prevents cascading failures that could lead to UI elements disappearing

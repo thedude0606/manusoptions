@@ -23,6 +23,10 @@
 - [x] Fix options chain tab not showing any data due to missing putCall field mapping
 - [x] Implement robust ensure_putcall_field function for both API and streaming data
 - [x] Fix Recommendations tab button not working by adding it as a callback trigger
+- [x] Create enhanced debug modules for options chain and recommendations tab issues
+- [x] Implement improved error handling and state preservation for options chain
+- [x] Fix non-numeric field ID warnings in streaming manager
+- [x] Enhance recommendations tab callback registration and error handling
 
 ## Medium Priority
 - [x] Update any dependent code to handle multi-timeframe data
@@ -32,11 +36,14 @@
 - [ ] Add visual indicators for fields updated via streaming data
 - [ ] Implement caching for normalized contract keys to improve performance
 - [ ] Add comprehensive testing for the Recommendations tab functionality
+- [ ] Implement additional debugging tools for easier troubleshooting
+- [ ] Add more detailed logging for streaming data processing
 
 ## Low Priority
 - [ ] Optimize performance for multi-timeframe calculations
 - [ ] Consider UI improvements for timeframe selection
 - [ ] Add user controls for streaming settings (e.g., update frequency)
+- [ ] Create a debug mode toggle for enhanced logging in production
 
 ## Dependencies
 - Multi-timeframe indicator implementation depends on standardized 60-day data pull
@@ -49,6 +56,8 @@
 - Stable options chain display depends on proper state preservation between streaming updates
 - Options chain data display depends on proper putCall field mapping from contractType
 - Recommendations generation depends on button click being properly connected to callback
+- Enhanced debug modules depend on core functionality being correctly implemented
+- Improved error handling depends on comprehensive understanding of data flow and failure points
 
 ## Status Legend
 - [x] Completed
