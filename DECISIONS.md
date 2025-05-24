@@ -167,3 +167,37 @@ Create a new enhanced recommendation engine that provides more sophisticated ana
 * Profit targets ensure recommendations meet minimum profit requirements
 * Confidence intervals provide a measure of recommendation reliability
 * Real-time updates ensure recommendations remain relevant as market conditions change
+
+## Dashboard Integration of Enhanced Recommendation Engine
+
+Integrate the enhanced recommendation engine with the dashboard UI to provide real-time recommendations with streaming data.
+
+### Decision
+
+Update the recommendation tab to use the enhanced recommendation engine and display additional metrics.
+
+### Rationale
+
+* The original recommendation tab used the legacy recommendation engine
+* The enhanced engine provides more comprehensive analysis and better recommendations
+* Additional metrics like confidence intervals and optimal entry/exit times needed to be displayed
+* Real-time updates with streaming data needed to be integrated
+
+### Implementation Details
+
+* Updated recommendation_tab.py to import and use EnhancedRecommendationEngine instead of RecommendationEngine
+* Modified the recommendation callback to process streaming data updates
+* Added streaming-options-store as an input to the recommendation callback
+* Enhanced the recommendation tables to display additional metrics:
+  * Stop loss prices
+  * Optimal entry and exit times
+  * Confidence intervals
+* Updated the UI to handle the new data structure
+
+### Technical Considerations
+
+* The integration is backward compatible with existing dashboard components
+* The enhanced engine processes all available timeframes for more comprehensive analysis
+* Streaming data is incorporated into recommendations for real-time updates
+* The UI displays more detailed information for better decision making
+* Performance impact is minimal as the enhanced engine is optimized for real-time processing

@@ -83,10 +83,13 @@ def create_recommendation_tab():
                                     {"name": "Expiration", "id": "expirationDate"},
                                     {"name": "DTE", "id": "daysToExpiration", "type": "numeric"},
                                     {"name": "Current Price", "id": "currentPrice", "type": "numeric", "format": {"specifier": ".2f"}},
-                                    {"name": "Target Price", "id": "targetSellPrice", "type": "numeric", "format": {"specifier": ".2f"}},
-                                    {"name": "Target Hours", "id": "targetTimeframeHours", "type": "numeric", "format": {"specifier": ".0f"}},
+                                    {"name": "Target Price", "id": "targetExitPrice", "type": "numeric", "format": {"specifier": ".2f"}},
+                                    {"name": "Stop Loss", "id": "stopLossPrice", "type": "numeric", "format": {"specifier": ".2f"}},
+                                    {"name": "Entry Time", "id": "optimalEntryTime", "type": "text"},
+                                    {"name": "Exit Time", "id": "optimalExitTime", "type": "text"},
                                     {"name": "Expected Profit %", "id": "expectedProfitPct", "type": "numeric", "format": {"specifier": ".2f"}},
-                                    {"name": "Confidence", "id": "confidenceScore", "type": "numeric", "format": {"specifier": ".0f"}}
+                                    {"name": "Confidence", "id": "confidenceScore", "type": "numeric", "format": {"specifier": ".0f"}},
+                                    {"name": "Conf. Interval", "id": "confidenceInterval", "type": "numeric", "format": {"specifier": ".1f"}}
                                 ],
                                 style_table={'overflowX': 'auto'},
                                 style_cell={
@@ -136,10 +139,13 @@ def create_recommendation_tab():
                                     {"name": "Expiration", "id": "expirationDate"},
                                     {"name": "DTE", "id": "daysToExpiration", "type": "numeric"},
                                     {"name": "Current Price", "id": "currentPrice", "type": "numeric", "format": {"specifier": ".2f"}},
-                                    {"name": "Target Price", "id": "targetSellPrice", "type": "numeric", "format": {"specifier": ".2f"}},
-                                    {"name": "Target Hours", "id": "targetTimeframeHours", "type": "numeric", "format": {"specifier": ".0f"}},
+                                    {"name": "Target Price", "id": "targetExitPrice", "type": "numeric", "format": {"specifier": ".2f"}},
+                                    {"name": "Stop Loss", "id": "stopLossPrice", "type": "numeric", "format": {"specifier": ".2f"}},
+                                    {"name": "Entry Time", "id": "optimalEntryTime", "type": "text"},
+                                    {"name": "Exit Time", "id": "optimalExitTime", "type": "text"},
                                     {"name": "Expected Profit %", "id": "expectedProfitPct", "type": "numeric", "format": {"specifier": ".2f"}},
-                                    {"name": "Confidence", "id": "confidenceScore", "type": "numeric", "format": {"specifier": ".0f"}}
+                                    {"name": "Confidence", "id": "confidenceScore", "type": "numeric", "format": {"specifier": ".0f"}},
+                                    {"name": "Conf. Interval", "id": "confidenceInterval", "type": "numeric", "format": {"specifier": ".1f"}}
                                 ],
                                 style_table={'overflowX': 'auto'},
                                 style_cell={
@@ -244,15 +250,17 @@ def register_recommendation_callbacks(app):
             Input("tech-indicators-store", "data"),
             Input("options-chain-store", "data"),
             Input("recommendation-timeframe-dropdown", "value"),
-            Input("update-interval", "n_intervals")
+            Input("update-interval", "n_intervals"),
+            Input("streaming-options-store", "data")  # Added streaming data input
         ],
         [
             State("selected-symbol-store", "data")
         ]
     )
-    def update_recommendations(tech_indicators_data, options_chain_data, timeframe, n_intervals, selected_symbol):
+    def update_recommendations(tech_indicators_data, options_chain_data, timeframe, n_intervals, streaming_options_data, selected_symbol):
         """Update recommendations based on technical indicators and options chain data."""
-        from recommendation_engine import RecommendationEngine
+        # Import the enhanced recommendation engine instead of the legacy one
+        from enhanced_recommendation_engine import EnhancedRecommendationEngine
         
         ctx = dash.callback_context
         trigger = ctx.triggered[0]['prop_id'] if ctx.triggered else ""
@@ -272,23 +280,16 @@ def register_recommendation_callbacks(app):
                 logger.warning(f"Missing symbol or price data: symbol={symbol}, underlying_price={underlying_price}")
                 return None, "Missing symbol or price data."
             
-            # Get technical indicators for the selected timeframe
+            # Get technical indicators for all timeframes
             tech_indicators_df = pd.DataFrame()
-            if tech_indicators_data and "timeframe_data" in tech_indicators_data:
-                timeframe_data = tech_indicators_data.get("timeframe_data", {})
-                logger.info(f"Available timeframes in tech_indicators_data: {list(timeframe_data.keys())}")
-                if timeframe in timeframe_data:
-                    tech_indicators_df = pd.DataFrame(timeframe_data[timeframe])
-                    logger.info(f"Loaded technical indicators for {timeframe}, shape: {tech_indicators_df.shape}")
-                    logger.info(f"Technical indicators columns: {tech_indicators_df.columns.tolist()}")
-                else:
-                    logger.warning(f"Timeframe {timeframe} not found in available timeframes")
-            else:
-                logger.warning("No timeframe_data found in tech_indicators_data")
+            if tech_indicators_data and "data" in tech_indicators_data:
+                tech_indicators_df = pd.DataFrame(tech_indicators_data["data"])
+                logger.info(f"Loaded technical indicators, shape: {tech_indicators_df.shape}")
+                logger.info(f"Technical indicators columns: {tech_indicators_df.columns.tolist()}")
             
             if tech_indicators_df.empty:
-                logger.warning(f"Empty technical indicators DataFrame for {timeframe} timeframe")
-                return None, f"No technical indicator data available for {timeframe} timeframe."
+                logger.warning(f"Empty technical indicators DataFrame")
+                return None, f"No technical indicator data available."
             
             # Get options chain data
             options_df = pd.DataFrame()
@@ -296,144 +297,124 @@ def register_recommendation_callbacks(app):
                 options_df = pd.DataFrame(options_chain_data["options"])
                 logger.info(f"Loaded options chain data, shape: {options_df.shape}")
                 logger.info(f"Options chain columns: {options_df.columns.tolist()}")
-                logger.info(f"Options chain putCall values: {options_df['putCall'].unique().tolist() if 'putCall' in options_df.columns else 'putCall column not found'}")
-            else:
-                logger.warning("No options key found in options_chain_data")
             
             if options_df.empty:
                 logger.warning("Empty options chain DataFrame")
                 return None, "No options chain data available."
             
-            # Generate recommendations
-            logger.info("Creating recommendation engine instance")
-            engine = RecommendationEngine()
+            # Update options data with streaming data if available
+            if streaming_options_data and "data" in streaming_options_data:
+                streaming_options = streaming_options_data.get("data", {})
+                logger.info(f"Streaming data available for {len(streaming_options)} contracts")
+                
+                if streaming_options:
+                    from dashboard_utils.contract_utils import normalize_contract_key
+                    from dashboard_utils.streaming_field_mapper import StreamingFieldMapper
+                    
+                    # Create a copy of the options DataFrame to avoid modifying the original
+                    options_df_copy = options_df.copy()
+                    
+                    # Create a normalized symbol column for matching with streaming data
+                    options_df_copy['normalized_symbol'] = options_df_copy['symbol'].apply(normalize_contract_key)
+                    
+                    # Create a mapping from normalized symbol to DataFrame index
+                    normalized_symbol_to_index = {}
+                    for index, row in options_df_copy.iterrows():
+                        normalized_symbol = row.get('normalized_symbol')
+                        if normalized_symbol:
+                            normalized_symbol_to_index[normalized_symbol] = index
+                    
+                    # Track how many contracts were updated
+                    updated_contracts = 0
+                    updated_fields = set()
+                    
+                    # Update the options data with streaming data
+                    for normalized_key, stream_data in streaming_options.items():
+                        if normalized_key in normalized_symbol_to_index:
+                            index = normalized_symbol_to_index[normalized_key]
+                            updated_contracts += 1
+                            
+                            # Use the StreamingFieldMapper to map streaming data to DataFrame columns
+                            for field_name, value in stream_data.items():
+                                if field_name == "key":
+                                    continue  # Skip the key field
+                                
+                                # Get the corresponding column name using the mapper
+                                column_name = StreamingFieldMapper.get_column_name(field_name)
+                                
+                                # Update the DataFrame if the column exists
+                                if column_name in options_df_copy.columns:
+                                    options_df_copy.at[index, column_name] = value
+                                    updated_fields.add(column_name)
+                    
+                    logger.info(f"Updated {updated_contracts} contracts with streaming data. Updated fields: {sorted(list(updated_fields))}")
+                    
+                    # Remove the temporary normalized_symbol column
+                    if 'normalized_symbol' in options_df_copy.columns:
+                        options_df_copy = options_df_copy.drop(columns=['normalized_symbol'])
+                    
+                    # Use the updated DataFrame
+                    options_df = options_df_copy
             
-            logger.info(f"Calling get_recommendations with timeframe: {timeframe}")
-            recommendations = engine.get_recommendations(
-                tech_indicators_df,
-                options_df,
-                underlying_price,
-                timeframe
-            )
+            # Initialize the enhanced recommendation engine
+            engine = EnhancedRecommendationEngine()
             
-            # Log the structure of recommendations
-            logger.info(f"Recommendation keys: {list(recommendations.keys())}")
-            logger.info(f"Number of call recommendations: {len(recommendations.get('calls', []))}")
-            logger.info(f"Number of put recommendations: {len(recommendations.get('puts', []))}")
-            logger.info(f"Market direction: {recommendations.get('market_direction', {}).get('direction', 'unknown')}")
+            # Generate recommendations using the enhanced engine
+            recommendations = engine.get_recommendations(tech_indicators_df, options_df, underlying_price)
             
             # Add timestamp
             recommendations["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
-            return recommendations, f"Recommendations updated for {symbol} ({timeframe})"
+            logger.info(f"Generated recommendations: {len(recommendations.get('calls', []))} calls, {len(recommendations.get('puts', []))} puts")
             
+            return recommendations, f"Recommendations updated at {recommendations['timestamp']}"
+        
         except Exception as e:
-            logger.error(f"Error updating recommendations: {e}", exc_info=True)
-            return None, f"Error: {str(e)}"
+            logger.error(f"Error generating recommendations: {e}", exc_info=True)
+            return None, f"Error generating recommendations: {str(e)}"
     
     @app.callback(
         [
-            Output("market-direction-indicator", "children"),
+            Output("call-recommendations-table", "data"),
+            Output("put-recommendations-table", "data"),
+            Output("market-direction-indicator", "className"),
             Output("market-direction-text", "children"),
             Output("bullish-score", "children"),
             Output("bearish-score", "children"),
             Output("market-signals", "children"),
-            Output("call-recommendations-table", "data"),
-            Output("put-recommendations-table", "data"),
             Output("recommendations-last-updated", "children")
         ],
-        [
-            Input("recommendations-store", "data")
-        ]
+        Input("recommendations-store", "data"),
+        prevent_initial_call=True
     )
-    def update_recommendation_ui(recommendations_data):
-        """Update the recommendation UI with the latest data."""
-        logger.info(f"update_recommendation_ui called with data: {recommendations_data is not None}")
-        
+    def update_recommendation_tables(recommendations_data):
+        """Update recommendation tables with the generated recommendations."""
         if not recommendations_data:
-            logger.warning("No recommendations data available")
-            return (
-                "N/A", "No data", "N/A", "N/A", 
-                "No signals available", [], [], 
-                "Last updated: Never"
-            )
+            return [], [], "direction-indicator neutral", "Neutral", "50", "50", "", ""
         
-        try:
-            # Log the structure of the recommendations data
-            logger.info(f"Recommendations data keys: {list(recommendations_data.keys())}")
-            
-            # Extract market direction data
-            market_direction = recommendations_data.get("market_direction", {})
-            logger.info(f"Market direction data: {market_direction}")
-            
-            direction = market_direction.get("direction", "neutral")
-            bullish_score = market_direction.get("bullish_score", 50)
-            bearish_score = market_direction.get("bearish_score", 50)
-            signals = market_direction.get("signals", [])
-            
-            logger.info(f"Direction: {direction}, Bullish: {bullish_score}, Bearish: {bearish_score}")
-            logger.info(f"Number of signals: {len(signals)}")
-            
-            # Create direction indicator
-            if direction == "bullish":
-                direction_indicator = "▲"
-                direction_text = "BULLISH"
-                direction_class = "bullish"
-            elif direction == "bearish":
-                direction_indicator = "▼"
-                direction_text = "BEARISH"
-                direction_class = "bearish"
-            else:
-                direction_indicator = "◆"
-                direction_text = "NEUTRAL"
-                direction_class = "neutral"
-            
-            direction_indicator_html = html.Span(direction_indicator, className=f"direction-symbol {direction_class}")
-            direction_text_html = html.Span(direction_text, className=f"direction-label {direction_class}")
-            
-            # Create signals list
-            signals_html = [html.Div("Technical Signals:", className="signals-header")]
-            if signals:
-                signals_html.extend([
-                    html.Div(signal, className="signal-item")
-                    for signal in signals[:10]  # Limit to top 10 signals
-                ])
-            else:
-                signals_html.append(html.Div("No signals detected", className="no-signals"))
-            
-            # Get recommendations
-            call_recommendations = recommendations_data.get("calls", [])
-            put_recommendations = recommendations_data.get("puts", [])
-            
-            logger.info(f"Number of call recommendations: {len(call_recommendations)}")
-            logger.info(f"Number of put recommendations: {len(put_recommendations)}")
-            
-            if call_recommendations:
-                logger.info(f"Sample call recommendation: {call_recommendations[0]}")
-            if put_recommendations:
-                logger.info(f"Sample put recommendation: {put_recommendations[0]}")
-            
-            # Get timestamp
-            timestamp = recommendations_data.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-            
-            return (
-                direction_indicator_html,
-                direction_text_html,
-                f"{bullish_score}",
-                f"{bearish_score}",
-                html.Div(signals_html, className="signals-list"),
-                call_recommendations,
-                put_recommendations,
-                f"Last updated: {timestamp}"
-            )
-            
-        except Exception as e:
-            logger.error(f"Error updating recommendation UI: {e}", exc_info=True)
-            return (
-                "Error", "Error", "Error", "Error", 
-                f"Error: {str(e)}", [], [], 
-                "Last updated: Error"
-            )
+        # Get call and put recommendations
+        call_recommendations = recommendations_data.get("calls", [])
+        put_recommendations = recommendations_data.get("puts", [])
+        
+        # Get market direction analysis
+        market_direction = recommendations_data.get("market_direction", {})
+        direction = market_direction.get("direction", "neutral")
+        bullish_score = market_direction.get("bullish_score", 50)
+        bearish_score = market_direction.get("bearish_score", 50)
+        signals = market_direction.get("signals", [])
+        
+        # Format market direction indicator
+        direction_class = f"direction-indicator {direction}"
+        direction_text = direction.capitalize()
+        
+        # Format market signals
+        market_signals_html = html.Ul([html.Li(signal) for signal in signals[:10]])
+        
+        # Format last updated timestamp
+        timestamp = recommendations_data.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        last_updated = f"Last updated: {timestamp}"
+        
+        return call_recommendations, put_recommendations, direction_class, direction_text, f"{bullish_score:.0f}", f"{bearish_score:.0f}", market_signals_html, last_updated
     
     @app.callback(
         [
@@ -454,18 +435,15 @@ def register_recommendation_callbacks(app):
         [
             State("call-recommendations-table", "data"),
             State("put-recommendations-table", "data")
-        ]
+        ],
+        prevent_initial_call=True
     )
     def update_contract_details(call_active_cell, put_active_cell, call_data, put_data):
-        """Update the contract details panel when a recommendation is selected."""
+        """Update contract details when a recommendation is selected."""
         ctx = dash.callback_context
         trigger = ctx.triggered[0]['prop_id'] if ctx.triggered else ""
         
-        # Default values
-        default_values = ["N/A"] * 9
-        
-        if not ctx.triggered:
-            return default_values
+        default_values = ["", "", "", "", "", "", "", "", ""]
         
         try:
             if "call-recommendations-table" in trigger and call_active_cell and call_data:
@@ -473,10 +451,10 @@ def register_recommendation_callbacks(app):
                 if row < len(call_data):
                     contract = call_data[row]
                     return (
-                        contract.get("symbol", "N/A"),
+                        contract.get("symbol", ""),
                         "CALL",
                         f"{contract.get('strikePrice', 0):.2f}",
-                        contract.get("expirationDate", "N/A"),
+                        contract.get("expirationDate", ""),
                         f"{contract.get('delta', 'N/A')}",
                         f"{contract.get('gamma', 'N/A')}",
                         f"{contract.get('theta', 'N/A')}",
@@ -489,10 +467,10 @@ def register_recommendation_callbacks(app):
                 if row < len(put_data):
                     contract = put_data[row]
                     return (
-                        contract.get("symbol", "N/A"),
+                        contract.get("symbol", ""),
                         "PUT",
                         f"{contract.get('strikePrice', 0):.2f}",
-                        contract.get("expirationDate", "N/A"),
+                        contract.get("expirationDate", ""),
                         f"{contract.get('delta', 'N/A')}",
                         f"{contract.get('gamma', 'N/A')}",
                         f"{contract.get('theta', 'N/A')}",
