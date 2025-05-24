@@ -1,6 +1,7 @@
 # TODO List
 
 ## High Priority
+
 - [x] Analyze repository structure and code
 - [x] Document design decisions for required changes
 - [x] Update `fetch_minute_data.py` to consistently use 60-day data pull
@@ -17,29 +18,42 @@
 - [x] Fix mapping issue between streaming data contract keys and options table data
 - [x] Implement robust field mapping for all streamer contract fields
 - [x] Fix contract key normalization mismatch between streaming data and DataFrame rows
+- [x] Design enhanced recommendation engine with multi-timeframe analysis
+- [x] Implement enhanced recommendation engine with Greeks and IV analysis
+- [x] Add profit target and exit price calculation to recommendation engine
+- [x] Implement confidence interval calculation for recommendations
+- [ ] Integrate enhanced recommendation engine with dashboard UI
+- [ ] Test enhanced recommendation engine with live market data
+- [ ] Add visual indicators for recommendations with high confidence
 
 ## Medium Priority
-- [x] Update any dependent code to handle multi-timeframe data
+
+- [ ] Update any dependent code to handle multi-timeframe data
 - [ ] Create tests for the new functionality
-- [x] Update documentation to reflect changes
+- [ ] Update documentation to reflect changes
 - [ ] Optimize streaming performance and error handling
 - [ ] Add visual indicators for fields updated via streaming data
 - [ ] Implement caching for normalized contract keys to improve performance
 
 ## Low Priority
+
 - [ ] Optimize performance for multi-timeframe calculations
 - [ ] Consider UI improvements for timeframe selection
 - [ ] Add user controls for streaming settings (e.g., update frequency)
+- [ ] Add more sophisticated profit target calculations based on volatility surface
 
 ## Dependencies
-- Multi-timeframe indicator implementation depends on standardized 60-day data pull
-- Dashboard updates depend on multi-timeframe indicator implementation
-- Options chain functionality depends on correct Schwab API method usage
-- Recommendations tab functionality depends on selected-symbol-store being properly populated
-- Real-time options updates depend on StreamingManager integration with dashboard_app.py
-- Complete UI updates depend on proper mapping between streaming data fields and DataFrame columns
-- Proper matching of streaming data to DataFrame rows depends on consistent contract key normalization
 
-## Status Legend
+- [x] Multi-timeframe indicator implementation depends on standardized 60-day data pull
+- [x] Dashboard updates depend on multi-timeframe indicator implementation
+- [x] Options chain functionality depends on correct Schwab API method usage
+- [x] Recommendations tab functionality depends on selected-symbol-store being properly populated
+- [x] Real-time options updates depend on StreamingManager integration with dashboard_app.py
+- [x] Complete UI updates depend on proper mapping between streaming data fields and DataFrame columns
+- [x] Proper matching of streaming data to DataFrame rows depends on consistent contract key normalization
+- [ ] Enhanced recommendation engine depends on proper integration with dashboard UI
+
+## Status
+
 - [x] Completed
 - [ ] Not Started/In Progress
