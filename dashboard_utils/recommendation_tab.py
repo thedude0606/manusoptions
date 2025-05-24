@@ -241,6 +241,7 @@ def register_recommendation_callbacks(app):
             Output("recommendation-status", "children")
         ],
         [
+            Input("generate-recommendations-button", "n_clicks"),  # Added button as trigger
             Input("tech-indicators-store", "data"),
             Input("options-chain-store", "data"),
             Input("recommendation-timeframe-dropdown", "value"),
@@ -248,15 +249,21 @@ def register_recommendation_callbacks(app):
         ],
         [
             State("selected-symbol-store", "data")
-        ]
+        ],
+        prevent_initial_call=True
     )
-    def update_recommendations(tech_indicators_data, options_chain_data, timeframe, n_intervals, selected_symbol):
+    def update_recommendations(n_clicks, tech_indicators_data, options_chain_data, timeframe, n_intervals, selected_symbol):
         """Update recommendations based on technical indicators and options chain data."""
         from recommendation_engine import RecommendationEngine
         
         ctx = dash.callback_context
         trigger = ctx.triggered[0]['prop_id'] if ctx.triggered else ""
         logger.info(f"update_recommendations triggered by: {trigger}")
+        
+        # Check if this was triggered by the button click
+        button_clicked = "generate-recommendations-button" in trigger
+        if button_clicked:
+            logger.info(f"Generate Recommendations button clicked, n_clicks: {n_clicks}")
         
         if not tech_indicators_data or not options_chain_data or not selected_symbol:
             logger.warning(f"Missing required data: tech_indicators_data={bool(tech_indicators_data)}, options_chain_data={bool(options_chain_data)}, selected_symbol={bool(selected_symbol)}")

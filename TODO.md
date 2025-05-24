@@ -22,6 +22,7 @@
 - [x] Implement state preservation for options chain data
 - [x] Fix options chain tab not showing any data due to missing putCall field mapping
 - [x] Implement robust ensure_putcall_field function for both API and streaming data
+- [x] Fix Recommendations tab button not working by adding it as a callback trigger
 
 ## Medium Priority
 - [x] Update any dependent code to handle multi-timeframe data
@@ -30,6 +31,7 @@
 - [x] Optimize streaming performance and error handling
 - [ ] Add visual indicators for fields updated via streaming data
 - [ ] Implement caching for normalized contract keys to improve performance
+- [ ] Add comprehensive testing for the Recommendations tab functionality
 
 ## Low Priority
 - [ ] Optimize performance for multi-timeframe calculations
@@ -46,6 +48,7 @@
 - Proper matching of streaming data to DataFrame rows depends on consistent contract key normalization
 - Stable options chain display depends on proper state preservation between streaming updates
 - Options chain data display depends on proper putCall field mapping from contractType
+- Recommendations generation depends on button click being properly connected to callback
 
 ## Status Legend
 - [x] Completed

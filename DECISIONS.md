@@ -182,3 +182,27 @@ Implement a robust solution to ensure options chain tab correctly displays data 
 - The approach is defensive, with multiple fallback mechanisms to ensure data is always displayed
 - Detailed logging helps diagnose any remaining issues in production
 - The fix addresses the root cause of the empty options chain tab issue
+
+## Recommendations Tab Button Fix
+
+### Decision
+Fix the Recommendations tab button to properly trigger recommendations generation when clicked.
+
+### Rationale
+- The "Generate Recommendations" button in the Recommendations tab was not doing anything when clicked
+- Investigation revealed that the button was not included as an Input in any callback
+- Without a callback connection, clicking the button had no effect on the application
+- A direct connection between the button and the recommendations generation logic was needed
+
+### Implementation Details
+- Added the "generate-recommendations-button" as an Input to the update_recommendations callback in recommendation_tab.py
+- Enhanced the callback to detect when it was triggered by the button click
+- Added additional logging to track button click events
+- Maintained compatibility with other trigger sources (interval, data store changes)
+
+### Technical Considerations
+- The fix is minimally invasive, only adding the button as an additional Input to an existing callback
+- The callback context is used to determine if the trigger was the button click
+- The solution maintains all existing functionality while adding the button-triggered behavior
+- Enhanced logging helps verify that the button click is properly detected
+- The fix improves user experience by making the UI behave as expected, with the button directly triggering the action it suggests
