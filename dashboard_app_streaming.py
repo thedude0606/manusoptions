@@ -16,8 +16,11 @@ from dash.dependencies import Input, Output, State
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+# Add the project root to the Python path to ensure imports work correctly
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 # Import custom modules
-from data_fetchers import get_minute_data, get_technical_indicators
+from dashboard_utils.data_fetchers import get_minute_data, get_technical_indicators
 from schwab_api_client import SchwabAPIClient
 from dashboard_utils.options_chain_utils import process_options_chain_data, split_options_by_type
 from dashboard_utils.contract_utils import normalize_contract_key
