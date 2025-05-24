@@ -125,3 +125,32 @@ Enhance contract key normalization to handle additional format patterns, includi
 - No changes to the normalized output format were required
 - The approach follows the existing pattern-matching strategy
 - This fix addresses edge cases that may have been causing streaming data mismatches
+
+## Options Chain State Preservation
+
+### Decision
+Implement state preservation mechanism to prevent options chain from disappearing after a few seconds.
+
+### Rationale
+- Users reported that the options chain would load initially but then disappear after a few seconds
+- Investigation revealed that empty streaming data updates were replacing valid options chain data
+- The UI needs to maintain state even when streaming updates temporarily fail or return empty data
+- Defensive programming is needed to ensure a consistent user experience
+
+### Implementation Details
+- Added a new dcc.Store component called "last-valid-options-store" to preserve the last valid options data
+- Modified the refresh_data callback to populate this store with valid options data
+- Enhanced the streaming_data_update callback to include a "valid" flag for streaming data
+- Updated the update_options_tables callback to:
+  1. Use last_valid_options as a fallback when current options data is missing
+  2. Only apply streaming updates when they are explicitly marked as valid
+  3. Only use updated DataFrame if contracts were actually updated
+  4. Add fallback mechanisms when splitting options by type and expiration
+  5. Improve error handling with try/except blocks and detailed logging
+
+### Technical Considerations
+- The state preservation approach is non-intrusive and maintains compatibility with existing code
+- The "valid" flag in streaming data prevents empty updates from overwriting good data
+- Fallback mechanisms ensure the UI always shows some data when available
+- Enhanced error handling prevents the application from crashing due to unexpected data formats
+- Detailed logging helps diagnose any remaining issues in production
