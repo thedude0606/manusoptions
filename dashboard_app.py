@@ -7,6 +7,7 @@ import logging
 import schwabdev
 import json
 import os
+import traceback
 from config import APP_KEY, APP_SECRET, CALLBACK_URL, TOKEN_FILE_PATH
 from dashboard_utils.data_fetchers import get_minute_data, get_technical_indicators, get_options_chain_data
 from dashboard_utils.options_chain_utils import split_options_by_type, ensure_putcall_field
@@ -387,60 +388,72 @@ def update_options_tables(options_data, expiration_date, option_type, last_valid
     """Updates the options chain tables with the fetched data."""
     app_logger.info(f"Update options tables callback triggered: expiration={expiration_date}, option_type={option_type}")
     
-    # First, check if we have valid options data
-    if not options_data or not options_data.get("options"):
-        # If no current options data, try to use last valid options data
-        if last_valid_options and last_valid_options.get("options"):
-            app_logger.warning("Using last valid options data as fallback")
-            options_data = last_valid_options
-        else:
-            app_logger.warning("No options data available")
-            return [], []
-    
-    # Use the utility function to split options by type
-    options_df = pd.DataFrame(options_data["options"])
-    
-    # Ensure putCall field is properly set
-    options_df = ensure_putcall_field(options_df)
-    
     try:
+        # First, check if we have valid options data
+        if not options_data or not options_data.get("options"):
+            # If no current options data, try to use last valid options data
+            if last_valid_options and last_valid_options.get("options"):
+                app_logger.warning("Using last valid options data as fallback")
+                options_data = last_valid_options
+            else:
+                app_logger.warning("No options data available")
+                return [], []
+        
         # Use the utility function to split options by type
-        calls_data, puts_data = split_options_by_type(options_df, expiration_date, option_type)
+        options_df = pd.DataFrame(options_data["options"])
+        
+        # Log the shape of the DataFrame for debugging
+        app_logger.debug(f"Options DataFrame shape: {options_df.shape}")
+        
+        # Use the enhanced split_options_by_type function with last_valid_options
+        calls_data, puts_data = split_options_by_type(
+            options_df, 
+            expiration_date, 
+            option_type,
+            last_valid_options
+        )
         
         # Verify we have data after splitting
         if not calls_data and not puts_data:
-            app_logger.warning(f"No options data after splitting by type={option_type} and expiration={expiration_date}")
+            app_logger.warning(f"No options data after splitting. Expiration: {expiration_date}, Type: {option_type}")
             
-            # Try without expiration filter as fallback
+            # Try again without filtering by expiration date
             if expiration_date:
-                app_logger.info("Trying without expiration filter as fallback")
-                calls_data, puts_data = split_options_by_type(options_df, None, option_type)
+                app_logger.info("Trying again without expiration date filter")
+                calls_data, puts_data = split_options_by_type(
+                    options_df, 
+                    None, 
+                    option_type,
+                    last_valid_options
+                )
         
+        app_logger.info(f"Returning {len(calls_data)} calls and {len(puts_data)} puts")
         return calls_data, puts_data
+        
     except Exception as e:
-        app_logger.error(f"Error splitting options by type: {e}", exc_info=True)
+        app_logger.error(f"Error in update_options_tables: {str(e)}", exc_info=True)
         return [], []
 
-# Error message callback
+# Error Messages Callback
 @app.callback(
     Output("error-messages", "children"),
     Input("error-store", "data"),
     prevent_initial_call=True
 )
 def update_error_messages(error_data):
-    """Updates the error message display."""
+    """Updates the error messages display."""
     if not error_data:
         return ""
     
     source = error_data.get("source", "Unknown")
-    message = error_data.get("message", "An unknown error occurred")
-    timestamp = error_data.get("timestamp", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    message = error_data.get("message", "An error occurred")
+    timestamp = error_data.get("timestamp", "")
     
-    return f"Error in {source} at {timestamp}: {message}"
+    return f"{source} Error ({timestamp}): {message}"
 
 # Register recommendation callbacks
 register_recommendation_callbacks(app)
 
 # Run the app
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=8050)
+    app.run_server(debug=True, host="0.0.0.0")

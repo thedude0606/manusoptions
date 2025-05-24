@@ -237,3 +237,30 @@ Create dedicated debug modules with enhanced error handling, state preservation,
 - Performance metrics help identify potential bottlenecks
 - The modular design allows for selective application of fixes
 - The enhanced error handling prevents cascading failures that could lead to UI elements disappearing
+
+## Direct Integration of Enhanced Debug Modules
+
+### Decision
+Directly integrate the enhanced debug modules into the main application code rather than keeping them as separate modules.
+
+### Rationale
+- The user reported that the options chain still disappears after ~5 seconds despite the creation of separate debug modules
+- Separate modules require manual integration by the user, which may lead to inconsistent implementation
+- Direct integration ensures immediate application of the fixes without requiring additional steps
+- This approach provides a more seamless user experience with immediate benefits
+
+### Implementation Details
+- Replaced the original `ensure_putcall_field` function in options_chain_utils.py with the enhanced version
+- Updated `split_options_by_type` to include the `last_valid_options` parameter for robust state preservation
+- Enhanced `prepare_options_for_dash_table` with better error handling
+- Modified the `update_options_tables` callback in dashboard_app.py to use the enhanced functions
+- Added additional error handling and logging throughout the options chain data flow
+- Implemented try/except blocks in critical sections to prevent cascading failures
+
+### Technical Considerations
+- The direct integration approach maintains the same API signatures for compatibility
+- Enhanced functions include additional defensive programming techniques
+- Performance monitoring and timing metrics help identify bottlenecks
+- Detailed logging provides better visibility into the data flow
+- The integration is non-disruptive to existing functionality
+- The approach addresses the root cause of the disappearing options chain issue
