@@ -58,6 +58,46 @@ def process_options_chain_data(options_data):
     
     return options_df, expiration_dates, underlying_price
 
+def ensure_putcall_field(options_df):
+    """
+    Ensure the putCall field is properly set for all options.
+    This handles both API-fetched and streaming-updated data.
+    
+    Args:
+        options_df (DataFrame): Options chain DataFrame
+        
+    Returns:
+        DataFrame: Updated options DataFrame with putCall field
+    """
+    if options_df.empty:
+        return options_df
+    
+    # If putCall already exists and has no missing values, return as is
+    if "putCall" in options_df.columns and not options_df["putCall"].isna().any():
+        return options_df
+    
+    # If contractType exists (from streaming data), map it to putCall
+    if "contractType" in options_df.columns:
+        logger.info("Mapping contractType to putCall for streaming data")
+        # Create or update putCall column based on contractType
+        options_df["putCall"] = options_df["contractType"].apply(
+            lambda x: "CALL" if x == "C" else ("PUT" if x == "P" else None)
+        )
+    # If symbol exists but putCall is missing, infer from symbol
+    elif "symbol" in options_df.columns:
+        logger.info("Inferring putCall from symbol")
+        options_df["putCall"] = options_df["symbol"].apply(
+            lambda x: "CALL" if "C" in str(x).upper() else ("PUT" if "P" in str(x).upper() else None)
+        )
+    
+    # Log how many calls and puts we identified
+    if "putCall" in options_df.columns:
+        call_count = (options_df["putCall"] == "CALL").sum()
+        put_count = (options_df["putCall"] == "PUT").sum()
+        logger.info(f"Identified {call_count} calls and {put_count} puts")
+    
+    return options_df
+
 def split_options_by_type(options_df, expiration_date=None, option_type=None):
     """
     Split options DataFrame into calls and puts, with optional filtering.
@@ -74,26 +114,30 @@ def split_options_by_type(options_df, expiration_date=None, option_type=None):
         logger.warning("Empty options DataFrame provided to split_options_by_type")
         return [], []
     
+    # Ensure putCall field is properly set
+    options_df = ensure_putcall_field(options_df)
+    
     # Filter by expiration date if provided
     if expiration_date and "expirationDate" in options_df.columns:
-        options_df = options_df[options_df["expirationDate"] == expiration_date]
+        filtered_df = options_df[options_df["expirationDate"] == expiration_date]
+        # If filtering results in empty DataFrame, log warning and use original
+        if filtered_df.empty:
+            logger.warning(f"No options found for expiration date {expiration_date}")
+            # Continue with unfiltered data
+        else:
+            options_df = filtered_df
     
     # Split into calls and puts
     if "putCall" in options_df.columns:
         calls_df = options_df[options_df["putCall"] == "CALL"]
         puts_df = options_df[options_df["putCall"] == "PUT"]
+        
+        # Log counts for debugging
+        logger.info(f"After splitting: {len(calls_df)} calls and {len(puts_df)} puts")
     else:
-        # If putCall column is missing, try to infer from symbol
-        if "symbol" in options_df.columns:
-            options_df["putCall"] = options_df["symbol"].apply(
-                lambda x: "CALL" if "C" in str(x).upper() else ("PUT" if "P" in str(x).upper() else "UNKNOWN")
-            )
-            calls_df = options_df[options_df["putCall"] == "CALL"]
-            puts_df = options_df[options_df["putCall"] == "PUT"]
-        else:
-            # Can't determine option type
-            logger.error("Cannot determine option type - missing both 'putCall' and 'symbol' columns")
-            return [], []
+        # Can't determine option type
+        logger.error("Cannot determine option type - missing putCall column and failed to infer it")
+        return [], []
     
     # Sort by strike price
     if "strikePrice" in calls_df.columns:
@@ -102,7 +146,7 @@ def split_options_by_type(options_df, expiration_date=None, option_type=None):
     if "strikePrice" in puts_df.columns:
         puts_df = puts_df.sort_values(by="strikePrice")
     
-    # Filter by option type if "BOTH" is not selected
+    # Filter by option type if not "ALL"
     if option_type == "CALL":
         puts_df = pd.DataFrame()  # Empty DataFrame for puts
     elif option_type == "PUT":

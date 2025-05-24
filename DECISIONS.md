@@ -154,3 +154,31 @@ Implement state preservation mechanism to prevent options chain from disappearin
 - Fallback mechanisms ensure the UI always shows some data when available
 - Enhanced error handling prevents the application from crashing due to unexpected data formats
 - Detailed logging helps diagnose any remaining issues in production
+
+## Options Chain Tab Data Display Fix
+
+### Decision
+Implement a robust solution to ensure options chain tab correctly displays data by properly mapping contractType to putCall.
+
+### Rationale
+- The options chain tab was not displaying any data despite streaming data being available
+- Investigation revealed that streaming data uses 'contractType' (C/P) while the split function expects 'putCall' (CALL/PUT)
+- This field mismatch caused the split_options_by_type function to return zero calls and puts
+- A robust solution is needed to handle both API-fetched and streaming-updated data consistently
+
+### Implementation Details
+- Created a new ensure_putcall_field function in options_chain_utils.py to:
+  1. Check if putCall field exists and has no missing values
+  2. Map contractType (C/P) to putCall (CALL/PUT) for streaming data
+  3. Infer putCall from symbol as a fallback if needed
+  4. Log detailed information about the mapping process
+- Updated split_options_by_type to call ensure_putcall_field before processing
+- Modified dashboard_app.py to use ensure_putcall_field in the refresh_data callback
+- Enhanced error handling and logging throughout the options chain data flow
+
+### Technical Considerations
+- The solution is non-intrusive and maintains compatibility with existing code
+- It handles both API-fetched data (which already has putCall) and streaming data (which uses contractType)
+- The approach is defensive, with multiple fallback mechanisms to ensure data is always displayed
+- Detailed logging helps diagnose any remaining issues in production
+- The fix addresses the root cause of the empty options chain tab issue

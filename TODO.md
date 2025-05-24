@@ -20,6 +20,8 @@
 - [x] Enhance contract key normalization to handle additional format patterns
 - [x] Fix issue where options chain disappears after a few seconds
 - [x] Implement state preservation for options chain data
+- [x] Fix options chain tab not showing any data due to missing putCall field mapping
+- [x] Implement robust ensure_putcall_field function for both API and streaming data
 
 ## Medium Priority
 - [x] Update any dependent code to handle multi-timeframe data
@@ -43,6 +45,7 @@
 - Complete UI updates depend on proper mapping between streaming data fields and DataFrame columns
 - Proper matching of streaming data to DataFrame rows depends on consistent contract key normalization
 - Stable options chain display depends on proper state preservation between streaming updates
+- Options chain data display depends on proper putCall field mapping from contractType
 
 ## Status Legend
 - [x] Completed

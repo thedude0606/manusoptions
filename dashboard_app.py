@@ -9,7 +9,7 @@ import json
 import os
 from config import APP_KEY, APP_SECRET, CALLBACK_URL, TOKEN_FILE_PATH
 from dashboard_utils.data_fetchers import get_minute_data, get_technical_indicators, get_options_chain_data
-from dashboard_utils.options_chain_utils import split_options_by_type
+from dashboard_utils.options_chain_utils import split_options_by_type, ensure_putcall_field
 from dashboard_utils.recommendation_tab import register_recommendation_callbacks
 
 # Configure logging
@@ -180,6 +180,7 @@ app.layout = html.Div([
     dcc.Store(id="options-chain-store"),
     dcc.Store(id="selected-symbol-store"),
     dcc.Store(id="error-store"),
+    dcc.Store(id="last-valid-options-store"),  # Added for state preservation
     dcc.Interval(id="update-interval", interval=60000, n_intervals=0)
 ])
 
@@ -193,20 +194,22 @@ app.layout = html.Div([
         Output("expiration-date-dropdown", "options"),
         Output("expiration-date-dropdown", "value"),
         Output("status-message", "children"),
-        Output("error-store", "data")
+        Output("error-store", "data"),
+        Output("last-valid-options-store", "data")  # Added for state preservation
     ],
     [
         Input("refresh-button", "n_clicks")
     ],
     [
-        State("symbol-input", "value")
+        State("symbol-input", "value"),
+        State("last-valid-options-store", "data")  # Added for state preservation
     ],
     prevent_initial_call=True
 )
-def refresh_data(n_clicks, symbol):
+def refresh_data(n_clicks, symbol, last_valid_options):
     """Refreshes all data for the given symbol."""
     if not n_clicks or not symbol:
-        return None, None, None, None, [], None, "", None
+        return None, None, None, None, [], None, "", None, last_valid_options
     
     symbol = symbol.upper()
     app_logger.info(f"Refreshing data for {symbol}")
@@ -224,7 +227,7 @@ def refresh_data(n_clicks, symbol):
                 "source": "Minute Data",
                 "message": error,
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
+            }, last_valid_options
         
         # Calculate technical indicators
         tech_indicators, error = get_technical_indicators(client, symbol)
@@ -235,7 +238,7 @@ def refresh_data(n_clicks, symbol):
                 "source": "Technical Indicators",
                 "message": error,
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
+            }, last_valid_options
         
         # Fetch options chain
         options_df, expiration_dates, underlying_price, error = get_options_chain_data(client, symbol)
@@ -246,7 +249,7 @@ def refresh_data(n_clicks, symbol):
                 "source": "Options Chain",
                 "message": error,
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
+            }, last_valid_options
         
         # Prepare dropdown options
         dropdown_options = [{"label": date, "value": date} for date in expiration_dates]
@@ -275,6 +278,9 @@ def refresh_data(n_clicks, symbol):
             "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         
+        # Ensure putCall field is properly set for all options
+        options_df = ensure_putcall_field(options_df)
+        
         options_data = {
             "symbol": symbol,
             "options": options_df.to_dict("records"),
@@ -293,7 +299,10 @@ def refresh_data(n_clicks, symbol):
         status_message = f"Data refreshed for {symbol} at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         app_logger.info(status_message)
         
-        return minute_data_store, tech_indicators_store, options_data, selected_symbol_store, dropdown_options, default_expiration, status_message, None
+        # Also store the options data as the last valid options data
+        last_valid_options_store = options_data.copy()
+        
+        return minute_data_store, tech_indicators_store, options_data, selected_symbol_store, dropdown_options, default_expiration, status_message, None, last_valid_options_store
     
     except Exception as e:
         error_msg = f"Error refreshing data: {str(e)}"
@@ -302,7 +311,7 @@ def refresh_data(n_clicks, symbol):
             "source": "Data Refresh",
             "message": error_msg,
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
+        }, last_valid_options
 
 # Minute Data Table Callback
 @app.callback(
@@ -369,18 +378,48 @@ def update_tech_indicators_table(tech_indicators_data):
         Input("expiration-date-dropdown", "value"),
         Input("option-type-radio", "value")
     ],
+    [
+        State("last-valid-options-store", "data")  # Added for state preservation
+    ],
     prevent_initial_call=True
 )
-def update_options_tables(options_data, expiration_date, option_type):
+def update_options_tables(options_data, expiration_date, option_type, last_valid_options):
     """Updates the options chain tables with the fetched data."""
+    app_logger.info(f"Update options tables callback triggered: expiration={expiration_date}, option_type={option_type}")
+    
+    # First, check if we have valid options data
     if not options_data or not options_data.get("options"):
-        return [], []
+        # If no current options data, try to use last valid options data
+        if last_valid_options and last_valid_options.get("options"):
+            app_logger.warning("Using last valid options data as fallback")
+            options_data = last_valid_options
+        else:
+            app_logger.warning("No options data available")
+            return [], []
     
     # Use the utility function to split options by type
     options_df = pd.DataFrame(options_data["options"])
-    calls_data, puts_data = split_options_by_type(options_df, expiration_date, option_type)
     
-    return calls_data, puts_data
+    # Ensure putCall field is properly set
+    options_df = ensure_putcall_field(options_df)
+    
+    try:
+        # Use the utility function to split options by type
+        calls_data, puts_data = split_options_by_type(options_df, expiration_date, option_type)
+        
+        # Verify we have data after splitting
+        if not calls_data and not puts_data:
+            app_logger.warning(f"No options data after splitting by type={option_type} and expiration={expiration_date}")
+            
+            # Try without expiration filter as fallback
+            if expiration_date:
+                app_logger.info("Trying without expiration filter as fallback")
+                calls_data, puts_data = split_options_by_type(options_df, None, option_type)
+        
+        return calls_data, puts_data
+    except Exception as e:
+        app_logger.error(f"Error splitting options by type: {e}", exc_info=True)
+        return [], []
 
 # Error message callback
 @app.callback(
