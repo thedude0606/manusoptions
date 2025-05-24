@@ -102,3 +102,26 @@ Synchronize contract key normalization between streaming data and DataFrame rows
 - The temporary normalized_symbol column is removed after processing
 - This approach maintains compatibility with other parts of the application
 - Performance impact is minimal as normalization is only done once per update cycle
+
+## Enhanced Contract Key Normalization
+
+### Decision
+Enhance contract key normalization to handle additional format patterns, including Schwab streaming format with spaces.
+
+### Rationale
+- The existing normalization logic didn't handle all possible contract key formats
+- Schwab streaming data can include contract keys with spaces in specific positions
+- Missing a format pattern can lead to failed matches between streaming data and DataFrame rows
+- Comprehensive pattern matching ensures robust handling of all contract key formats
+
+### Implementation Details
+- Added Pattern 4 to normalize_contract_key function to handle Schwab streaming format with spaces
+- Pattern 4 regex: r'([A-Z]+)\s+(\d{6})([CP])(\d{8})'
+- This handles formats like "AAPL  250523C00190000" with spaces after the symbol
+- Updated documentation to reflect the enhancement
+
+### Technical Considerations
+- The enhancement maintains backward compatibility with existing code
+- No changes to the normalized output format were required
+- The approach follows the existing pattern-matching strategy
+- This fix addresses edge cases that may have been causing streaming data mismatches

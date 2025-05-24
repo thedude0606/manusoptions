@@ -48,6 +48,11 @@ def normalize_contract_key(contract_key):
             match = re.match(pattern3, clean_key)
             
         if not match:
+            # Pattern 4: Schwab streaming format with spaces (AAPL  YYMMDDCNNNNNNNN)
+            pattern4 = r'([A-Z]+)\s+(\d{6})([CP])(\d{8})'
+            match = re.match(pattern4, clean_key)
+            
+        if not match:
             logger.warning(f"Could not parse contract key: {contract_key}, returning as-is")
             return contract_key
             

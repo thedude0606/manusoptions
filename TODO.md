@@ -17,6 +17,7 @@
 - [x] Fix mapping issue between streaming data contract keys and options table data
 - [x] Implement robust field mapping for all streamer contract fields
 - [x] Fix contract key normalization mismatch between streaming data and DataFrame rows
+- [x] Enhance contract key normalization to handle additional format patterns
 
 ## Medium Priority
 - [x] Update any dependent code to handle multi-timeframe data
