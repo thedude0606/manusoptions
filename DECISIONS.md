@@ -267,3 +267,34 @@ Confirm that recommendations are designed to auto-load without requiring a manua
 * Recommendations update automatically when any input data changes
 * This approach ensures recommendations are always in sync with the latest data
 * Error handling prevents auto-loading when required data is missing
+
+## PutCall Field Handling for Options Chain
+
+Implement robust handling of the putCall field to ensure proper mapping and persistence after streaming updates.
+
+### Decision
+
+Enhance the putCall field handling to ensure it's correctly maintained after streaming data updates.
+
+### Rationale
+
+* The options chain tab was disappearing after streaming updates
+* Recommendations weren't loading as expected
+* Analysis of logs showed options being split into zero calls and zero puts
+* The putCall column was likely being lost or corrupted during streaming updates
+
+### Implementation Details
+
+* Added special handling for the contractType field from streaming data to ensure correct mapping to putCall
+* Implemented a fallback mechanism to infer putCall values from option symbols if they're missing
+* Added checks for missing or NaN values in the putCall column after streaming updates
+* Enhanced logging to track putCall distribution after updates
+* Added detailed logging of how many contracts needed the fallback mechanism
+
+### Technical Considerations
+
+* The putCall column is critical for both the options chain display and recommendations
+* The streaming data uses "C" and "P" for contractType while the DataFrame uses "CALL" and "PUT" for putCall
+* The fallback mechanism ensures the putCall column is always populated, even if streaming data is incomplete
+* The additional logging helps monitor the effectiveness of the fix
+* This approach is resilient to variations in the streaming data format

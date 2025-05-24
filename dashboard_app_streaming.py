@@ -1,247 +1,218 @@
-import dash
-from dash import dcc, html, dash_table
-from dash.dependencies import Input, Output, State
-import pandas as pd
-import datetime
-import logging
-import schwabdev
-import json
+"""
+Dashboard application for options trading with streaming data support.
+
+This module provides a Dash web application for options trading analysis,
+with real-time data streaming capabilities.
+"""
+
 import os
-from config import APP_KEY, APP_SECRET, CALLBACK_URL, TOKEN_FILE_PATH
-from dashboard_utils.data_fetchers import get_minute_data, get_technical_indicators, get_options_chain_data, get_option_contract_keys
-from dashboard_utils.options_chain_utils import split_options_by_type
-from dashboard_utils.recommendation_tab import register_recommendation_callbacks
+import sys
+import logging
+import datetime
+import pandas as pd
+import numpy as np
+from dash import Dash, dcc, html, dash_table
+from dash.dependencies import Input, Output, State
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+# Import custom modules
+from data_fetchers import get_minute_data, get_technical_indicators
+from schwab_api_client import SchwabAPIClient
+from dashboard_utils.options_chain_utils import process_options_chain_data, split_options_by_type
+from dashboard_utils.contract_utils import normalize_contract_key
 from dashboard_utils.streaming_manager import StreamingManager
 from dashboard_utils.streaming_field_mapper import StreamingFieldMapper
-from dashboard_utils.contract_utils import normalize_contract_key
+from dashboard_utils.recommendation_tab import create_recommendation_tab, register_recommendation_callbacks
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-app_logger = logging.getLogger('dashboard_app')
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 
-# Initialize Dash app
-app = dash.Dash(__name__, suppress_callback_exceptions=True)
-app.title = "Manus Options Dashboard"
+# Create logs directory if it doesn't exist
+os.makedirs("logs", exist_ok=True)
 
-# Initialize Schwab client getter function
-def get_schwab_client():
-    try:
-        client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file=TOKEN_FILE_PATH, capture_callback=False)
-        return client
-    except Exception as e:
-        app_logger.error(f"Error initializing Schwab client: {e}", exc_info=True)
-        return None
+# Create logger for this module
+app_logger = logging.getLogger("dashboard_app")
+app_logger.setLevel(logging.INFO)
 
-# Initialize account ID getter function
-def get_account_id():
-    try:
-        client = get_schwab_client()
-        if not client:
-            return None
-        
-        response = client.accounts()
-        if not response.ok:
-            app_logger.error(f"Error fetching accounts: {response.status_code} - {response.text}")
-            return None
-        
-        accounts = response.json()
-        if not accounts:
-            app_logger.error("No accounts found")
-            return None
-        
-        # Use the first account ID
-        account_id = accounts[0].get("accountId")
-        return account_id
-    except Exception as e:
-        app_logger.error(f"Error getting account ID: {e}", exc_info=True)
-        return None
+# Create Schwab API client
+api_client = SchwabAPIClient()
 
-# Initialize StreamingManager
-streaming_manager = StreamingManager(get_schwab_client, get_account_id)
+# Create streaming manager
+streaming_manager = StreamingManager(api_client)
+
+# Create Dash app
+app = Dash(__name__, suppress_callback_exceptions=True)
 
 # Define app layout
 app.layout = html.Div([
     # Header
-    html.H1("Manus Options Dashboard", style={'textAlign': 'center'}),
-    
-    # Symbol input and refresh button
     html.Div([
-        html.Label("Symbol:"),
-        dcc.Input(id="symbol-input", type="text", value="AAPL", style={'marginRight': '10px'}),
-        html.Button("Refresh Data", id="refresh-button", n_clicks=0)
-    ], style={'margin': '10px 0px'}),
-    
-    # Status message
-    html.Div(id="status-message", style={'margin': '10px 0px', 'color': 'blue'}),
+        html.H1("Options Trading Dashboard"),
+        html.Div([
+            html.Label("Symbol:"),
+            dcc.Input(id="symbol-input", type="text", value="MSFT"),
+            html.Button("Load Data", id="load-data-button", n_clicks=0)
+        ], style={"display": "flex", "alignItems": "center", "gap": "10px"})
+    ], style={"display": "flex", "justifyContent": "space-between", "alignItems": "center", "padding": "10px"}),
     
     # Error messages
-    html.Div(id="error-messages", style={'margin': '10px 0px', 'color': 'red'}),
+    html.Div(id="error-messages", style={"color": "red", "margin": "10px 0"}),
     
-    # Tabs for different data views
-    dcc.Tabs([
-        # Minute Data Tab
-        dcc.Tab(label="Minute Data", children=[
-            html.Div([
-                # Minute data table
-                dash_table.DataTable(
-                    id="minute-data-table",
-                    page_size=10,
-                    style_table={'overflowX': 'auto'},
-                    style_cell={
-                        'textAlign': 'left',
-                        'padding': '5px'
-                    },
-                    style_header={
-                        'backgroundColor': 'rgb(230, 230, 230)',
-                        'fontWeight': 'bold'
-                    }
-                )
-            ])
-        ]),
-        
-        # Technical Indicators Tab
-        dcc.Tab(label="Technical Indicators", children=[
-            html.Div([
-                # Technical indicators table
-                dash_table.DataTable(
-                    id="tech-indicators-table",
-                    page_size=10,
-                    style_table={'overflowX': 'auto'},
-                    style_cell={
-                        'textAlign': 'left',
-                        'padding': '5px'
-                    },
-                    style_header={
-                        'backgroundColor': 'rgb(230, 230, 230)',
-                        'fontWeight': 'bold'
-                    }
-                )
-            ])
-        ]),
-        
-        # Options Chain Tab
-        dcc.Tab(label="Options Chain", children=[
-            html.Div([
-                # Options chain controls
+    # Main content
+    html.Div([
+        # Tabs
+        dcc.Tabs([
+            # Chart Tab
+            dcc.Tab(label="Chart", children=[
                 html.Div([
-                    # Expiration date selector
-                    html.Div([
-                        html.Label("Expiration Date:"),
-                        dcc.Dropdown(id="expiration-date-dropdown")
-                    ], style={'width': '200px', 'display': 'inline-block', 'margin-right': '20px'}),
-                    
-                    # Option type selector
-                    html.Div([
-                        html.Label("Option Type:"),
-                        dcc.RadioItems(
-                            id="option-type-radio",
-                            options=[
-                                {'label': 'All', 'value': 'ALL'},
-                                {'label': 'Calls', 'value': 'CALL'},
-                                {'label': 'Puts', 'value': 'PUT'}
-                            ],
-                            value='ALL',
-                            inline=True
-                        )
-                    ], style={'display': 'inline-block', 'margin-right': '20px'}),
-                    
-                    # Streaming toggle
-                    html.Div([
-                        html.Label("Real-time Updates:"),
-                        dcc.RadioItems(
-                            id="streaming-toggle",
-                            options=[
-                                {'label': 'On', 'value': 'ON'},
-                                {'label': 'Off', 'value': 'OFF'}
-                            ],
-                            value='ON',
-                            inline=True
-                        )
-                    ], style={'display': 'inline-block'})
-                ], style={'margin': '10px 0px'}),
-                
-                # Streaming status
-                html.Div(id="streaming-status", style={'margin': '10px 0px', 'fontStyle': 'italic'}),
-                
-                # Options tables
-                html.Div([
-                    # Calls table
-                    html.Div([
-                        html.H3("Calls"),
-                        dash_table.DataTable(
-                            id="calls-table",
-                            page_size=10,
-                            style_table={'overflowX': 'auto'},
-                            style_cell={
-                                'textAlign': 'left',
-                                'padding': '5px'
-                            },
-                            style_header={
-                                'backgroundColor': 'rgb(230, 230, 230)',
-                                'fontWeight': 'bold'
-                            }
-                        )
-                    ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top'}),
-                    
-                    # Puts table
-                    html.Div([
-                        html.H3("Puts"),
-                        dash_table.DataTable(
-                            id="puts-table",
-                            page_size=10,
-                            style_table={'overflowX': 'auto'},
-                            style_cell={
-                                'textAlign': 'left',
-                                'padding': '5px'
-                            },
-                            style_header={
-                                'backgroundColor': 'rgb(230, 230, 230)',
-                                'fontWeight': 'bold'
-                            }
-                        )
-                    ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'marginLeft': '4%'})
+                    # Chart
+                    dcc.Graph(id="price-chart")
                 ])
-            ])
-        ]),
-        
-        # Recommendations Tab
-        dcc.Tab(label="Recommendations", children=[
-            html.Div([
-                # Recommendations controls
+            ]),
+            
+            # Technical Indicators Tab
+            dcc.Tab(label="Technical Indicators", children=[
                 html.Div([
-                    html.Button("Generate Recommendations", id="generate-recommendations-button", n_clicks=0)
-                ], style={'margin': '10px 0px'}),
-                
-                # Recommendations table
-                dash_table.DataTable(
-                    id="recommendations-table",
-                    page_size=10,
-                    style_table={'overflowX': 'auto'},
-                    style_cell={
-                        'textAlign': 'left',
-                        'padding': '5px'
-                    },
-                    style_header={
-                        'backgroundColor': 'rgb(230, 230, 230)',
-                        'fontWeight': 'bold'
-                    }
-                )
+                    # Technical indicators table
+                    dash_table.DataTable(
+                        id="tech-indicators-table",
+                        page_size=10,
+                        style_table={'overflowX': 'auto'},
+                        style_cell={
+                            'textAlign': 'left',
+                            'padding': '5px'
+                        },
+                        style_header={
+                            'backgroundColor': 'rgb(230, 230, 230)',
+                            'fontWeight': 'bold'
+                        }
+                    )
+                ])
+            ]),
+            
+            # Options Chain Tab
+            dcc.Tab(label="Options Chain", children=[
+                html.Div([
+                    # Options chain controls
+                    html.Div([
+                        # Expiration date selector
+                        html.Div([
+                            html.Label("Expiration Date:"),
+                            dcc.Dropdown(id="expiration-date-dropdown")
+                        ], style={'width': '200px', 'display': 'inline-block', 'margin-right': '20px'}),
+                        
+                        # Option type selector
+                        html.Div([
+                            html.Label("Option Type:"),
+                            dcc.RadioItems(
+                                id="option-type-radio",
+                                options=[
+                                    {'label': 'All', 'value': 'ALL'},
+                                    {'label': 'Calls', 'value': 'CALL'},
+                                    {'label': 'Puts', 'value': 'PUT'}
+                                ],
+                                value='ALL',
+                                inline=True
+                            )
+                        ], style={'display': 'inline-block', 'margin-right': '20px'}),
+                        
+                        # Streaming toggle
+                        html.Div([
+                            html.Label("Real-time Updates:"),
+                            dcc.RadioItems(
+                                id="streaming-toggle",
+                                options=[
+                                    {'label': 'On', 'value': 'ON'},
+                                    {'label': 'Off', 'value': 'OFF'}
+                                ],
+                                value='ON',
+                                inline=True
+                            )
+                        ], style={'display': 'inline-block'})
+                    ], style={'margin': '10px 0px'}),
+                    
+                    # Streaming status
+                    html.Div(id="streaming-status", style={'margin': '10px 0px', 'fontStyle': 'italic'}),
+                    
+                    # Options tables
+                    html.Div([
+                        # Calls table
+                        html.Div([
+                            html.H3("Calls"),
+                            dash_table.DataTable(
+                                id="calls-table",
+                                page_size=10,
+                                style_table={'overflowX': 'auto'},
+                                style_cell={
+                                    'textAlign': 'left',
+                                    'padding': '5px'
+                                },
+                                style_header={
+                                    'backgroundColor': 'rgb(230, 230, 230)',
+                                    'fontWeight': 'bold'
+                                }
+                            )
+                        ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top'}),
+                        
+                        # Puts table
+                        html.Div([
+                            html.H3("Puts"),
+                            dash_table.DataTable(
+                                id="puts-table",
+                                page_size=10,
+                                style_table={'overflowX': 'auto'},
+                                style_cell={
+                                    'textAlign': 'left',
+                                    'padding': '5px'
+                                },
+                                style_header={
+                                    'backgroundColor': 'rgb(230, 230, 230)',
+                                    'fontWeight': 'bold'
+                                }
+                            )
+                        ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'marginLeft': '4%'})
+                    ])
+                ])
+            ]),
+            
+            # Recommendations Tab
+            dcc.Tab(label="Recommendations", children=[
+                create_recommendation_tab()
             ])
         ])
     ]),
     
-    # Hidden data stores
+    # Data stores
     dcc.Store(id="minute-data-store"),
     dcc.Store(id="tech-indicators-store"),
     dcc.Store(id="options-chain-store"),
+    dcc.Store(id="streaming-options-store"),
     dcc.Store(id="selected-symbol-store"),
     dcc.Store(id="error-store"),
-    dcc.Store(id="streaming-options-store"),
-    dcc.Interval(id="update-interval", interval=60000, n_intervals=0),
-    dcc.Interval(id="streaming-update-interval", interval=1000, n_intervals=0, disabled=False)
+    
+    # Intervals
+    dcc.Interval(
+        id="update-interval",
+        interval=60000,  # 60 seconds
+        n_intervals=0,
+        disabled=False
+    ),
+    dcc.Interval(
+        id="streaming-update-interval",
+        interval=1000,  # 1 second
+        n_intervals=0,
+        disabled=False  # Enabled by default
+    )
 ])
 
-# Refresh data callback
+# Load data callback
 @app.callback(
     [
         Output("minute-data-store", "data"),
@@ -250,32 +221,32 @@ app.layout = html.Div([
         Output("selected-symbol-store", "data"),
         Output("expiration-date-dropdown", "options"),
         Output("expiration-date-dropdown", "value"),
-        Output("status-message", "children"),
+        Output("streaming-status", "children"),
         Output("error-store", "data")
     ],
     [
-        Input("refresh-button", "n_clicks")
+        Input("load-data-button", "n_clicks")
     ],
     [
         State("symbol-input", "value")
     ],
     prevent_initial_call=True
 )
-def refresh_data(n_clicks, symbol):
-    """Refreshes all data for the given symbol."""
-    if not n_clicks or not symbol:
-        return None, None, None, None, [], None, "", None
+def load_data(n_clicks, symbol):
+    """Load data for the selected symbol."""
+    app_logger.info(f"Loading data for symbol: {symbol}")
     
-    symbol = symbol.upper()
-    app_logger.info(f"Refreshing data for {symbol}")
+    if not symbol:
+        app_logger.warning("No symbol provided")
+        return None, None, None, None, [], None, "No symbol provided", {
+            "source": "Data Loading",
+            "message": "No symbol provided",
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
     
     try:
-        # Initialize Schwab client with consistent token file path
-        client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file=TOKEN_FILE_PATH, capture_callback=False)
-        
-        # Fetch minute data
-        minute_data, error = get_minute_data(client, symbol)
-        
+        # Get minute data
+        minute_data, error = get_minute_data(symbol)
         if error:
             app_logger.error(f"Error fetching minute data: {error}")
             return None, None, None, None, [], None, f"Error: {error}", {
@@ -284,9 +255,8 @@ def refresh_data(n_clicks, symbol):
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
         
-        # Calculate technical indicators
-        tech_indicators, error = get_technical_indicators(client, symbol)
-        
+        # Get technical indicators
+        tech_indicators, error = get_technical_indicators(minute_data)
         if error:
             app_logger.error(f"Error calculating technical indicators: {error}")
             return {"data": minute_data}, None, None, None, [], None, f"Error: {error}", {
@@ -295,8 +265,19 @@ def refresh_data(n_clicks, symbol):
                 "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
         
-        # Fetch options chain
-        options_df, expiration_dates, underlying_price, error = get_options_chain_data(client, symbol)
+        # Get options chain
+        options_data = api_client.option_chains(symbol)
+        
+        # Process options chain data
+        options_df, expiration_dates, underlying_price = process_options_chain_data(options_data)
+        
+        if options_df.empty:
+            app_logger.error("Empty options chain returned from API")
+            return {"data": minute_data}, {"data": tech_indicators}, None, None, [], None, "Error: Empty options chain", {
+                "source": "Options Chain",
+                "message": "Empty options chain returned from API",
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
         
         if error:
             app_logger.error(f"Error fetching options chain: {error}")
@@ -348,56 +329,89 @@ def refresh_data(n_clicks, symbol):
             "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         
-        status_message = f"Data refreshed for {symbol} at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        app_logger.info(status_message)
+        # Start streaming for the options
+        if options_df is not None and not options_df.empty:
+            option_keys = options_df["symbol"].tolist()
+            streaming_success = streaming_manager.start_streaming(option_keys)
+            streaming_status = "Streaming: Enabled - Receiving real-time data" if streaming_success else "Streaming: Error starting streaming"
+        else:
+            streaming_status = "Streaming: No options data available"
         
-        return minute_data_store, tech_indicators_store, options_data, selected_symbol_store, dropdown_options, default_expiration, status_message, None
-    
+        return minute_data_store, tech_indicators_store, options_data, selected_symbol_store, dropdown_options, default_expiration, streaming_status, None
+        
     except Exception as e:
-        error_msg = f"Error refreshing data: {str(e)}"
-        app_logger.error(error_msg, exc_info=True)
+        app_logger.error(f"Error loading data: {str(e)}", exc_info=True)
         return None, None, None, None, [], None, f"Error: {str(e)}", {
-            "source": "Data Refresh",
-            "message": error_msg,
+            "source": "Data Loading",
+            "message": str(e),
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
 
-# Minute Data Table Callback
+# Price chart callback
 @app.callback(
-    Output("minute-data-table", "data"),
-    Output("minute-data-table", "columns"),
+    Output("price-chart", "figure"),
     Input("minute-data-store", "data"),
     prevent_initial_call=True
 )
-def update_minute_data_table(minute_data):
-    """Updates the minute data table with the fetched data."""
+def update_price_chart(minute_data):
+    """Update the price chart with minute data."""
     if not minute_data or not minute_data.get("data"):
-        return [], []
+        return go.Figure()
     
     data = minute_data["data"]
     
-    # Define columns
-    columns = [
-        {"name": "Timestamp", "id": "timestamp"},
-        {"name": "Open", "id": "open"},
-        {"name": "High", "id": "high"},
-        {"name": "Low", "id": "low"},
-        {"name": "Close", "id": "close"},
-        {"name": "Volume", "id": "volume"}
-    ]
+    # Create figure with secondary y-axis
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
     
-    return data, columns
+    # Add price trace
+    fig.add_trace(
+        go.Candlestick(
+            x=[item["datetime"] for item in data],
+            open=[item["open"] for item in data],
+            high=[item["high"] for item in data],
+            low=[item["low"] for item in data],
+            close=[item["close"] for item in data],
+            name="Price"
+        ),
+        secondary_y=False
+    )
+    
+    # Add volume trace
+    fig.add_trace(
+        go.Bar(
+            x=[item["datetime"] for item in data],
+            y=[item["volume"] for item in data],
+            name="Volume",
+            marker_color="rgba(0, 0, 255, 0.3)"
+        ),
+        secondary_y=True
+    )
+    
+    # Set titles
+    fig.update_layout(
+        title_text=f"{minute_data.get('symbol', 'Unknown')} Price Chart",
+        xaxis_title="Date",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    
+    # Set y-axes titles
+    fig.update_yaxes(title_text="Price", secondary_y=False)
+    fig.update_yaxes(title_text="Volume", secondary_y=True)
+    
+    return fig
 
-# Technical Indicators Table Callback
+# Technical indicators table callback
 @app.callback(
-    Output("tech-indicators-table", "data"),
-    Output("tech-indicators-table", "columns"),
+    [
+        Output("tech-indicators-table", "data"),
+        Output("tech-indicators-table", "columns")
+    ],
     Input("tech-indicators-store", "data"),
     prevent_initial_call=True
 )
 def update_tech_indicators_table(tech_indicators_data):
-    """Updates the technical indicators table with the calculated data."""
-    if not tech_indicators_data or not tech_indicators_data.get("data"):
+    """Update the technical indicators table."""
+    if not tech_indicators_data:
         return [], []
     
     data = tech_indicators_data["data"]
@@ -551,6 +565,14 @@ def update_options_tables(options_data, streaming_data, expiration_date, option_
                         # Get the corresponding column name using the mapper
                         column_name = StreamingFieldMapper.get_column_name(field_name)
                         
+                        # Special handling for contractType (C/P to CALL/PUT)
+                        if field_name == "contractType":
+                            if value == "C":
+                                value = "CALL"
+                            elif value == "P":
+                                value = "PUT"
+                            column_name = "putCall"  # Ensure we're using the correct column name
+                        
                         # Update the DataFrame if the column exists
                         if column_name in options_df_copy.columns:
                             options_df_copy.at[index, column_name] = value
@@ -560,6 +582,27 @@ def update_options_tables(options_data, streaming_data, expiration_date, option_
                             app_logger.debug(f"Column '{column_name}' not found in options DataFrame for field '{field_name}'")
             
             app_logger.info(f"Updated {updated_contracts} contracts with streaming data. Updated fields: {sorted(list(updated_fields))}")
+            
+            # Ensure putCall column is properly populated for all rows
+            if 'putCall' not in options_df_copy.columns or options_df_copy['putCall'].isna().any():
+                app_logger.warning("putCall column missing or has NaN values, attempting to infer from symbol")
+                
+                # Create putCall column if it doesn't exist
+                if 'putCall' not in options_df_copy.columns:
+                    options_df_copy['putCall'] = None
+                
+                # Infer putCall from symbol for any missing values
+                mask = options_df_copy['putCall'].isna()
+                if mask.any():
+                    options_df_copy.loc[mask, 'putCall'] = options_df_copy.loc[mask, 'symbol'].apply(
+                        lambda x: "CALL" if "C" in str(x).upper() else ("PUT" if "P" in str(x).upper() else "UNKNOWN")
+                    )
+                    app_logger.info(f"Inferred putCall for {mask.sum()} contracts from symbol")
+            
+            # Log putCall distribution
+            if 'putCall' in options_df_copy.columns:
+                putcall_counts = options_df_copy['putCall'].value_counts().to_dict()
+                app_logger.info(f"putCall distribution after updates: {putcall_counts}")
             
             # Remove the temporary normalized_symbol column
             if 'normalized_symbol' in options_df_copy.columns:
@@ -572,6 +615,8 @@ def update_options_tables(options_data, streaming_data, expiration_date, option_
     
     # Use the utility function to split options by type
     calls_data, puts_data = split_options_by_type(options_df, expiration_date, option_type)
+    
+    app_logger.info(f"Returning {len(calls_data)} calls and {len(puts_data)} puts")
     
     return calls_data, puts_data
 

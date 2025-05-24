@@ -30,6 +30,9 @@
 - Added comprehensive debugging and logging to recommendation engine to diagnose loading issues
 - Verified that recommendations are designed to auto-load (no manual button needed)
 - Enhanced error reporting in the UI with detailed debug information
+- Fixed critical bug causing options chain tab to disappear after streaming updates
+- Fixed issue preventing recommendations from loading
+- Enhanced putCall field handling to ensure proper mapping after streaming updates
 
 ## Implementation Details
 
@@ -75,6 +78,15 @@
   - Traceback information for better troubleshooting
 - Set logging level to DEBUG for more detailed information
 - Enhanced error reporting in the UI with specific error messages
+- Fixed critical bug where options chain tab disappeared after streaming updates:
+  - Identified that the putCall column was not being properly maintained after streaming updates
+  - Added special handling for contractType field from streaming data to ensure correct mapping to putCall
+  - Implemented fallback mechanism to infer putCall values from option symbols if missing
+  - Added detailed logging of putCall distribution after updates
+- Fixed issue preventing recommendations from loading:
+  - Added checks for missing or NaN values in putCall column
+  - Implemented automatic reconstruction of putCall column from option symbols
+  - Enhanced logging to track fallback mechanism usage
 
 ## In Progress
 
@@ -95,11 +107,12 @@
 - Resolved: Options chain UI not updating due to incomplete mapping between streaming data contract keys and options table data
 - Resolved: Contract key normalization mismatch between streaming data and DataFrame rows
 - Resolved: Recommendation engine not utilizing streaming data for real-time updates
-- Investigating: Recommendations not loading when expected - added comprehensive debugging to diagnose
+- Resolved: Options chain tab disappearing after streaming updates due to putCall field issues
+- Resolved: Recommendations not loading due to missing putCall values
 
 ## Next Steps
 
-1. Monitor logs to identify why recommendations aren't loading
+1. Monitor logs to verify the putCall field fix resolves both UI issues
 2. Add visual indicators for recommendations with high confidence
 3. Create tests to validate the changes
 4. Optimize performance for multi-timeframe calculations if needed

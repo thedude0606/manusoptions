@@ -26,7 +26,10 @@
 - [x] Add comprehensive debugging and logging to recommendation engine
 - [x] Verify recommendations auto-load without manual button interaction
 - [x] Enhance error reporting in the UI with detailed debug information
-- [ ] Monitor logs to identify why recommendations aren't loading
+- [x] Fix options chain tab disappearing after streaming updates
+- [x] Fix recommendations not loading issue
+- [x] Enhance putCall field handling to ensure proper mapping after streaming updates
+- [ ] Monitor logs to verify the putCall field fix resolves both UI issues
 - [ ] Add visual indicators for recommendations with high confidence
 
 ## Medium Priority
@@ -56,6 +59,8 @@
 - [x] Proper matching of streaming data to DataFrame rows depends on consistent contract key normalization
 - [x] Enhanced recommendation engine depends on proper integration with dashboard UI
 - [x] Diagnosing recommendation loading issues depends on comprehensive logging and debugging
+- [x] Options chain tab display depends on proper putCall field maintenance after streaming updates
+- [x] Recommendations loading depends on correct putCall values in options data
 
 ## Status
 
