@@ -23,6 +23,10 @@
 - [x] Add profit target and exit price calculation to recommendation engine
 - [x] Implement confidence interval calculation for recommendations
 - [x] Integrate enhanced recommendation engine with dashboard UI
+- [x] Add comprehensive debugging and logging to recommendation engine
+- [x] Verify recommendations auto-load without manual button interaction
+- [x] Enhance error reporting in the UI with detailed debug information
+- [ ] Monitor logs to identify why recommendations aren't loading
 - [ ] Add visual indicators for recommendations with high confidence
 
 ## Medium Priority
@@ -51,6 +55,7 @@
 - [x] Complete UI updates depend on proper mapping between streaming data fields and DataFrame columns
 - [x] Proper matching of streaming data to DataFrame rows depends on consistent contract key normalization
 - [x] Enhanced recommendation engine depends on proper integration with dashboard UI
+- [x] Diagnosing recommendation loading issues depends on comprehensive logging and debugging
 
 ## Status
 

@@ -201,3 +201,69 @@ Update the recommendation tab to use the enhanced recommendation engine and disp
 * Streaming data is incorporated into recommendations for real-time updates
 * The UI displays more detailed information for better decision making
 * Performance impact is minimal as the enhanced engine is optimized for real-time processing
+
+## Comprehensive Debugging and Logging for Recommendation Engine
+
+Implement detailed debugging and logging in the recommendation engine to diagnose loading issues.
+
+### Decision
+
+Add comprehensive debugging and logging to the recommendation engine to diagnose why recommendations aren't loading.
+
+### Rationale
+
+* User reported that recommendations aren't loading when expected
+* No clear error messages were being displayed in the UI
+* Difficult to diagnose issues without detailed logging
+* Need to track the flow of data through the recommendation process
+
+### Implementation Details
+
+* Added detailed logging at each step of the recommendation process
+* Created a hidden debug panel that appears when errors occur
+* Improved error handling with specific error messages
+* Added traceback information for better troubleshooting
+* Set logging level to DEBUG for more detailed information
+* Enhanced error reporting in the UI with specific error messages
+* Added debug information collection for all key data states
+
+### Technical Considerations
+
+* Debug information is hidden during normal operation
+* Debug panel automatically appears when errors occur
+* Comprehensive logging covers all potential failure points
+* Detailed error messages help users understand issues
+* Traceback information helps developers diagnose problems
+* Performance impact is minimal as debug information is only collected when needed
+
+## Auto-Loading Recommendations
+
+Verify and ensure recommendations automatically load when technical indicators and options chain data are available.
+
+### Decision
+
+Confirm that recommendations are designed to auto-load without requiring a manual button click.
+
+### Rationale
+
+* User expected recommendations to load automatically when data is available
+* Manual button clicks add unnecessary friction to the user experience
+* Auto-loading ensures recommendations are always current
+
+### Implementation Details
+
+* Verified that the recommendation callback is triggered by:
+  * Technical indicators data changes
+  * Options chain data changes
+  * Timeframe dropdown changes
+  * Update interval triggers
+  * Streaming options data updates
+* Confirmed no manual "Generate Recommendations" button exists in the UI
+* Enhanced logging to track callback triggers and data availability
+
+### Technical Considerations
+
+* Auto-loading depends on proper data flow through the application
+* Recommendations update automatically when any input data changes
+* This approach ensures recommendations are always in sync with the latest data
+* Error handling prevents auto-loading when required data is missing

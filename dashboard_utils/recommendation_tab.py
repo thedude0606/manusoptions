@@ -11,6 +11,8 @@ from dash.dependencies import Input, Output, State
 import pandas as pd
 import numpy as np
 import logging
+import traceback
+import sys
 from datetime import datetime
 
 # Configure logging
@@ -20,7 +22,7 @@ if not logger.hasHandlers():
     formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)  # Set to DEBUG for more detailed logs
 
 def create_recommendation_tab():
     """
@@ -231,7 +233,10 @@ def create_recommendation_tab():
         dcc.Store(id="recommendations-store"),
         
         # Last updated timestamp
-        html.Div(id="recommendations-last-updated", className="last-updated")
+        html.Div(id="recommendations-last-updated", className="last-updated"),
+        
+        # Debug information (hidden by default)
+        html.Div(id="recommendation-debug-info", style={"whiteSpace": "pre-wrap", "fontSize": "12px", "fontFamily": "monospace", "marginTop": "20px", "padding": "10px", "backgroundColor": "#f8f9fa", "border": "1px solid #ddd", "display": "none"})
     ], className="tab-content")
 
 def register_recommendation_callbacks(app):
@@ -244,7 +249,9 @@ def register_recommendation_callbacks(app):
     @app.callback(
         [
             Output("recommendations-store", "data"),
-            Output("recommendation-status", "children")
+            Output("recommendation-status", "children"),
+            Output("recommendation-debug-info", "children"),
+            Output("recommendation-debug-info", "style")
         ],
         [
             Input("tech-indicators-store", "data"),
@@ -259,119 +266,229 @@ def register_recommendation_callbacks(app):
     )
     def update_recommendations(tech_indicators_data, options_chain_data, timeframe, n_intervals, streaming_options_data, selected_symbol):
         """Update recommendations based on technical indicators and options chain data."""
-        # Import the enhanced recommendation engine instead of the legacy one
-        from enhanced_recommendation_engine import EnhancedRecommendationEngine
+        # Debug information collection
+        debug_info = []
+        debug_info.append(f"RECOMMENDATION CALLBACK TRIGGERED at {datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')}")
         
+        # Get trigger information
         ctx = dash.callback_context
-        trigger = ctx.triggered[0]['prop_id'] if ctx.triggered else ""
-        logger.info(f"update_recommendations triggered by: {trigger}")
+        trigger = ctx.triggered[0]['prop_id'] if ctx.triggered else "No trigger"
+        debug_info.append(f"Trigger: {trigger}")
+        logger.debug(f"update_recommendations triggered by: {trigger}")
+        
+        # Check if we have the required data
+        debug_info.append(f"Tech indicators data present: {bool(tech_indicators_data)}")
+        debug_info.append(f"Options chain data present: {bool(options_chain_data)}")
+        debug_info.append(f"Selected symbol data present: {bool(selected_symbol)}")
+        debug_info.append(f"Timeframe selected: {timeframe}")
+        debug_info.append(f"Streaming options data present: {bool(streaming_options_data)}")
         
         if not tech_indicators_data or not options_chain_data or not selected_symbol:
-            logger.warning(f"Missing required data: tech_indicators_data={bool(tech_indicators_data)}, options_chain_data={bool(options_chain_data)}, selected_symbol={bool(selected_symbol)}")
-            return None, "Please load symbol data first."
+            missing_data = []
+            if not tech_indicators_data:
+                missing_data.append("technical indicators")
+            if not options_chain_data:
+                missing_data.append("options chain")
+            if not selected_symbol:
+                missing_data.append("selected symbol")
+            
+            error_msg = f"Missing required data: {', '.join(missing_data)}"
+            logger.warning(error_msg)
+            debug_info.append(f"ERROR: {error_msg}")
+            
+            # Show debug info in UI when there's an error
+            debug_style = {"whiteSpace": "pre-wrap", "fontSize": "12px", "fontFamily": "monospace", 
+                          "marginTop": "20px", "padding": "10px", "backgroundColor": "#f8f9fa", 
+                          "border": "1px solid #ddd", "display": "block"}
+            
+            return None, f"Error: {error_msg}", "\n".join(debug_info), debug_style
         
         try:
+            # Import the enhanced recommendation engine
+            try:
+                from enhanced_recommendation_engine import EnhancedRecommendationEngine
+                debug_info.append("Successfully imported EnhancedRecommendationEngine")
+            except ImportError as e:
+                error_msg = f"Failed to import EnhancedRecommendationEngine: {str(e)}"
+                logger.error(error_msg)
+                debug_info.append(f"ERROR: {error_msg}")
+                debug_style = {"whiteSpace": "pre-wrap", "fontSize": "12px", "fontFamily": "monospace", 
+                              "marginTop": "20px", "padding": "10px", "backgroundColor": "#f8f9fa", 
+                              "border": "1px solid #ddd", "display": "block"}
+                return None, f"Error: {error_msg}", "\n".join(debug_info), debug_style
+            
             # Get the symbol and underlying price
             symbol = selected_symbol.get("symbol", "")
             underlying_price = options_chain_data.get("underlyingPrice", 0)
-            logger.info(f"Processing recommendations for symbol: {symbol}, underlying price: {underlying_price}")
+            debug_info.append(f"Symbol: {symbol}")
+            debug_info.append(f"Underlying price: {underlying_price}")
+            logger.debug(f"Processing recommendations for symbol: {symbol}, underlying price: {underlying_price}")
             
             if not symbol or not underlying_price:
-                logger.warning(f"Missing symbol or price data: symbol={symbol}, underlying_price={underlying_price}")
-                return None, "Missing symbol or price data."
+                error_msg = f"Missing symbol or price data: symbol={symbol}, underlying_price={underlying_price}"
+                logger.warning(error_msg)
+                debug_info.append(f"ERROR: {error_msg}")
+                debug_style = {"whiteSpace": "pre-wrap", "fontSize": "12px", "fontFamily": "monospace", 
+                              "marginTop": "20px", "padding": "10px", "backgroundColor": "#f8f9fa", 
+                              "border": "1px solid #ddd", "display": "block"}
+                return None, f"Error: {error_msg}", "\n".join(debug_info), debug_style
             
             # Get technical indicators for all timeframes
             tech_indicators_df = pd.DataFrame()
             if tech_indicators_data and "data" in tech_indicators_data:
                 tech_indicators_df = pd.DataFrame(tech_indicators_data["data"])
-                logger.info(f"Loaded technical indicators, shape: {tech_indicators_df.shape}")
-                logger.info(f"Technical indicators columns: {tech_indicators_df.columns.tolist()}")
+                debug_info.append(f"Tech indicators shape: {tech_indicators_df.shape}")
+                debug_info.append(f"Tech indicators columns: {tech_indicators_df.columns.tolist()}")
+                logger.debug(f"Loaded technical indicators, shape: {tech_indicators_df.shape}")
+                logger.debug(f"Technical indicators columns: {tech_indicators_df.columns.tolist()}")
             
             if tech_indicators_df.empty:
-                logger.warning(f"Empty technical indicators DataFrame")
-                return None, f"No technical indicator data available."
+                error_msg = "Empty technical indicators DataFrame"
+                logger.warning(error_msg)
+                debug_info.append(f"ERROR: {error_msg}")
+                debug_style = {"whiteSpace": "pre-wrap", "fontSize": "12px", "fontFamily": "monospace", 
+                              "marginTop": "20px", "padding": "10px", "backgroundColor": "#f8f9fa", 
+                              "border": "1px solid #ddd", "display": "block"}
+                return None, f"Error: {error_msg}", "\n".join(debug_info), debug_style
             
             # Get options chain data
             options_df = pd.DataFrame()
             if options_chain_data and "options" in options_chain_data:
                 options_df = pd.DataFrame(options_chain_data["options"])
-                logger.info(f"Loaded options chain data, shape: {options_df.shape}")
-                logger.info(f"Options chain columns: {options_df.columns.tolist()}")
+                debug_info.append(f"Options chain shape: {options_df.shape}")
+                debug_info.append(f"Options chain columns: {options_df.columns.tolist()}")
+                logger.debug(f"Loaded options chain data, shape: {options_df.shape}")
+                logger.debug(f"Options chain columns: {options_df.columns.tolist()}")
             
             if options_df.empty:
-                logger.warning("Empty options chain DataFrame")
-                return None, "No options chain data available."
+                error_msg = "Empty options chain DataFrame"
+                logger.warning(error_msg)
+                debug_info.append(f"ERROR: {error_msg}")
+                debug_style = {"whiteSpace": "pre-wrap", "fontSize": "12px", "fontFamily": "monospace", 
+                              "marginTop": "20px", "padding": "10px", "backgroundColor": "#f8f9fa", 
+                              "border": "1px solid #ddd", "display": "block"}
+                return None, f"Error: {error_msg}", "\n".join(debug_info), debug_style
             
             # Update options data with streaming data if available
             if streaming_options_data and "data" in streaming_options_data:
                 streaming_options = streaming_options_data.get("data", {})
-                logger.info(f"Streaming data available for {len(streaming_options)} contracts")
+                debug_info.append(f"Streaming data available for {len(streaming_options)} contracts")
+                logger.debug(f"Streaming data available for {len(streaming_options)} contracts")
                 
                 if streaming_options:
-                    from dashboard_utils.contract_utils import normalize_contract_key
-                    from dashboard_utils.streaming_field_mapper import StreamingFieldMapper
-                    
-                    # Create a copy of the options DataFrame to avoid modifying the original
-                    options_df_copy = options_df.copy()
-                    
-                    # Create a normalized symbol column for matching with streaming data
-                    options_df_copy['normalized_symbol'] = options_df_copy['symbol'].apply(normalize_contract_key)
-                    
-                    # Create a mapping from normalized symbol to DataFrame index
-                    normalized_symbol_to_index = {}
-                    for index, row in options_df_copy.iterrows():
-                        normalized_symbol = row.get('normalized_symbol')
-                        if normalized_symbol:
-                            normalized_symbol_to_index[normalized_symbol] = index
-                    
-                    # Track how many contracts were updated
-                    updated_contracts = 0
-                    updated_fields = set()
-                    
-                    # Update the options data with streaming data
-                    for normalized_key, stream_data in streaming_options.items():
-                        if normalized_key in normalized_symbol_to_index:
-                            index = normalized_symbol_to_index[normalized_key]
-                            updated_contracts += 1
-                            
-                            # Use the StreamingFieldMapper to map streaming data to DataFrame columns
-                            for field_name, value in stream_data.items():
-                                if field_name == "key":
-                                    continue  # Skip the key field
+                    try:
+                        from dashboard_utils.contract_utils import normalize_contract_key
+                        from dashboard_utils.streaming_field_mapper import StreamingFieldMapper
+                        debug_info.append("Successfully imported contract_utils and StreamingFieldMapper")
+                        
+                        # Create a copy of the options DataFrame to avoid modifying the original
+                        options_df_copy = options_df.copy()
+                        
+                        # Create a normalized symbol column for matching with streaming data
+                        options_df_copy['normalized_symbol'] = options_df_copy['symbol'].apply(normalize_contract_key)
+                        
+                        # Create a mapping from normalized symbol to DataFrame index
+                        normalized_symbol_to_index = {}
+                        for index, row in options_df_copy.iterrows():
+                            normalized_symbol = row.get('normalized_symbol')
+                            if normalized_symbol:
+                                normalized_symbol_to_index[normalized_symbol] = index
+                        
+                        # Track how many contracts were updated
+                        updated_contracts = 0
+                        updated_fields = set()
+                        
+                        # Update the options data with streaming data
+                        for normalized_key, stream_data in streaming_options.items():
+                            if normalized_key in normalized_symbol_to_index:
+                                index = normalized_symbol_to_index[normalized_key]
+                                updated_contracts += 1
                                 
-                                # Get the corresponding column name using the mapper
-                                column_name = StreamingFieldMapper.get_column_name(field_name)
-                                
-                                # Update the DataFrame if the column exists
-                                if column_name in options_df_copy.columns:
-                                    options_df_copy.at[index, column_name] = value
-                                    updated_fields.add(column_name)
-                    
-                    logger.info(f"Updated {updated_contracts} contracts with streaming data. Updated fields: {sorted(list(updated_fields))}")
-                    
-                    # Remove the temporary normalized_symbol column
-                    if 'normalized_symbol' in options_df_copy.columns:
-                        options_df_copy = options_df_copy.drop(columns=['normalized_symbol'])
-                    
-                    # Use the updated DataFrame
-                    options_df = options_df_copy
+                                # Use the StreamingFieldMapper to map streaming data to DataFrame columns
+                                for field_name, value in stream_data.items():
+                                    if field_name == "key":
+                                        continue  # Skip the key field
+                                    
+                                    # Get the corresponding column name using the mapper
+                                    column_name = StreamingFieldMapper.get_column_name(field_name)
+                                    
+                                    # Update the DataFrame if the column exists
+                                    if column_name in options_df_copy.columns:
+                                        options_df_copy.at[index, column_name] = value
+                                        updated_fields.add(column_name)
+                        
+                        debug_info.append(f"Updated {updated_contracts} contracts with streaming data")
+                        debug_info.append(f"Updated fields: {sorted(list(updated_fields))}")
+                        logger.debug(f"Updated {updated_contracts} contracts with streaming data. Updated fields: {sorted(list(updated_fields))}")
+                        
+                        # Remove the temporary normalized_symbol column
+                        if 'normalized_symbol' in options_df_copy.columns:
+                            options_df_copy = options_df_copy.drop(columns=['normalized_symbol'])
+                        
+                        # Use the updated DataFrame
+                        options_df = options_df_copy
+                    except Exception as e:
+                        logger.error(f"Error updating options with streaming data: {str(e)}", exc_info=True)
+                        debug_info.append(f"ERROR updating options with streaming data: {str(e)}")
+                        debug_info.append(traceback.format_exc())
             
             # Initialize the enhanced recommendation engine
-            engine = EnhancedRecommendationEngine()
+            try:
+                engine = EnhancedRecommendationEngine()
+                debug_info.append("Successfully initialized EnhancedRecommendationEngine")
+            except Exception as e:
+                error_msg = f"Failed to initialize EnhancedRecommendationEngine: {str(e)}"
+                logger.error(error_msg, exc_info=True)
+                debug_info.append(f"ERROR: {error_msg}")
+                debug_info.append(traceback.format_exc())
+                debug_style = {"whiteSpace": "pre-wrap", "fontSize": "12px", "fontFamily": "monospace", 
+                              "marginTop": "20px", "padding": "10px", "backgroundColor": "#f8f9fa", 
+                              "border": "1px solid #ddd", "display": "block"}
+                return None, f"Error: {error_msg}", "\n".join(debug_info), debug_style
             
             # Generate recommendations using the enhanced engine
-            recommendations = engine.get_recommendations(tech_indicators_df, options_df, underlying_price)
+            try:
+                debug_info.append("Calling engine.get_recommendations()...")
+                recommendations = engine.get_recommendations(tech_indicators_df, options_df, underlying_price)
+                debug_info.append("Successfully generated recommendations")
+            except Exception as e:
+                error_msg = f"Failed to generate recommendations: {str(e)}"
+                logger.error(error_msg, exc_info=True)
+                debug_info.append(f"ERROR: {error_msg}")
+                debug_info.append(traceback.format_exc())
+                debug_style = {"whiteSpace": "pre-wrap", "fontSize": "12px", "fontFamily": "monospace", 
+                              "marginTop": "20px", "padding": "10px", "backgroundColor": "#f8f9fa", 
+                              "border": "1px solid #ddd", "display": "block"}
+                return None, f"Error: {error_msg}", "\n".join(debug_info), debug_style
             
             # Add timestamp
             recommendations["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
-            logger.info(f"Generated recommendations: {len(recommendations.get('calls', []))} calls, {len(recommendations.get('puts', []))} puts")
+            # Log recommendation counts
+            call_count = len(recommendations.get('calls', []))
+            put_count = len(recommendations.get('puts', []))
+            debug_info.append(f"Generated {call_count} call recommendations and {put_count} put recommendations")
+            logger.info(f"Generated recommendations: {call_count} calls, {put_count} puts")
             
-            return recommendations, f"Recommendations updated at {recommendations['timestamp']}"
+            # Hide debug info in normal operation
+            debug_style = {"whiteSpace": "pre-wrap", "fontSize": "12px", "fontFamily": "monospace", 
+                          "marginTop": "20px", "padding": "10px", "backgroundColor": "#f8f9fa", 
+                          "border": "1px solid #ddd", "display": "none"}
+            
+            return recommendations, f"Recommendations updated at {recommendations['timestamp']}", "\n".join(debug_info), debug_style
         
         except Exception as e:
-            logger.error(f"Error generating recommendations: {e}", exc_info=True)
-            return None, f"Error generating recommendations: {str(e)}"
+            error_msg = f"Error generating recommendations: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            debug_info.append(f"CRITICAL ERROR: {error_msg}")
+            debug_info.append(traceback.format_exc())
+            
+            # Show debug info in UI when there's an error
+            debug_style = {"whiteSpace": "pre-wrap", "fontSize": "12px", "fontFamily": "monospace", 
+                          "marginTop": "20px", "padding": "10px", "backgroundColor": "#f8f9fa", 
+                          "border": "1px solid #ddd", "display": "block"}
+            
+            return None, f"Error: {error_msg}", "\n".join(debug_info), debug_style
     
     @app.callback(
         [
@@ -389,32 +506,41 @@ def register_recommendation_callbacks(app):
     )
     def update_recommendation_tables(recommendations_data):
         """Update recommendation tables with the generated recommendations."""
+        logger.debug(f"update_recommendation_tables called with data: {bool(recommendations_data)}")
+        
         if not recommendations_data:
+            logger.warning("No recommendations data available")
             return [], [], "direction-indicator neutral", "Neutral", "50", "50", "", ""
         
-        # Get call and put recommendations
-        call_recommendations = recommendations_data.get("calls", [])
-        put_recommendations = recommendations_data.get("puts", [])
+        try:
+            # Get call and put recommendations
+            call_recommendations = recommendations_data.get("calls", [])
+            put_recommendations = recommendations_data.get("puts", [])
+            
+            # Get market direction analysis
+            market_direction = recommendations_data.get("market_direction", {})
+            direction = market_direction.get("direction", "neutral")
+            bullish_score = market_direction.get("bullish_score", 50)
+            bearish_score = market_direction.get("bearish_score", 50)
+            signals = market_direction.get("signals", [])
+            
+            # Format market direction indicator
+            direction_class = f"direction-indicator {direction}"
+            direction_text = direction.capitalize()
+            
+            # Format market signals
+            market_signals_html = html.Ul([html.Li(signal) for signal in signals[:10]])
+            
+            # Format last updated timestamp
+            timestamp = recommendations_data.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            last_updated = f"Last updated: {timestamp}"
+            
+            logger.debug(f"Updating recommendation tables with {len(call_recommendations)} calls and {len(put_recommendations)} puts")
+            return call_recommendations, put_recommendations, direction_class, direction_text, f"{bullish_score:.0f}", f"{bearish_score:.0f}", market_signals_html, last_updated
         
-        # Get market direction analysis
-        market_direction = recommendations_data.get("market_direction", {})
-        direction = market_direction.get("direction", "neutral")
-        bullish_score = market_direction.get("bullish_score", 50)
-        bearish_score = market_direction.get("bearish_score", 50)
-        signals = market_direction.get("signals", [])
-        
-        # Format market direction indicator
-        direction_class = f"direction-indicator {direction}"
-        direction_text = direction.capitalize()
-        
-        # Format market signals
-        market_signals_html = html.Ul([html.Li(signal) for signal in signals[:10]])
-        
-        # Format last updated timestamp
-        timestamp = recommendations_data.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        last_updated = f"Last updated: {timestamp}"
-        
-        return call_recommendations, put_recommendations, direction_class, direction_text, f"{bullish_score:.0f}", f"{bearish_score:.0f}", market_signals_html, last_updated
+        except Exception as e:
+            logger.error(f"Error updating recommendation tables: {str(e)}", exc_info=True)
+            return [], [], "direction-indicator neutral", "Neutral", "50", "50", "", ""
     
     @app.callback(
         [
@@ -442,6 +568,7 @@ def register_recommendation_callbacks(app):
         """Update contract details when a recommendation is selected."""
         ctx = dash.callback_context
         trigger = ctx.triggered[0]['prop_id'] if ctx.triggered else ""
+        logger.debug(f"update_contract_details triggered by: {trigger}")
         
         default_values = ["", "", "", "", "", "", "", "", ""]
         
@@ -450,6 +577,7 @@ def register_recommendation_callbacks(app):
                 row = call_active_cell['row']
                 if row < len(call_data):
                     contract = call_data[row]
+                    logger.debug(f"Selected call contract: {contract.get('symbol', '')}")
                     return (
                         contract.get("symbol", ""),
                         "CALL",
@@ -466,6 +594,7 @@ def register_recommendation_callbacks(app):
                 row = put_active_cell['row']
                 if row < len(put_data):
                     contract = put_data[row]
+                    logger.debug(f"Selected put contract: {contract.get('symbol', '')}")
                     return (
                         contract.get("symbol", ""),
                         "PUT",
