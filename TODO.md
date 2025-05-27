@@ -35,6 +35,7 @@
 - [x] Create missing options_utils.py module with required functions
 - [x] Implement format_options_chain_data function in options_utils.py
 - [x] Implement calculate_implied_volatility function in options_utils.py
+- [x] Add scipy dependency to requirements.txt for Black-Scholes calculations
 
 ## Medium Priority
 - [x] Update any dependent code to handle multi-timeframe data
@@ -48,6 +49,7 @@
 - [ ] Add more detailed logging for streaming data processing
 - [ ] Add unit tests for the newly created options_utils.py functions
 - [ ] Ensure all modules have proper docstrings and comments for maintainability
+- [ ] Verify all required dependencies are properly documented in requirements.txt
 
 ## Low Priority
 - [ ] Optimize performance for multi-timeframe calculations
@@ -70,6 +72,7 @@
 - Improved error handling depends on comprehensive understanding of data flow and failure points
 - Direct integration of enhanced modules depends on maintaining API compatibility
 - dashboard_app_streaming.py depends on options_utils.py module and its functions
+- options_utils.py depends on scipy package for Black-Scholes calculations
 
 ## Status Legend
 - [x] Completed

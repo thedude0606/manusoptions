@@ -39,6 +39,7 @@
 - Fixed ModuleNotFoundError in dashboard_app_streaming.py by creating missing options_utils.py module
 - Implemented missing functions (format_options_chain_data, calculate_implied_volatility) in options_utils.py
 - Properly imported existing functions (normalize_contract_key, split_options_by_type) from their respective modules
+- Added scipy dependency to requirements.txt for Black-Scholes calculations in options_utils.py
 
 ## Completed Tasks
 - Repository analysis and code review
@@ -91,6 +92,7 @@
 - Implemented format_options_chain_data function for options data formatting
 - Implemented calculate_implied_volatility function using Black-Scholes model
 - Added proper imports for existing functions from their respective modules
+- Added scipy dependency to requirements.txt for Black-Scholes model calculations
 
 ## In Progress
 - Testing real-time updates with various symbols
@@ -115,6 +117,7 @@
 - Resolved: Recommendations tab not responding to button clicks despite callback registration
 - Resolved: Dash API deprecation error by updating app.run_server to app.run
 - Resolved: ModuleNotFoundError in dashboard_app_streaming.py by creating missing options_utils.py module
+- Resolved: Missing scipy dependency for Black-Scholes calculations in options_utils.py
 
 ## Next Steps
 1. Test real-time updates with various symbols
@@ -130,3 +133,4 @@
 11. Add more detailed logging for streaming data processing
 12. Ensure all modules have proper docstrings and comments for maintainability
 13. Consider adding unit tests for the newly created options_utils.py functions
+14. Verify all required dependencies are properly documented in requirements.txt
