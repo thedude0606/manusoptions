@@ -95,6 +95,7 @@
 - Added proper imports for existing functions from their respective modules
 - Added scipy dependency to requirements.txt for Black-Scholes model calculations
 - Fixed incorrect import of StreamingFieldMapper in dashboard_app_streaming.py by updating it to import from dashboard_utils.streaming_field_mapper instead of dashboard_utils.streaming_manager
+- Fixed ModuleNotFoundError in dashboard_app_streaming.py by correcting the import path for register_recommendation_callbacks from dashboard_utils.recommendation_callbacks to dashboard_utils.recommendation_tab
 
 ## In Progress
 - Testing real-time updates with various symbols

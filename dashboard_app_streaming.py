@@ -26,7 +26,7 @@ from dashboard_utils.options_utils import (
 )
 from dashboard_utils.streaming_manager import StreamingManager
 from dashboard_utils.streaming_field_mapper import StreamingFieldMapper
-from dashboard_utils.recommendation_callbacks import register_recommendation_callbacks
+from dashboard_utils.recommendation_tab import register_recommendation_callbacks
 from dashboard_utils.chart_utils import create_stock_chart, create_option_chart
 from dashboard_utils.layout_utils import create_app_layout
 from dashboard_utils.data_utils import fetch_stock_data, fetch_options_chain

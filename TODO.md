@@ -37,6 +37,7 @@
 - [x] Implement calculate_implied_volatility function in options_utils.py
 - [x] Add scipy dependency to requirements.txt for Black-Scholes calculations
 - [x] Fix ImportError for StreamingFieldMapper in dashboard_app_streaming.py
+- [x] Fix ModuleNotFoundError for recommendation_callbacks in dashboard_app_streaming.py
 
 ## Medium Priority
 - [x] Update any dependent code to handle multi-timeframe data

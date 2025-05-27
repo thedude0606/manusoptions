@@ -296,7 +296,31 @@ Create a dedicated options_utils.py module to consolidate options-related utilit
 ### Rationale
 - The dashboard_app_streaming.py file was attempting to import from a non-existent module (dashboard_utils.options_utils)
 - Some functions were already implemented in other modules (normalize_contract_key in contract_utils.py, split_options_by_type in options_chain_utils.py)
-- Other functions (format_options_chain_data, calculate_implied_volatility) were missing entirely
+- Other functions (format_options_chain_data, calculate_implied_volatility) needed to be implemented
+- Consolidating these functions in a dedicated module improves code organization and maintainability
+
+## Import Path Correction for Recommendation Callbacks
+
+### Decision
+Correct the import path for register_recommendation_callbacks in dashboard_app_streaming.py.
+
+### Rationale
+- The dashboard_app_streaming.py file was attempting to import register_recommendation_callbacks from a non-existent module (dashboard_utils.recommendation_callbacks)
+- Investigation revealed that the function is actually defined in dashboard_utils.recommendation_tab
+- The incorrect import path was causing a ModuleNotFoundError when running the application
+- Correcting the import path ensures the application can run without errors
+
+### Implementation Details
+- Modified dashboard_app_streaming.py to import register_recommendation_callbacks from dashboard_utils.recommendation_tab instead of dashboard_utils.recommendation_callbacks
+- Verified that the function exists in recommendation_tab.py and has the expected signature
+- Updated documentation to reflect the change and prevent future confusion
+
+### Technical Considerations
+- The fix is minimally invasive, only changing one import statement
+- No changes to the function call or its parameters were required
+- The change maintains compatibility with the existing codebase
+- This fix addresses the root cause of the ModuleNotFoundError
+- The correction aligns with the existing architecture where recommendation-related functionality is in recommendation_tab.pyions_chain_data, calculate_implied_volatility) were missing entirely
 - A dedicated module improves code organization and maintainability by grouping related functionality
 
 ### Implementation Details
