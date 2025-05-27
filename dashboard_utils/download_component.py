@@ -53,7 +53,7 @@ def register_download_callback(app, id_prefix="file-download"):
     @app.callback(
         Output(f"{id_prefix}-link", "href"),
         Output(f"{id_prefix}-link", "download"),
-        Output(f"{id_prefix}-link", "children"),  # Dummy output to trigger click
+        Output(f"{id_prefix}-link", "children", allow_duplicate=True),  # Added allow_duplicate=True
         Input(f"{id_prefix}-data", "data"),
         prevent_initial_call=True
     )
@@ -100,6 +100,6 @@ def register_download_click_callback(app, id_prefix="file-download"):
             return "";
         }
         """,
-        Output(f"{id_prefix}-link", "children"),
+        Output(f"{id_prefix}-link", "children", allow_duplicate=True),  # Added allow_duplicate=True
         Input(f"{id_prefix}-link", "children")
     )
