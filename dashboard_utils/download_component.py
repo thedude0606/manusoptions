@@ -101,5 +101,6 @@ def register_download_click_callback(app, id_prefix="file-download"):
         }
         """,
         Output(f"{id_prefix}-link", "children", allow_duplicate=True),  # Added allow_duplicate=True
-        Input(f"{id_prefix}-link", "children")
+        Input(f"{id_prefix}-link", "children"),
+        prevent_initial_call=True  # Added prevent_initial_call=True to fix DuplicateCallback error
     )

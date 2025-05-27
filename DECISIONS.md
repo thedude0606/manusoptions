@@ -51,9 +51,10 @@
 
 3. **Duplicate Callback Outputs Handling**
    - Used `allow_duplicate=True` parameter for download link children outputs
+   - Added `prevent_initial_call=True` parameter to all callbacks with allow_duplicate=True
    - Enables multiple callbacks to target the same output property when necessary
    - Implemented in download_component.py for all download link children outputs
-   - Rationale: Allows both the download preparation callback and clientside click callback to modify the same output property without conflicts
+   - Rationale: Allows both the download preparation callback and clientside click callback to modify the same output property without conflicts, while prevent_initial_call=True ensures proper callback execution order
 
 4. **Consistent Button Styling**
    - Applied consistent styling to all export buttons
