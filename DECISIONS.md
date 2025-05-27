@@ -287,3 +287,30 @@ Update the Dash application to use the current API method app.run() instead of t
 - The change maintains compatibility with the current Dash API
 - This update ensures the application can be launched and used as expected
 - The fix addresses the root cause of the ObsoleteAttributeException error
+
+## Creation of Options Utils Module
+
+### Decision
+Create a dedicated options_utils.py module to consolidate options-related utility functions and resolve ModuleNotFoundError.
+
+### Rationale
+- The dashboard_app_streaming.py file was attempting to import from a non-existent module (dashboard_utils.options_utils)
+- Some functions were already implemented in other modules (normalize_contract_key in contract_utils.py, split_options_by_type in options_chain_utils.py)
+- Other functions (format_options_chain_data, calculate_implied_volatility) were missing entirely
+- A dedicated module improves code organization and maintainability by grouping related functionality
+
+### Implementation Details
+- Created a new options_utils.py file in the dashboard_utils directory
+- Implemented format_options_chain_data function for options data formatting and preparation
+- Implemented calculate_implied_volatility function using the Black-Scholes model
+- Added proper imports for existing functions from their respective modules
+- Added comprehensive error handling and logging throughout the module
+- Included detailed docstrings and comments for maintainability
+
+### Technical Considerations
+- The new module maintains compatibility with existing code by importing and re-exporting functions
+- The implementation follows the project's existing patterns and coding standards
+- The Black-Scholes model implementation for implied volatility calculation is efficient and accurate
+- Comprehensive error handling prevents cascading failures
+- Detailed logging helps diagnose any issues in production
+- The module is designed for extensibility, allowing for additional options-related functions to be added in the future

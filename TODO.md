@@ -31,6 +31,10 @@
 - [x] Update options_chain_utils.py with robust error handling
 - [x] Modify dashboard_app.py to use enhanced functions with proper fallback mechanisms
 - [x] Fix Dash API deprecation error by updating app.run_server to app.run
+- [x] Fix ModuleNotFoundError in dashboard_app_streaming.py
+- [x] Create missing options_utils.py module with required functions
+- [x] Implement format_options_chain_data function in options_utils.py
+- [x] Implement calculate_implied_volatility function in options_utils.py
 
 ## Medium Priority
 - [x] Update any dependent code to handle multi-timeframe data
@@ -42,6 +46,8 @@
 - [ ] Add comprehensive testing for the Recommendations tab functionality
 - [ ] Implement additional debugging tools for easier troubleshooting
 - [ ] Add more detailed logging for streaming data processing
+- [ ] Add unit tests for the newly created options_utils.py functions
+- [ ] Ensure all modules have proper docstrings and comments for maintainability
 
 ## Low Priority
 - [ ] Optimize performance for multi-timeframe calculations
@@ -63,6 +69,7 @@
 - Enhanced debug modules depend on core functionality being correctly implemented
 - Improved error handling depends on comprehensive understanding of data flow and failure points
 - Direct integration of enhanced modules depends on maintaining API compatibility
+- dashboard_app_streaming.py depends on options_utils.py module and its functions
 
 ## Status Legend
 - [x] Completed
