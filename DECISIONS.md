@@ -264,3 +264,33 @@ Directly integrate the enhanced debug modules into the main application code rat
 - Detailed logging provides better visibility into the data flow
 - The integration is non-disruptive to existing functionality
 - The approach addresses the root cause of the disappearing options chain issue
+
+## Streaming Data Table Preservation Fix
+
+### Decision
+Implement a robust solution to prevent the options chain data table from disappearing after streaming updates.
+
+### Rationale
+- Users reported that the options chain data table loads initially but disappears after about 5 seconds
+- Investigation revealed that when streaming data updates occur, the callback sometimes returns empty lists
+- Empty lists cause the Dash DataTable component to unmount and disappear from the UI
+- A solution is needed to ensure the table remains visible even when streaming updates occur
+
+### Implementation Details
+- Added the current table data as State inputs to the update_options_tables callback:
+  1. Added State("calls-table", "data") for current calls table data
+  2. Added State("puts-table", "data") for current puts table data
+- Modified the callback to preserve the current table data when no new data is available:
+  1. Return current_calls_data or [] when options DataFrame is empty
+  2. Return current_puts_data or [] when options DataFrame is empty
+  3. Return current table data when split_options_by_type returns no data
+  4. Return current table data when exceptions occur during processing
+- Added fallback logic to prevent returning empty lists in all error cases
+
+### Technical Considerations
+- The solution is minimally invasive, only adding State parameters and conditional returns
+- It maintains compatibility with the existing code structure and data flow
+- The approach ensures that the table always has data to display, even if it's just the previous data
+- This prevents the table from disappearing during streaming updates
+- The fix improves user experience by maintaining UI stability during real-time data updates
+- Enhanced error handling and logging help diagnose any remaining issues
