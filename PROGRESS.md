@@ -58,6 +58,7 @@ The Excel export functionality has been implemented with the following component
 - Need to validate export functionality with large datasets
 - Need to ensure proper error handling for all edge cases
 - Need to test with various browsers to ensure download functionality works consistently
+- ~~Duplicate callback outputs errors for download links~~ (Fixed on May 27, 2025)
 
 ### Next Steps
 

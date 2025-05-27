@@ -9,6 +9,7 @@
 - [x] Create download component for handling file downloads
 - [x] Create export button components and callbacks
 - [x] Integrate export buttons into dashboard layout
+- [x] Fix duplicate callback outputs errors for download links
 - [ ] Push code changes to GitHub repository
 - [ ] Test export functionality for each tab
 - [ ] Validate exports with large datasets

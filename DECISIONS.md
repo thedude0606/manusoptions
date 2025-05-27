@@ -49,7 +49,13 @@
    - Avoids need for user to click multiple times
    - Rationale: Provides a smoother user experience
 
-3. **Consistent Button Styling**
+3. **Duplicate Callback Outputs Handling**
+   - Used `allow_duplicate=True` parameter for download link children outputs
+   - Enables multiple callbacks to target the same output property when necessary
+   - Implemented in download_component.py for all download link children outputs
+   - Rationale: Allows both the download preparation callback and clientside click callback to modify the same output property without conflicts
+
+4. **Consistent Button Styling**
    - Applied consistent styling to all export buttons
    - Used green color to indicate positive action
    - Rationale: Improves UI consistency and user recognition
