@@ -30,6 +30,7 @@
 - [x] Directly integrate enhanced debug modules into main application code
 - [x] Update options_chain_utils.py with robust error handling
 - [x] Modify dashboard_app.py to use enhanced functions with proper fallback mechanisms
+- [x] Fix Dash API deprecation error by updating app.run_server to app.run
 
 ## Medium Priority
 - [x] Update any dependent code to handle multi-timeframe data

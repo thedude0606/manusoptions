@@ -35,6 +35,7 @@
 - Updated options_chain_utils.py with robust error handling and state preservation
 - Modified dashboard_app.py to use enhanced functions with proper fallback mechanisms
 - Added comprehensive try/except blocks to prevent cascading failures
+- Fixed Dash API deprecation error by updating app.run_server to app.run
 
 ## Completed Tasks
 - Repository analysis and code review
@@ -82,6 +83,7 @@
 - Replaced original functions in options_chain_utils.py with enhanced versions
 - Updated dashboard_app.py to use robust error handling and state preservation
 - Added comprehensive try/except blocks to prevent cascading failures
+- Fixed Dash API deprecation error by updating app.run_server to app.run in dashboard_app.py
 
 ## In Progress
 - Testing real-time updates with various symbols
@@ -103,6 +105,7 @@
 - Resolved: Recommendations tab button not working due to missing button Input in the callback
 - Resolved: Options chain disappearing after ~5 seconds due to non-numeric field ID warnings and state loss
 - Resolved: Recommendations tab not responding to button clicks despite callback registration
+- Resolved: Dash API deprecation error by updating app.run_server to app.run
 
 ## Next Steps
 1. Test real-time updates with various symbols

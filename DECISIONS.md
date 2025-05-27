@@ -265,32 +265,25 @@ Directly integrate the enhanced debug modules into the main application code rat
 - The integration is non-disruptive to existing functionality
 - The approach addresses the root cause of the disappearing options chain issue
 
-## Streaming Data Table Preservation Fix
+## Dash API Update Fix
 
 ### Decision
-Implement a robust solution to prevent the options chain data table from disappearing after streaming updates.
+Update the Dash application to use the current API method app.run() instead of the deprecated app.run_server().
 
 ### Rationale
-- Users reported that the options chain data table loads initially but disappears after about 5 seconds
-- Investigation revealed that when streaming data updates occur, the callback sometimes returns empty lists
-- Empty lists cause the Dash DataTable component to unmount and disappear from the UI
-- A solution is needed to ensure the table remains visible even when streaming updates occur
+- The application was failing to start with an ObsoleteAttributeException error
+- The error message indicated that app.run_server has been replaced by app.run
+- This change is necessary to maintain compatibility with the current version of Dash
+- The fix ensures the application can be launched and used as expected
 
 ### Implementation Details
-- Added the current table data as State inputs to the update_options_tables callback:
-  1. Added State("calls-table", "data") for current calls table data
-  2. Added State("puts-table", "data") for current puts table data
-- Modified the callback to preserve the current table data when no new data is available:
-  1. Return current_calls_data or [] when options DataFrame is empty
-  2. Return current_puts_data or [] when options DataFrame is empty
-  3. Return current table data when split_options_by_type returns no data
-  4. Return current table data when exceptions occur during processing
-- Added fallback logic to prevent returning empty lists in all error cases
+- Modified dashboard_app.py to replace app.run_server(debug=True, host="0.0.0.0") with app.run(debug=True, host="0.0.0.0")
+- Tested the application to confirm it launches successfully with the updated API call
+- Updated documentation to reflect the API change and its rationale
 
 ### Technical Considerations
-- The solution is minimally invasive, only adding State parameters and conditional returns
-- It maintains compatibility with the existing code structure and data flow
-- The approach ensures that the table always has data to display, even if it's just the previous data
-- This prevents the table from disappearing during streaming updates
-- The fix improves user experience by maintaining UI stability during real-time data updates
-- Enhanced error handling and logging help diagnose any remaining issues
+- The fix is minimally invasive, only changing one line of code
+- The parameters (debug=True, host="0.0.0.0") remain the same
+- The change maintains compatibility with the current Dash API
+- This update ensures the application can be launched and used as expected
+- The fix addresses the root cause of the ObsoleteAttributeException error
