@@ -1,336 +1,663 @@
-import os
-import sys
-import json
-import time
-import datetime
-import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
 import dash
-from dash import dcc, html, dash_table, callback_context
+from dash import dcc, html, dash_table
 from dash.dependencies import Input, Output, State
-from dash.exceptions import PreventUpdate
-import dash_bootstrap_components as dbc
+import pandas as pd
+import datetime
 import logging
-from logging.handlers import RotatingFileHandler
-
-# Add the project root to the Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Import utility modules
-from dashboard_utils.options_utils import (
-    format_options_chain_data, 
-    split_options_by_type,
-    calculate_implied_volatility,
-    normalize_contract_key
-)
+import schwabdev
+import json
+import os
+from config import APP_KEY, APP_SECRET, CALLBACK_URL, TOKEN_FILE_PATH
+from dashboard_utils.data_fetchers import get_minute_data, get_technical_indicators, get_options_chain_data, get_option_contract_keys
+from dashboard_utils.options_chain_utils import split_options_by_type
+from dashboard_utils.recommendation_tab import register_recommendation_callbacks
 from dashboard_utils.streaming_manager import StreamingManager
 from dashboard_utils.streaming_field_mapper import StreamingFieldMapper
-from dashboard_utils.recommendation_tab import register_recommendation_callbacks
-from dashboard_utils.chart_utils import create_stock_chart, create_option_chart
-from dashboard_utils.layout_utils import create_app_layout
-from dashboard_utils.data_utils import fetch_stock_data, fetch_options_chain
-from dashboard_utils.auth_utils import check_auth_status, get_auth_url
+from dashboard_utils.contract_utils import normalize_contract_key
 
 # Configure logging
-log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
-os.makedirs(log_dir, exist_ok=True)
-
-# Set up the main application logger
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 app_logger = logging.getLogger('dashboard_app')
-app_logger.setLevel(logging.INFO)
 
-# Create a rotating file handler
-log_file = os.path.join(log_dir, 'dashboard_app.log')
-file_handler = RotatingFileHandler(log_file, maxBytes=10*1024*1024, backupCount=5)
-file_handler.setLevel(logging.INFO)
+# Initialize Dash app
+app = dash.Dash(__name__, suppress_callback_exceptions=True)
+app.title = "Manus Options Dashboard"
 
-# Create a console handler
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-
-# Create a formatter and add it to the handlers
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-file_handler.setFormatter(formatter)
-console_handler.setFormatter(formatter)
-
-# Add the handlers to the logger
-app_logger.addHandler(file_handler)
-app_logger.addHandler(console_handler)
-
-# Initialize the Dash app
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-app.title = 'Options Dashboard'
-
-# Create a client getter function for the StreamingManager
+# Initialize Schwab client getter function
 def get_schwab_client():
     try:
-        import schwabdev
-        client = schwabdev.Client()
-        if client.is_authenticated():
-            app_logger.info("Schwab client authenticated")
-            return client
-        else:
-            app_logger.warning("Schwab client not authenticated")
-            return None
+        client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file=TOKEN_FILE_PATH, capture_callback=False)
+        return client
     except Exception as e:
-        app_logger.error(f"Error creating Schwab client: {e}")
+        app_logger.error(f"Error initializing Schwab client: {e}", exc_info=True)
         return None
 
-# Create an account ID getter function for the StreamingManager
+# Initialize account ID getter function
 def get_account_id():
     try:
-        import schwabdev
-        client = schwabdev.Client()
-        if client.is_authenticated():
-            accounts = client.accounts()
-            if accounts and len(accounts) > 0:
-                account_id = accounts[0].get('accountId')
-                app_logger.info(f"Using account ID: {account_id}")
-                return account_id
-            else:
-                app_logger.warning("No accounts found")
-                return None
-        else:
-            app_logger.warning("Schwab client not authenticated")
+        client = get_schwab_client()
+        if not client:
             return None
+        
+        response = client.accounts()
+        if not response.ok:
+            app_logger.error(f"Error fetching accounts: {response.status_code} - {response.text}")
+            return None
+        
+        accounts = response.json()
+        if not accounts:
+            app_logger.error("No accounts found")
+            return None
+        
+        # Use the first account ID
+        account_id = accounts[0].get("accountId")
+        return account_id
     except Exception as e:
-        app_logger.error(f"Error getting account ID: {e}")
+        app_logger.error(f"Error getting account ID: {e}", exc_info=True)
         return None
 
-# Initialize the StreamingManager
+# Initialize StreamingManager
 streaming_manager = StreamingManager(get_schwab_client, get_account_id)
 
-# Create the app layout
-app.layout = create_app_layout()
+# Define app layout
+app.layout = html.Div([
+    # Header
+    html.H1("Manus Options Dashboard", style={'textAlign': 'center'}),
+    
+    # Symbol input and refresh button
+    html.Div([
+        html.Label("Symbol:"),
+        dcc.Input(id="symbol-input", type="text", value="AAPL", style={'marginRight': '10px'}),
+        html.Button("Refresh Data", id="refresh-button", n_clicks=0)
+    ], style={'margin': '10px 0px'}),
+    
+    # Status message
+    html.Div(id="status-message", style={'margin': '10px 0px', 'color': 'blue'}),
+    
+    # Error messages
+    html.Div(id="error-messages", style={'margin': '10px 0px', 'color': 'red'}),
+    
+    # Tabs for different data views
+    dcc.Tabs([
+        # Minute Data Tab
+        dcc.Tab(label="Minute Data", children=[
+            html.Div([
+                # Minute data table
+                dash_table.DataTable(
+                    id="minute-data-table",
+                    page_size=10,
+                    style_table={'overflowX': 'auto'},
+                    style_cell={
+                        'textAlign': 'left',
+                        'padding': '5px'
+                    },
+                    style_header={
+                        'backgroundColor': 'rgb(230, 230, 230)',
+                        'fontWeight': 'bold'
+                    }
+                )
+            ])
+        ]),
+        
+        # Technical Indicators Tab
+        dcc.Tab(label="Technical Indicators", children=[
+            html.Div([
+                # Technical indicators table
+                dash_table.DataTable(
+                    id="tech-indicators-table",
+                    page_size=10,
+                    style_table={'overflowX': 'auto'},
+                    style_cell={
+                        'textAlign': 'left',
+                        'padding': '5px'
+                    },
+                    style_header={
+                        'backgroundColor': 'rgb(230, 230, 230)',
+                        'fontWeight': 'bold'
+                    }
+                )
+            ])
+        ]),
+        
+        # Options Chain Tab
+        dcc.Tab(label="Options Chain", children=[
+            html.Div([
+                # Options chain controls
+                html.Div([
+                    # Expiration date selector
+                    html.Div([
+                        html.Label("Expiration Date:"),
+                        dcc.Dropdown(id="expiration-date-dropdown")
+                    ], style={'width': '200px', 'display': 'inline-block', 'margin-right': '20px'}),
+                    
+                    # Option type selector
+                    html.Div([
+                        html.Label("Option Type:"),
+                        dcc.RadioItems(
+                            id="option-type-radio",
+                            options=[
+                                {'label': 'All', 'value': 'ALL'},
+                                {'label': 'Calls', 'value': 'CALL'},
+                                {'label': 'Puts', 'value': 'PUT'}
+                            ],
+                            value='ALL',
+                            inline=True
+                        )
+                    ], style={'display': 'inline-block', 'margin-right': '20px'}),
+                    
+                    # Streaming toggle
+                    html.Div([
+                        html.Label("Real-time Updates:"),
+                        dcc.RadioItems(
+                            id="streaming-toggle",
+                            options=[
+                                {'label': 'On', 'value': 'ON'},
+                                {'label': 'Off', 'value': 'OFF'}
+                            ],
+                            value='ON',
+                            inline=True
+                        )
+                    ], style={'display': 'inline-block'})
+                ], style={'margin': '10px 0px'}),
+                
+                # Streaming status
+                html.Div(id="streaming-status", style={'margin': '10px 0px', 'fontStyle': 'italic'}),
+                
+                # Options tables
+                html.Div([
+                    # Calls table
+                    html.Div([
+                        html.H3("Calls"),
+                        dash_table.DataTable(
+                            id="calls-table",
+                            page_size=10,
+                            style_table={'overflowX': 'auto'},
+                            style_cell={
+                                'textAlign': 'left',
+                                'padding': '5px'
+                            },
+                            style_header={
+                                'backgroundColor': 'rgb(230, 230, 230)',
+                                'fontWeight': 'bold'
+                            }
+                        )
+                    ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top'}),
+                    
+                    # Puts table
+                    html.Div([
+                        html.H3("Puts"),
+                        dash_table.DataTable(
+                            id="puts-table",
+                            page_size=10,
+                            style_table={'overflowX': 'auto'},
+                            style_cell={
+                                'textAlign': 'left',
+                                'padding': '5px'
+                            },
+                            style_header={
+                                'backgroundColor': 'rgb(230, 230, 230)',
+                                'fontWeight': 'bold'
+                            }
+                        )
+                    ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'marginLeft': '4%'})
+                ])
+            ])
+        ]),
+        
+        # Recommendations Tab
+        dcc.Tab(label="Recommendations", children=[
+            html.Div([
+                # Recommendations controls
+                html.Div([
+                    html.Button("Generate Recommendations", id="generate-recommendations-button", n_clicks=0)
+                ], style={'margin': '10px 0px'}),
+                
+                # Recommendations table
+                dash_table.DataTable(
+                    id="recommendations-table",
+                    page_size=10,
+                    style_table={'overflowX': 'auto'},
+                    style_cell={
+                        'textAlign': 'left',
+                        'padding': '5px'
+                    },
+                    style_header={
+                        'backgroundColor': 'rgb(230, 230, 230)',
+                        'fontWeight': 'bold'
+                    }
+                )
+            ])
+        ])
+    ]),
+    
+    # Hidden data stores
+    dcc.Store(id="minute-data-store"),
+    dcc.Store(id="tech-indicators-store"),
+    dcc.Store(id="options-chain-store"),
+    dcc.Store(id="selected-symbol-store"),
+    dcc.Store(id="error-store"),
+    dcc.Store(id="streaming-options-store"),
+    dcc.Store(id="last-valid-options-store"),  # New store to preserve last valid options data
+    dcc.Interval(id="update-interval", interval=60000, n_intervals=0),
+    dcc.Interval(id="streaming-update-interval", interval=1000, n_intervals=0, disabled=False)
+])
 
-# Register callbacks
+# Refresh data callback
 @app.callback(
-    [Output('options-chain-calls', 'data'),
-     Output('options-chain-puts', 'data'),
-     Output('options-expiration-date', 'options'),
-     Output('options-expiration-date', 'value'),
-     Output('underlying-price', 'children'),
-     Output('last-valid-options-store', 'data')],
-    [Input('refresh-options-button', 'n_clicks'),
-     Input('symbol-input', 'value')],
-    [State('options-expiration-date', 'value'),
-     State('option-type-dropdown', 'value'),
-     State('last-valid-options-store', 'data')]
-)
-def refresh_data(n_clicks, symbol, expiration_date, option_type, last_valid_options):
-    app_logger.info(f"refresh_data called with symbol: {symbol}, expiration_date: {expiration_date}, option_type: {option_type}")
-    
-    if not symbol:
-        app_logger.warning("No symbol provided")
-        return [], [], [], None, "Underlying Price: N/A", None
-    
-    try:
-        # Fetch options chain data
-        options_data = fetch_options_chain(symbol)
-        
-        if not options_data:
-            app_logger.warning(f"No options data returned for symbol: {symbol}")
-            return [], [], [], None, "Underlying Price: N/A", last_valid_options
-        
-        # Process options chain data
-        options_df, expiration_dates, underlying_price = format_options_chain_data(options_data)
-        
-        if options_df.empty:
-            app_logger.warning(f"Empty options DataFrame for symbol: {symbol}")
-            return [], [], [], None, "Underlying Price: N/A", last_valid_options
-        
-        # Create expiration date dropdown options
-        expiration_options = [{'label': date, 'value': date} for date in expiration_dates]
-        
-        # Set default expiration date if not already set
-        if not expiration_date or expiration_date not in expiration_dates:
-            expiration_date = expiration_dates[0] if expiration_dates else None
-        
-        # Split options by type
-        calls_data, puts_data = split_options_by_type(options_df, expiration_date, option_type)
-        
-        # Subscribe to streaming data for all options
-        if streaming_manager and not streaming_manager.is_running:
-            app_logger.info("Starting streaming manager")
-            option_keys = options_df['symbol'].tolist()
-            streaming_manager.start(option_keys)
-        
-        # Store the valid options data for future reference
-        valid_options = {
-            "options": options_df.to_dict('records'),
-            "expiration_dates": expiration_dates,
-            "underlying_price": underlying_price,
-            "symbol": symbol
-        }
-        
-        return calls_data, puts_data, expiration_options, expiration_date, f"Underlying Price: ${underlying_price:.2f}", valid_options
-    
-    except Exception as e:
-        app_logger.error(f"Error in refresh_data: {e}", exc_info=True)
-        return [], [], [], None, "Underlying Price: N/A", last_valid_options
-
-@app.callback(
-    [Output('options-chain-calls', 'data', allow_duplicate=True),
-     Output('options-chain-puts', 'data', allow_duplicate=True)],
-    [Input('streaming-data-store', 'data')],
-    [State('options-chain-calls', 'data'),
-     State('options-chain-puts', 'data'),
-     State('options-expiration-date', 'value'),
-     State('option-type-dropdown', 'value'),
-     State('last-valid-options-store', 'data')],
+    [
+        Output("minute-data-store", "data"),
+        Output("tech-indicators-store", "data"),
+        Output("options-chain-store", "data"),
+        Output("selected-symbol-store", "data"),
+        Output("expiration-date-dropdown", "options"),
+        Output("expiration-date-dropdown", "value"),
+        Output("status-message", "children"),
+        Output("error-store", "data"),
+        Output("last-valid-options-store", "data")  # Add output for last valid options store
+    ],
+    [
+        Input("refresh-button", "n_clicks")
+    ],
+    [
+        State("symbol-input", "value")
+    ],
     prevent_initial_call=True
 )
-def update_options_tables(streaming_data, calls_data, puts_data, expiration_date, option_type, last_valid_options):
-    app_logger.info("update_options_tables called with streaming data")
+def refresh_data(n_clicks, symbol):
+    """Refreshes all data for the given symbol."""
+    if not n_clicks or not symbol:
+        return None, None, None, None, [], None, "", None, None
     
-    if not streaming_data or not streaming_data.get('valid', False):
-        app_logger.warning("Invalid or empty streaming data")
-        return calls_data, puts_data
+    symbol = symbol.upper()
+    app_logger.info(f"Refreshing data for {symbol}")
     
     try:
-        # Get the streaming updates
-        updates = streaming_data.get('updates', {})
-        if not updates:
-            app_logger.warning("No updates in streaming data")
-            return calls_data, puts_data
+        # Initialize Schwab client with consistent token file path
+        client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file=TOKEN_FILE_PATH, capture_callback=False)
         
-        # Combine calls and puts data
-        all_options = calls_data + puts_data
-        if not all_options:
-            app_logger.warning("No options data to update")
+        # Fetch minute data
+        minute_data, error = get_minute_data(client, symbol)
+        
+        if error:
+            app_logger.error(f"Error fetching minute data: {error}")
+            return None, None, None, None, [], None, f"Error: {error}", {
+                "source": "Minute Data",
+                "message": error,
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }, None
+        
+        # Calculate technical indicators
+        tech_indicators, error = get_technical_indicators(client, symbol)
+        
+        if error:
+            app_logger.error(f"Error calculating technical indicators: {error}")
+            return {"data": minute_data}, None, None, None, [], None, f"Error: {error}", {
+                "source": "Technical Indicators",
+                "message": error,
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }, None
+        
+        # Fetch options chain
+        options_df, expiration_dates, underlying_price, error = get_options_chain_data(client, symbol)
+        
+        if error:
+            app_logger.error(f"Error fetching options chain: {error}")
+            return {"data": minute_data}, {"data": tech_indicators}, None, None, [], None, f"Error: {error}", {
+                "source": "Options Chain",
+                "message": error,
+                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }, None
+        
+        # Prepare dropdown options
+        dropdown_options = [{"label": date, "value": date} for date in expiration_dates]
+        default_expiration = expiration_dates[0] if expiration_dates else None
+        
+        # Prepare data for the stores
+        minute_data_store = {
+            "data": minute_data,
+            "symbol": symbol,
+            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+        # Prepare technical indicators store with timeframe data structure
+        timeframe_data = {}
+        if tech_indicators:
+            # Group indicators by timeframe
+            df = pd.DataFrame(tech_indicators)
+            if 'timeframe' in df.columns:
+                for timeframe in df['timeframe'].unique():
+                    timeframe_data[timeframe] = df[df['timeframe'] == timeframe].to_dict('records')
             
-            # Try to use last valid options as fallback
-            if last_valid_options and isinstance(last_valid_options, dict) and "options" in last_valid_options:
-                app_logger.info("Using last_valid_options as fallback")
-                options_df = pd.DataFrame(last_valid_options["options"])
-                calls_data, puts_data = split_options_by_type(
-                    options_df, 
-                    expiration_date, 
-                    option_type, 
-                    last_valid_options
-                )
-                return calls_data, puts_data
-            
-            return calls_data, puts_data
+        tech_indicators_store = {
+            "data": tech_indicators,
+            "timeframe_data": timeframe_data,
+            "symbol": symbol,
+            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
         
-        # Convert to DataFrame for easier manipulation
-        options_df = pd.DataFrame(all_options)
+        options_data = {
+            "symbol": symbol,
+            "options": options_df.to_dict("records"),
+            "expiration_dates": expiration_dates,
+            "underlyingPrice": underlying_price,
+            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
         
-        # Add normalized symbol column for matching with streaming data
-        options_df['normalized_symbol'] = options_df['symbol'].apply(normalize_contract_key)
+        # Create selected symbol store
+        selected_symbol_store = {
+            "symbol": symbol,
+            "price": underlying_price,
+            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
         
-        # Create a mapping from normalized symbols to DataFrame indices
-        symbol_to_index = {row['normalized_symbol']: i for i, row in options_df.iterrows()}
+        status_message = f"Data refreshed for {symbol} at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        app_logger.info(status_message)
         
-        # Track how many contracts and fields were updated
-        contracts_updated = 0
-        fields_updated = 0
+        # Also store the options data as the last valid options data
+        last_valid_options_store = options_data.copy()
         
-        # Update the DataFrame with streaming data
-        for contract_key, fields in updates.items():
-            normalized_key = normalize_contract_key(contract_key)
-            
-            if normalized_key in symbol_to_index:
-                idx = symbol_to_index[normalized_key]
-                contracts_updated += 1
-                
-                for field_name, value in fields.items():
-                    # Use the StreamingFieldMapper to map streaming data to DataFrame columns
-                    if field_name != 'key':  # Skip the key field
-                        column_name = StreamingFieldMapper.get_column_name(field_name)
-                        
-                        # Special handling for contractType (C/P to CALL/PUT)
-                        if field_name == 'contractType':
-                            if value == 'C':
-                                value = 'CALL'
-                            elif value == 'P':
-                                value = 'PUT'
-                        
-                        # Update the DataFrame
-                        options_df.at[idx, column_name] = value
-                        fields_updated += 1
-        
-        # Remove the temporary normalized_symbol column
-        options_df = options_df.drop('normalized_symbol', axis=1)
-        
-        app_logger.info(f"Updated {contracts_updated} contracts with {fields_updated} fields")
-        
-        if contracts_updated > 0:
-            # Split the updated DataFrame into calls and puts
-            calls_data, puts_data = split_options_by_type(options_df, expiration_date, option_type)
-        
-        return calls_data, puts_data
+        return minute_data_store, tech_indicators_store, options_data, selected_symbol_store, dropdown_options, default_expiration, status_message, None, last_valid_options_store
     
     except Exception as e:
-        app_logger.error(f"Error in update_options_tables: {e}", exc_info=True)
-        return calls_data, puts_data
+        error_msg = f"Error refreshing data: {str(e)}"
+        app_logger.error(error_msg, exc_info=True)
+        return None, None, None, None, [], None, f"Error: {str(e)}", {
+            "source": "Data Refresh",
+            "message": error_msg,
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }, None
 
+# Minute Data Table Callback
 @app.callback(
-    Output('streaming-data-store', 'data'),
-    [Input('streaming-interval', 'n_intervals')],
-    [State('streaming-toggle', 'value')]
+    Output("minute-data-table", "data"),
+    Output("minute-data-table", "columns"),
+    Input("minute-data-store", "data"),
+    prevent_initial_call=True
 )
-def streaming_data_update(n_intervals, streaming_enabled):
-    app_logger.debug(f"streaming_data_update called with n_intervals: {n_intervals}, streaming_enabled: {streaming_enabled}")
+def update_minute_data_table(minute_data):
+    """Updates the minute data table with the fetched data."""
+    if not minute_data or not minute_data.get("data"):
+        return [], []
     
-    if not streaming_enabled:
-        app_logger.debug("Streaming disabled, not updating")
-        return {'valid': False}
+    data = minute_data["data"]
     
-    if not streaming_manager or not streaming_manager.is_running:
-        app_logger.warning("StreamingManager not running")
-        return {'valid': False}
+    # Define columns
+    columns = [
+        {"name": "Timestamp", "id": "timestamp"},
+        {"name": "Open", "id": "open"},
+        {"name": "High", "id": "high"},
+        {"name": "Low", "id": "low"},
+        {"name": "Close", "id": "close"},
+        {"name": "Volume", "id": "volume"}
+    ]
     
-    try:
-        # Get the latest data from the streaming manager
-        with streaming_manager._lock:
-            latest_data = streaming_manager.latest_data_store.copy()
-        
-        if not latest_data:
-            app_logger.warning("No streaming data available")
-            return {'valid': False}
-        
-        app_logger.info(f"Got streaming data for {len(latest_data)} contracts")
-        
+    return data, columns
+
+# Technical Indicators Table Callback
+@app.callback(
+    Output("tech-indicators-table", "data"),
+    Output("tech-indicators-table", "columns"),
+    Input("tech-indicators-store", "data"),
+    prevent_initial_call=True
+)
+def update_tech_indicators_table(tech_indicators_data):
+    """Updates the technical indicators table with the calculated data."""
+    if not tech_indicators_data or not tech_indicators_data.get("data"):
+        return [], []
+    
+    data = tech_indicators_data["data"]
+    
+    if not data:
+        return [], []
+    
+    # Get column names from the first row
+    first_row = data[0]
+    columns = [{"name": col, "id": col} for col in first_row.keys()]
+    
+    # Ensure timeframe column is first
+    if "timeframe" in first_row:
+        timeframe_col = {"name": "Timeframe", "id": "timeframe"}
+        columns = [timeframe_col] + [col for col in columns if col["id"] != "timeframe"]
+    
+    return data, columns
+
+# Streaming toggle callback
+@app.callback(
+    [
+        Output("streaming-update-interval", "disabled"),
+        Output("streaming-status", "children")
+    ],
+    [
+        Input("streaming-toggle", "value"),
+        Input("options-chain-store", "data")
+    ],
+    prevent_initial_call=True
+)
+def toggle_streaming(streaming_toggle, options_data):
+    """Toggles streaming data updates."""
+    app_logger.info(f"Streaming toggle: {streaming_toggle}")
+    
+    if streaming_toggle == "OFF":
+        # Stop streaming
+        streaming_manager.stop_streaming()
+        return True, "Streaming: Disabled"
+    
+    # Check if we have options data
+    if not options_data or not options_data.get("options"):
+        return True, "Streaming: No options data available"
+    
+    # Get option contract keys
+    options = options_data.get("options", [])
+    option_keys = [option.get("symbol") for option in options if option.get("symbol")]
+    
+    if not option_keys:
+        return True, "Streaming: No option contracts found"
+    
+    # Start streaming
+    success = streaming_manager.start_streaming(option_keys)
+    
+    if success:
+        return False, "Streaming: Enabled - Receiving real-time data"
+    else:
+        return True, "Streaming: Error starting streaming"
+
+# Streaming data update callback
+@app.callback(
+    Output("streaming-options-store", "data"),
+    [
+        Input("streaming-update-interval", "n_intervals"),
+        Input("options-chain-store", "data")  # Add dependency on options chain data
+    ],
+    prevent_initial_call=True
+)
+def update_streaming_data(n_intervals, options_data):
+    """Updates the streaming data store with the latest data."""
+    app_logger.debug(f"Streaming update interval triggered: {n_intervals}")
+    
+    # Defensive check: ensure we have valid options data
+    if not options_data or not options_data.get("options"):
+        app_logger.warning("No options data available for streaming update")
         return {
-            'valid': True,
-            'updates': latest_data,
-            'timestamp': datetime.datetime.now().isoformat()
+            "data": {},
+            "status": {"is_running": False, "status_message": "No options data available"},
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "valid": False  # Flag to indicate this is not valid streaming data
         }
     
+    # Get the latest data from the streaming manager
+    latest_data = streaming_manager.get_latest_data()
+    status = streaming_manager.get_streaming_status()
+    
+    # Log some information about the data
+    data_count = len(latest_data)
+    app_logger.info(f"Received streaming data for {data_count} contracts. Status: {status.get('status_message', 'Unknown')}")
+    
+    if data_count > 0:
+        # Log a sample of the data
+        sample_key = next(iter(latest_data))
+        sample_data = latest_data[sample_key]
+        app_logger.info(f"Sample data for {sample_key}: {sample_data}")
+        
+        # Return the data and status with valid flag
+        return {
+            "data": latest_data,
+            "status": status,
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "valid": True  # Flag to indicate this is valid streaming data
+        }
+    else:
+        # If no streaming data is available, return with valid=False flag
+        app_logger.warning("No streaming data available in this update")
+        return {
+            "data": {},
+            "status": status,
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "valid": False  # Flag to indicate this is not valid streaming data
+        }
+
+# Options Chain Tables Callback (updated to use streaming data when available)
+@app.callback(
+    [
+        Output("calls-table", "data"),
+        Output("puts-table", "data")
+    ],
+    [
+        Input("options-chain-store", "data"),
+        Input("streaming-options-store", "data"),
+        Input("expiration-date-dropdown", "value"),
+        Input("option-type-radio", "value"),
+        Input("streaming-toggle", "value")
+    ],
+    [
+        State("last-valid-options-store", "data")  # Add state for last valid options data
+    ],
+    prevent_initial_call=True
+)
+def update_options_tables(options_data, streaming_data, expiration_date, option_type, streaming_toggle, last_valid_options):
+    """Updates the options chain tables with either fetched data or streaming data."""
+    app_logger.info(f"Update options tables callback triggered: expiration={expiration_date}, option_type={option_type}, streaming={streaming_toggle}")
+    
+    # First, check if we have valid options data
+    if not options_data or not options_data.get("options"):
+        # If no current options data, try to use last valid options data
+        if last_valid_options and last_valid_options.get("options"):
+            app_logger.warning("Using last valid options data as fallback")
+            options_data = last_valid_options
+        else:
+            app_logger.warning("No options data available")
+            return [], []
+    
+    # Use the base options data from the REST API
+    options_df = pd.DataFrame(options_data["options"])
+    
+    # If streaming is enabled and we have valid streaming data, update the options data
+    if streaming_toggle == "ON" and streaming_data and streaming_data.get("data") and streaming_data.get("valid", False):
+        streaming_options = streaming_data.get("data", {})
+        
+        app_logger.info(f"Streaming data available for {len(streaming_options)} contracts")
+        
+        if streaming_options:
+            try:
+                # Create a copy of the options DataFrame to avoid modifying the original
+                options_df_copy = options_df.copy()
+                
+                # Create a normalized symbol column for matching with streaming data
+                options_df_copy['normalized_symbol'] = options_df_copy['symbol'].apply(normalize_contract_key)
+                
+                # Create a mapping from normalized symbol to DataFrame index
+                normalized_symbol_to_index = {}
+                for index, row in options_df_copy.iterrows():
+                    normalized_symbol = row.get('normalized_symbol')
+                    if normalized_symbol:
+                        normalized_symbol_to_index[normalized_symbol] = index
+                
+                # Track how many contracts were updated
+                updated_contracts = 0
+                updated_fields = set()
+                
+                # Update the options data with streaming data
+                for normalized_key, stream_data in streaming_options.items():
+                    if normalized_key in normalized_symbol_to_index:
+                        index = normalized_symbol_to_index[normalized_key]
+                        updated_contracts += 1
+                        
+                        # Use the StreamingFieldMapper to map streaming data to DataFrame columns
+                        for field_name, value in stream_data.items():
+                            if field_name == "key":
+                                continue  # Skip the key field
+                            
+                            # Get the corresponding column name using the mapper
+                            column_name = StreamingFieldMapper.get_column_name(field_name)
+                            
+                            # Update the DataFrame if the column exists
+                            if column_name in options_df_copy.columns:
+                                options_df_copy.at[index, column_name] = value
+                                updated_fields.add(column_name)
+                            else:
+                                # If the column doesn't exist but we have a value, log it for debugging
+                                app_logger.debug(f"Column '{column_name}' not found in options DataFrame for field '{field_name}'")
+                
+                app_logger.info(f"Updated {updated_contracts} contracts with streaming data. Updated fields: {sorted(list(updated_fields))}")
+                
+                # Only use the updated DataFrame if we actually updated some contracts
+                if updated_contracts > 0:
+                    # Remove the temporary normalized_symbol column
+                    if 'normalized_symbol' in options_df_copy.columns:
+                        options_df_copy = options_df_copy.drop(columns=['normalized_symbol'])
+                    
+                    # Use the updated DataFrame
+                    options_df = options_df_copy
+                else:
+                    app_logger.warning("No contracts were updated with streaming data")
+            except Exception as e:
+                app_logger.error(f"Error updating options with streaming data: {e}", exc_info=True)
+                # Continue with the original options data if there's an error
+    else:
+        app_logger.info("Using base options data without streaming updates")
+    
+    # Verify we have data before splitting
+    if options_df.empty:
+        app_logger.warning("Options DataFrame is empty after processing")
+        return [], []
+    
+    try:
+        # Use the utility function to split options by type
+        calls_data, puts_data = split_options_by_type(options_df, expiration_date, option_type)
+        
+        # Verify we have data after splitting
+        if not calls_data and not puts_data:
+            app_logger.warning(f"No options data after splitting by type={option_type} and expiration={expiration_date}")
+            
+            # Try without expiration filter as fallback
+            if expiration_date:
+                app_logger.info("Trying without expiration filter as fallback")
+                calls_data, puts_data = split_options_by_type(options_df, None, option_type)
+        
+        return calls_data, puts_data
     except Exception as e:
-        app_logger.error(f"Error in streaming_data_update: {e}", exc_info=True)
-        return {'valid': False}
+        app_logger.error(f"Error splitting options by type: {e}", exc_info=True)
+        return [], []
 
+# Error message callback
 @app.callback(
-    Output('streaming-status', 'children'),
-    [Input('streaming-status-interval', 'n_intervals')]
+    Output("error-messages", "children"),
+    Input("error-store", "data"),
+    prevent_initial_call=True
 )
-def update_streaming_status(n_intervals):
-    if not streaming_manager:
-        return "Streaming: Not initialized"
+def update_error_messages(error_data):
+    """Updates the error message display."""
+    if not error_data:
+        return ""
     
-    with streaming_manager._lock:
-        status = streaming_manager.status_message
-        error = streaming_manager.error_message
+    source = error_data.get("source", "Unknown")
+    message = error_data.get("message", "An unknown error occurred")
+    timestamp = error_data.get("timestamp", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     
-    if error:
-        return f"Streaming Error: {error}"
-    
-    return status
-
-@app.callback(
-    Output('streaming-interval', 'disabled'),
-    [Input('streaming-toggle', 'value')]
-)
-def toggle_streaming(value):
-    app_logger.info(f"toggle_streaming called with value: {value}")
-    return not value
+    return f"Error in {source} at {timestamp}: {message}"
 
 # Register recommendation callbacks
 register_recommendation_callbacks(app)
 
 # Run the app
-if __name__ == '__main__':
-    app.run(debug=True, host="0.0.0.0")
+if __name__ == "__main__":
+    app.run(debug=True, host="0.0.0.0", port=8050)
