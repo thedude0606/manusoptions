@@ -12,6 +12,8 @@ from config import APP_KEY, APP_SECRET, CALLBACK_URL, TOKEN_FILE_PATH
 from dashboard_utils.data_fetchers import get_minute_data, get_technical_indicators, get_options_chain_data
 from dashboard_utils.options_chain_utils import split_options_by_type, ensure_putcall_field
 from dashboard_utils.recommendation_tab import register_recommendation_callbacks
+from dashboard_utils.download_component import create_download_component, register_download_callback, register_download_click_callback
+from dashboard_utils.export_buttons import create_export_button, register_export_callbacks
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -44,6 +46,9 @@ app.layout = html.Div([
         # Minute Data Tab
         dcc.Tab(label="Minute Data", children=[
             html.Div([
+                # Export button for Minute Data
+                create_export_button("minute-data", "Export Minute Data to Excel"),
+                
                 # Minute data table
                 dash_table.DataTable(
                     id="minute-data-table",
@@ -57,13 +62,19 @@ app.layout = html.Div([
                         'backgroundColor': 'rgb(230, 230, 230)',
                         'fontWeight': 'bold'
                     }
-                )
+                ),
+                
+                # Download component for Minute Data
+                create_download_component("minute-data-download")
             ])
         ]),
         
         # Technical Indicators Tab
         dcc.Tab(label="Technical Indicators", children=[
             html.Div([
+                # Export button for Technical Indicators
+                create_export_button("tech-indicators", "Export Technical Indicators to Excel"),
+                
                 # Technical indicators table
                 dash_table.DataTable(
                     id="tech-indicators-table",
@@ -77,7 +88,10 @@ app.layout = html.Div([
                         'backgroundColor': 'rgb(230, 230, 230)',
                         'fontWeight': 'bold'
                     }
-                )
+                ),
+                
+                # Download component for Technical Indicators
+                create_download_component("tech-indicators-download")
             ])
         ]),
         
@@ -107,6 +121,9 @@ app.layout = html.Div([
                         )
                     ], style={'display': 'inline-block'})
                 ], style={'margin': '10px 0px'}),
+                
+                # Export button for Options Chain
+                create_export_button("options-chain", "Export Options Chain to Excel"),
                 
                 # Options tables
                 html.Div([
@@ -145,7 +162,10 @@ app.layout = html.Div([
                             }
                         )
                     ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'marginLeft': '4%'})
-                ])
+                ]),
+                
+                # Download component for Options Chain
+                create_download_component("options-chain-download")
             ])
         ]),
         
@@ -156,6 +176,9 @@ app.layout = html.Div([
                 html.Div([
                     html.Button("Generate Recommendations", id="generate-recommendations-button", n_clicks=0)
                 ], style={'margin': '10px 0px'}),
+                
+                # Export button for Recommendations
+                create_export_button("recommendations", "Export Recommendations to Excel"),
                 
                 # Recommendations table
                 dash_table.DataTable(
@@ -170,7 +193,10 @@ app.layout = html.Div([
                         'backgroundColor': 'rgb(230, 230, 230)',
                         'fontWeight': 'bold'
                     }
-                )
+                ),
+                
+                # Download component for Recommendations
+                create_download_component("recommendations-download")
             ])
         ])
     ]),
@@ -352,7 +378,7 @@ def update_tech_indicators_table(tech_indicators_data):
     if not tech_indicators_data or not tech_indicators_data.get("data"):
         return [], []
     
-    data = tech_indicators_data["data"]
+    data = tech_indicators_data.get("data", [])
     
     if not data:
         return [], []
@@ -408,52 +434,51 @@ def update_options_tables(options_data, expiration_date, option_type, last_valid
         # Use the enhanced split_options_by_type function with last_valid_options
         calls_data, puts_data = split_options_by_type(
             options_df, 
-            expiration_date, 
-            option_type,
-            last_valid_options
+            expiration_date=expiration_date,
+            option_type=option_type,
+            last_valid_options=last_valid_options
         )
         
-        # Verify we have data after splitting
-        if not calls_data and not puts_data:
-            app_logger.warning(f"No options data after splitting. Expiration: {expiration_date}, Type: {option_type}")
-            
-            # Try again without filtering by expiration date
-            if expiration_date:
-                app_logger.info("Trying again without expiration date filter")
-                calls_data, puts_data = split_options_by_type(
-                    options_df, 
-                    None, 
-                    option_type,
-                    last_valid_options
-                )
-        
-        app_logger.info(f"Returning {len(calls_data)} calls and {len(puts_data)} puts")
         return calls_data, puts_data
-        
+    
     except Exception as e:
         app_logger.error(f"Error in update_options_tables: {str(e)}", exc_info=True)
         return [], []
 
-# Error Messages Callback
+# Error Display Callback
 @app.callback(
     Output("error-messages", "children"),
     Input("error-store", "data"),
     prevent_initial_call=True
 )
-def update_error_messages(error_data):
-    """Updates the error messages display."""
+def display_error(error_data):
+    """Displays error messages from the error store."""
     if not error_data:
         return ""
     
     source = error_data.get("source", "Unknown")
-    message = error_data.get("message", "An error occurred")
-    timestamp = error_data.get("timestamp", "")
+    message = error_data.get("message", "An unknown error occurred")
+    timestamp = error_data.get("timestamp", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     
-    return f"{source} Error ({timestamp}): {message}"
+    return f"Error in {source} at {timestamp}: {message}"
 
 # Register recommendation callbacks
 register_recommendation_callbacks(app)
 
-# Run the app
+# Register download callbacks
+register_download_callback(app, "minute-data-download")
+register_download_callback(app, "tech-indicators-download")
+register_download_callback(app, "options-chain-download")
+register_download_callback(app, "recommendations-download")
+
+# Register download click callbacks
+register_download_click_callback(app, "minute-data-download")
+register_download_click_callback(app, "tech-indicators-download")
+register_download_click_callback(app, "options-chain-download")
+register_download_click_callback(app, "recommendations-download")
+
+# Register export callbacks
+register_export_callbacks(app)
+
 if __name__ == "__main__":
-    app.run_server(debug=True, host="0.0.0.0")
+    app.run_server(debug=True, host='0.0.0.0', port=8050)
