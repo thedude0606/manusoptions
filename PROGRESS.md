@@ -40,6 +40,7 @@
 - Implemented missing functions (format_options_chain_data, calculate_implied_volatility) in options_utils.py
 - Properly imported existing functions (normalize_contract_key, split_options_by_type) from their respective modules
 - Added scipy dependency to requirements.txt for Black-Scholes calculations in options_utils.py
+- Fixed ImportError in dashboard_app_streaming.py by correcting the import of StreamingFieldMapper from dashboard_utils.streaming_field_mapper instead of dashboard_utils.streaming_manager
 
 ## Completed Tasks
 - Repository analysis and code review
@@ -93,6 +94,7 @@
 - Implemented calculate_implied_volatility function using Black-Scholes model
 - Added proper imports for existing functions from their respective modules
 - Added scipy dependency to requirements.txt for Black-Scholes model calculations
+- Fixed incorrect import of StreamingFieldMapper in dashboard_app_streaming.py by updating it to import from dashboard_utils.streaming_field_mapper instead of dashboard_utils.streaming_manager
 
 ## In Progress
 - Testing real-time updates with various symbols
@@ -118,6 +120,7 @@
 - Resolved: Dash API deprecation error by updating app.run_server to app.run
 - Resolved: ModuleNotFoundError in dashboard_app_streaming.py by creating missing options_utils.py module
 - Resolved: Missing scipy dependency for Black-Scholes calculations in options_utils.py
+- Resolved: ImportError in dashboard_app_streaming.py by correcting the import of StreamingFieldMapper
 
 ## Next Steps
 1. Test real-time updates with various symbols
