@@ -481,4 +481,5 @@ register_download_click_callback(app, "recommendations-download")
 register_export_callbacks(app)
 
 if __name__ == "__main__":
-    app.run_server(debug=True, host='0.0.0.0', port=8050)
+    # Updated to use app.run instead of app.run_server for Dash 3.x compatibility
+    app.run(debug=True, host='0.0.0.0', port=8050)
