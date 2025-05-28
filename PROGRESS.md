@@ -1,6 +1,13 @@
 # Progress Report
 
 ## May 28, 2025
+- Fixed options chain streaming update issue
+  - Identified root cause: Missing StreamingFieldMapper.map_streaming_fields method that was being called in the update_options_tables callback
+  - Implemented the missing method to properly map streaming data fields to DataFrame columns
+  - Ensured consistent field mapping between streaming data and options chain DataFrame
+  - Fixed field name mappings for high52Week and low52Week to match the actual DataFrame column names
+  - Implemented map_streaming_fields as the primary method with map_streaming_data_to_dataframe now calling it for backward compatibility
+
 - Fixed missing market direction components in Dash callbacks
   - Identified root cause: Callbacks in recommendation_tab.py reference several market direction components ('market-direction-text', 'bullish-score', 'bearish-score', 'market-signals') that were missing in the main layout
   - Added all missing components to the market direction section in dashboard_app_updated_fixed.py

@@ -6,6 +6,11 @@
 - [x] Add all missing components ('market-direction-text', 'bullish-score', 'bearish-score', 'market-signals') to layout
 - [x] Test application to verify all errors are resolved
 - [x] Update documentation with comprehensive fix details
+- [ ] Fix options chain streaming update issue
+  - [ ] Implement StreamingFieldMapper.map_streaming_fields method
+  - [ ] Ensure proper data mapping between streaming data and DataFrame columns
+  - [ ] Test streaming updates with real-time data
+  - [ ] Document the fix in PROGRESS.md and DECISIONS.md
 
 ## Export Button Fix
 - [x] Analyze repository structure and identify export button issue

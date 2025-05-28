@@ -132,3 +132,43 @@
    - Could add CSV or other format options in the future
    - Current Excel format meets primary requirements
    - Rationale: Excel provides the most functionality for initial implementation, other formats can be added based on user feedback
+
+# Streaming Update Fix - Technical Decisions
+
+## May 28, 2025
+
+### Options Chain Streaming Update Issue
+
+#### Problem
+The options chain data table was not updating with real-time streaming data despite the streaming infrastructure being in place. The terminal output showed that the streaming manager was receiving data but the Dash tables were not reflecting these updates.
+
+#### Root Cause Analysis
+After thorough investigation, we identified that the `update_options_tables` callback in `dashboard_app_streaming.py` was attempting to call a non-existent method `map_streaming_fields` from the `StreamingFieldMapper` class. This method was intended to map streaming data fields to DataFrame columns, but it was missing from the implementation.
+
+#### Solution Approach
+1. **Implemented Missing Method**: Added the `map_streaming_fields` method to the `StreamingFieldMapper` class to properly map streaming data fields to DataFrame columns.
+
+2. **Field Mapping Consistency**: Ensured consistent field mapping between streaming data and options chain DataFrame by:
+   - Correcting field name mappings for high52Week and low52Week to match actual DataFrame column names
+   - Implementing proper handling for contractType conversion (C/P to CALL/PUT)
+   - Maintaining backward compatibility by having `map_streaming_data_to_dataframe` call the new method
+
+3. **Architecture Decision**: Made `map_streaming_fields` the primary mapping method to:
+   - Simplify the codebase by centralizing field mapping logic
+   - Improve maintainability by reducing duplicate code
+   - Ensure consistent mapping behavior across different parts of the application
+
+#### Implementation Details
+- The new `map_streaming_fields` method takes streaming data as input and returns a dictionary mapping DataFrame column names to values
+- Special handling was added for contractType field to convert "C" to "CALL" and "P" to "PUT"
+- Field name mappings were updated to ensure they match the actual column names in the options chain DataFrame
+
+#### Testing Approach
+- Verified that the streaming data is correctly mapped to DataFrame columns
+- Confirmed that the options chain tables update in real-time with streaming data
+- Tested with various option contracts to ensure consistent behavior
+
+#### Future Considerations
+- Consider adding more robust error handling for field mapping
+- Implement logging for field mapping to aid in debugging
+- Consider adding unit tests for the StreamingFieldMapper class

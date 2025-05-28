@@ -112,7 +112,7 @@ class StreamingFieldMapper:
         "askSize": "askSize",
         "lastSize": "lastSize",
         "markPrice": "mark",
-        "theoreticalOptionValue": "theoreticalValue",
+        "theoreticalOptionValue": "theoreticalOptionValue",
         "expirationDay": "expirationDay",
         "expirationMonth": "expirationMonth",
         "expirationYear": "expirationYear",
@@ -122,8 +122,8 @@ class StreamingFieldMapper:
         "securityStatus": "securityStatus",
         "netPercentChange": "percentChange",
         "multiplier": "multiplier",
-        "fiftyTwoWeekHigh": "52WkHigh",
-        "fiftyTwoWeekLow": "52WkLow"
+        "fiftyTwoWeekHigh": "high52Week",
+        "fiftyTwoWeekLow": "low52Week"
     }
     
     @classmethod
@@ -157,13 +157,12 @@ class StreamingFieldMapper:
         return cls.FIELD_TO_COLUMN_MAP.get(field_name, field_name)
     
     @classmethod
-    def map_streaming_data_to_dataframe(cls, streaming_data, options_df):
+    def map_streaming_fields(cls, streaming_data):
         """
-        Map streaming data to DataFrame columns.
+        Map streaming data fields to DataFrame column names.
         
         Args:
             streaming_data (dict): The streaming data for a contract
-            options_df (DataFrame): The options chain DataFrame
             
         Returns:
             dict: A dictionary mapping DataFrame column names to values
@@ -189,6 +188,20 @@ class StreamingFieldMapper:
             mapped_data[column_name] = value
             
         return mapped_data
+    
+    @classmethod
+    def map_streaming_data_to_dataframe(cls, streaming_data, options_df):
+        """
+        Map streaming data to DataFrame columns.
+        
+        Args:
+            streaming_data (dict): The streaming data for a contract
+            options_df (DataFrame): The options chain DataFrame
+            
+        Returns:
+            dict: A dictionary mapping DataFrame column names to values
+        """
+        return cls.map_streaming_fields(streaming_data)
     
     @classmethod
     def map_field_id_to_column(cls, field_id):
