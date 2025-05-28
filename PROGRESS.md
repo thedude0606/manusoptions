@@ -1,6 +1,8 @@
 # Progress Report
 
 ## May 28, 2025
+- Fixed duplicate callback outputs error by adding allow_duplicate=True to error-store.data outputs
+- Updated multiple callbacks in dashboard_utils/recommendation_tab.py, debug_fixes/recommendations_fix.py, and dashboard_app_updated.py
 - Implemented comprehensive fix for duplicate callback outputs error by refactoring callback structure
 - Separated callbacks to ensure each output is controlled by exactly one callback
 - Removed direct error-store.data output from recommendation callback

@@ -6,9 +6,9 @@
    - Consolidated functionality into a single application file with streaming capabilities
    - Rationale: Reduces code duplication, simplifies maintenance, and provides a single source of truth for the dashboard application
 2. **Dash Callback Management**
-   - Refactored callbacks to ensure each output is controlled by exactly one callback
-   - Split multi-output callbacks into separate callbacks with single responsibilities
-   - Eliminated need for `allow_duplicate=True` by proper separation of concerns
+   - Refactored callbacks to ensure each output is controlled by exactly one callback unless explicitly allowed
+   - Added `allow_duplicate=True` to callbacks that share the same output target
+   - Implemented proper separation of concerns in callback design
    - Rationale: Prevents duplicate callback output errors while maintaining clean, maintainable code structure
 
 ## Recommendation Generation Functionality
