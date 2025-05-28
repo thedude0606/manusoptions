@@ -32,6 +32,8 @@
 - [x] Improve error feedback and status messaging for recommendation generation
 - [x] Enhance UI for recommendation status messages
 - [x] Fix duplicate callback outputs error in recommendation callbacks
+- [x] Fix missing recommendation-timeframe-dropdown component error
+- [x] Integrate modular recommendation tab layout into main app
 - [ ] Test recommendation generation with various symbols
 - [ ] Validate recommendation UI updates correctly
 

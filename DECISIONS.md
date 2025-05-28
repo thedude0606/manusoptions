@@ -13,6 +13,11 @@
 
 ## Recommendation Generation Functionality
 ### Architecture Decisions
+1. **Modular Tab Layout Integration**
+   - Integrated the modular recommendation tab layout from recommendation_tab.py into the main app
+   - Used create_recommendation_tab() function to ensure consistent UI components across the application
+   - Ensured all required components (including recommendation-timeframe-dropdown) are properly included
+   - Rationale: Improves maintainability, ensures UI consistency, and prevents callback errors from missing components
 1. **Enhanced Error Handling and Debugging**
    - Replaced standard recommendation callbacks with enhanced version from debug_fixes/recommendations_fix.py
    - Added comprehensive error logging and debugging information
