@@ -79,10 +79,10 @@
    - Selected Excel format for exports using the openpyxl library
    - Supports multiple sheets, formatting, and metadata
    - Rationale: Excel is widely used for data analysis and provides rich formatting capabilities
-2. **Base64 Encoding for Downloads**
-   - Used base64 encoding with data URIs for browser downloads
-   - Avoids need for server-side file storage
-   - Rationale: This approach works well with Dash's client-side callbacks and doesn't require additional server configuration
+2. **Browser-Compatible Download Mechanism**
+   - Updated from base64 data URIs to Dash's native dcc.Download component
+   - Ensures compatibility across all browsers, including Safari
+   - Rationale: Native dcc.Download provides better cross-browser compatibility and handles large files more reliably
 3. **BytesIO for In-Memory Processing**
    - Used Python's BytesIO for in-memory file handling
    - Avoids need for temporary files on disk

@@ -1,6 +1,11 @@
 # Progress Report
 
 ## May 28, 2025
+- Investigating export button not working in Safari browser
+- Identified issue: Current implementation uses data URI with base64 encoding which has compatibility issues with Safari
+- Planning to replace custom download component with Dash's native dcc.Download component for better cross-browser compatibility
+- Implementing fix for export functionality to work properly in Safari
+
 - Fixed missing 'recommendation-timeframe-dropdown' component error in Dash callbacks
 - Identified root cause: Recommendations tab in main app layout wasn't using the modular layout from recommendation_tab.py
 - Updated dashboard_app_streaming.py to properly import and use create_recommendation_tab() function
