@@ -1,7 +1,5 @@
 # TODO List
-
 ## Export Functionality Implementation
-
 ### High Priority
 - [x] Review repository structure and identify tabs
 - [x] Design Excel export functionality for each tab
@@ -14,22 +12,34 @@
 - [ ] Test export functionality for each tab
 - [ ] Validate exports with large datasets
 
+## Recommendation Feature Fixes
+### High Priority
+- [x] Fix Generate Recommendations button not working
+- [x] Implement enhanced error handling for recommendation generation
+- [x] Update dashboard_app.py to use enhanced callbacks from debug_fixes
+- [ ] Test recommendation generation with various symbols
+- [ ] Validate recommendation UI updates correctly
+
 ### Medium Priority
 - [ ] Add progress indicators for large exports
+- [ ] Add progress indicators for recommendation generation
 - [ ] Enhance error handling for edge cases
 - [ ] Add unit tests for export functionality
+- [ ] Add unit tests for recommendation generation
 - [ ] Optimize export performance for large datasets
 
 ### Low Priority
 - [ ] Add customization options for exports (column selection, formatting)
 - [ ] Consider adding CSV export option alongside Excel
 - [ ] Add export history tracking
+- [ ] Improve recommendation visualization
 
 ## Dependencies
 - Excel export utility must be completed before integration into dashboard
 - Download component must be completed before export buttons can function
 - All components must be integrated before testing can begin
 - Testing must be completed before final deployment
+- Enhanced recommendation callbacks must be properly registered for button to work
 
 ## Status
 - **Not Started**: Items without checkmarks

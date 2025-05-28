@@ -1,11 +1,14 @@
+"""
+Options Trading Dashboard Application
+This module provides a web-based dashboard for options trading analysis and recommendations.
+"""
 import dash
 from dash import dcc, html, dash_table
 from dash.dependencies import Input, Output, State
 import pandas as pd
-import datetime
+import numpy as np
+import plotly.graph_objs as go
 import logging
-import schwabdev
-import json
 import os
 import traceback
 from config import APP_KEY, APP_SECRET, CALLBACK_URL, TOKEN_FILE_PATH
@@ -14,189 +17,370 @@ from dashboard_utils.options_chain_utils import split_options_by_type, ensure_pu
 from dashboard_utils.recommendation_tab import register_recommendation_callbacks
 from dashboard_utils.download_component import create_download_component, register_download_callback, register_download_click_callback
 from dashboard_utils.export_buttons import create_export_button, register_export_callbacks
+# Import the enhanced recommendation callbacks
+from debug_fixes.recommendations_fix import register_recommendation_callbacks_enhanced
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-app_logger = logging.getLogger('dashboard_app')
+logger = logging.getLogger(__name__)
 
-# Initialize Dash app
+# Initialize the Dash app
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
-app.title = "Manus Options Dashboard"
+server = app.server
 
-# Define app layout
+# Define the app layout
 app.layout = html.Div([
     # Header
-    html.H1("Manus Options Dashboard", style={'textAlign': 'center'}),
-    
-    # Symbol input and refresh button
     html.Div([
-        html.Label("Symbol:"),
-        dcc.Input(id="symbol-input", type="text", value="AAPL", style={'marginRight': '10px'}),
-        html.Button("Refresh Data", id="refresh-button", n_clicks=0)
-    ], style={'margin': '10px 0px'}),
+        html.H1("Options Trading Dashboard", className="dashboard-title"),
+        html.Div([
+            dcc.Input(
+                id="symbol-input",
+                type="text",
+                placeholder="Enter symbol (e.g., AAPL)",
+                value="AAPL",
+                className="symbol-input"
+            ),
+            html.Button("Refresh Data", id="refresh-button", n_clicks=0, className="refresh-button"),
+            html.Div(id="status-message", className="status-message")
+        ], className="header-controls")
+    ], className="dashboard-header"),
     
-    # Status message
-    html.Div(id="status-message", style={'margin': '10px 0px', 'color': 'blue'}),
-    
-    # Error messages
-    html.Div(id="error-messages", style={'margin': '10px 0px', 'color': 'red'}),
-    
-    # Tabs for different data views
-    dcc.Tabs([
-        # Minute Data Tab
-        dcc.Tab(label="Minute Data", children=[
-            html.Div([
-                # Export button for Minute Data
-                create_export_button("minute-data", "Export Minute Data to Excel"),
-                
-                # Minute data table
-                dash_table.DataTable(
-                    id="minute-data-table",
-                    page_size=10,
-                    style_table={'overflowX': 'auto'},
-                    style_cell={
-                        'textAlign': 'left',
-                        'padding': '5px'
-                    },
-                    style_header={
-                        'backgroundColor': 'rgb(230, 230, 230)',
-                        'fontWeight': 'bold'
-                    }
-                ),
-                
-                # Download component for Minute Data
-                create_download_component("minute-data-download")
-            ])
-        ]),
-        
-        # Technical Indicators Tab
-        dcc.Tab(label="Technical Indicators", children=[
-            html.Div([
-                # Export button for Technical Indicators
-                create_export_button("tech-indicators", "Export Technical Indicators to Excel"),
-                
-                # Technical indicators table
-                dash_table.DataTable(
-                    id="tech-indicators-table",
-                    page_size=10,
-                    style_table={'overflowX': 'auto'},
-                    style_cell={
-                        'textAlign': 'left',
-                        'padding': '5px'
-                    },
-                    style_header={
-                        'backgroundColor': 'rgb(230, 230, 230)',
-                        'fontWeight': 'bold'
-                    }
-                ),
-                
-                # Download component for Technical Indicators
-                create_download_component("tech-indicators-download")
-            ])
-        ]),
-        
-        # Options Chain Tab
-        dcc.Tab(label="Options Chain", children=[
-            html.Div([
-                # Options chain controls
+    # Main content
+    html.Div([
+        # Tabs
+        dcc.Tabs([
+            # Minute Data Tab
+            dcc.Tab(label="Minute Data", children=[
                 html.Div([
-                    # Expiration date selector
+                    # Minute data controls
                     html.Div([
-                        html.Label("Expiration Date:"),
-                        dcc.Dropdown(id="expiration-date-dropdown")
-                    ], style={'width': '200px', 'display': 'inline-block', 'margin-right': '20px'}),
-                    
-                    # Option type selector
-                    html.Div([
-                        html.Label("Option Type:"),
-                        dcc.RadioItems(
-                            id="option-type-radio",
+                        dcc.Dropdown(
+                            id="minute-data-timeframe-dropdown",
                             options=[
-                                {'label': 'All', 'value': 'ALL'},
-                                {'label': 'Calls', 'value': 'CALL'},
-                                {'label': 'Puts', 'value': 'PUT'}
+                                {"label": "1 Day", "value": "1day"},
+                                {"label": "5 Days", "value": "5day"},
+                                {"label": "1 Month", "value": "1month"}
                             ],
-                            value='ALL',
-                            inline=True
+                            value="1day",
+                            clearable=False,
+                            className="timeframe-dropdown"
                         )
-                    ], style={'display': 'inline-block'})
-                ], style={'margin': '10px 0px'}),
-                
-                # Export button for Options Chain
-                create_export_button("options-chain", "Export Options Chain to Excel"),
-                
-                # Options tables
-                html.Div([
-                    # Calls table
-                    html.Div([
-                        html.H3("Calls"),
-                        dash_table.DataTable(
-                            id="calls-table",
-                            page_size=10,
-                            style_table={'overflowX': 'auto'},
-                            style_cell={
-                                'textAlign': 'left',
-                                'padding': '5px'
-                            },
-                            style_header={
-                                'backgroundColor': 'rgb(230, 230, 230)',
-                                'fontWeight': 'bold'
-                            }
-                        )
-                    ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top'}),
+                    ], className="tab-controls"),
                     
-                    # Puts table
-                    html.Div([
-                        html.H3("Puts"),
-                        dash_table.DataTable(
-                            id="puts-table",
-                            page_size=10,
-                            style_table={'overflowX': 'auto'},
-                            style_cell={
-                                'textAlign': 'left',
-                                'padding': '5px'
-                            },
-                            style_header={
-                                'backgroundColor': 'rgb(230, 230, 230)',
-                                'fontWeight': 'bold'
+                    # Export button for Minute Data
+                    create_export_button("minute-data", "Export Minute Data to Excel"),
+                    
+                    # Minute data chart
+                    dcc.Graph(id="minute-data-chart", className="data-chart"),
+                    
+                    # Minute data table
+                    dash_table.DataTable(
+                        id="minute-data-table",
+                        page_size=15,
+                        style_table={"overflowX": "auto"},
+                        style_cell={
+                            "textAlign": "left",
+                            "padding": "10px",
+                            "whiteSpace": "normal",
+                            "height": "auto"
+                        },
+                        style_header={
+                            "backgroundColor": "#f8f9fa",
+                            "fontWeight": "bold",
+                            "border": "1px solid #ddd"
+                        },
+                        style_data_conditional=[
+                            {
+                                "if": {"row_index": "odd"},
+                                "backgroundColor": "#f5f5f5"
                             }
-                        )
-                    ], style={'width': '48%', 'display': 'inline-block', 'verticalAlign': 'top', 'marginLeft': '4%'})
-                ]),
-                
-                # Download component for Options Chain
-                create_download_component("options-chain-download")
-            ])
-        ]),
-        
-        # Recommendations Tab
-        dcc.Tab(label="Recommendations", children=[
-            html.Div([
-                # Recommendations controls
+                        ],
+                        className="data-table"
+                    )
+                ], className="tab-content")
+            ]),
+            
+            # Technical Indicators Tab
+            dcc.Tab(label="Technical Indicators", children=[
                 html.Div([
-                    html.Button("Generate Recommendations", id="generate-recommendations-button", n_clicks=0)
-                ], style={'margin': '10px 0px'}),
-                
-                # Export button for Recommendations
-                create_export_button("recommendations", "Export Recommendations to Excel"),
-                
-                # Recommendations table
-                dash_table.DataTable(
-                    id="recommendations-table",
-                    page_size=10,
-                    style_table={'overflowX': 'auto'},
-                    style_cell={
-                        'textAlign': 'left',
-                        'padding': '5px'
-                    },
-                    style_header={
-                        'backgroundColor': 'rgb(230, 230, 230)',
-                        'fontWeight': 'bold'
-                    }
-                ),
-                
-                # Download component for Recommendations
-                create_download_component("recommendations-download")
+                    # Technical indicators controls
+                    html.Div([
+                        dcc.Dropdown(
+                            id="tech-indicators-timeframe-dropdown",
+                            options=[
+                                {"label": "1 Hour", "value": "1hour"},
+                                {"label": "4 Hours", "value": "4hour"},
+                                {"label": "1 Day", "value": "1day"}
+                            ],
+                            value="1hour",
+                            clearable=False,
+                            className="timeframe-dropdown"
+                        )
+                    ], className="tab-controls"),
+                    
+                    # Export button for Technical Indicators
+                    create_export_button("tech-indicators", "Export Technical Indicators to Excel"),
+                    
+                    # Technical indicators table
+                    dash_table.DataTable(
+                        id="tech-indicators-table",
+                        page_size=15,
+                        style_table={"overflowX": "auto"},
+                        style_cell={
+                            "textAlign": "left",
+                            "padding": "10px",
+                            "whiteSpace": "normal",
+                            "height": "auto"
+                        },
+                        style_header={
+                            "backgroundColor": "#f8f9fa",
+                            "fontWeight": "bold",
+                            "border": "1px solid #ddd"
+                        },
+                        style_data_conditional=[
+                            {
+                                "if": {"row_index": "odd"},
+                                "backgroundColor": "#f5f5f5"
+                            }
+                        ],
+                        className="data-table"
+                    )
+                ], className="tab-content")
+            ]),
+            
+            # Options Chain Tab
+            dcc.Tab(label="Options Chain", children=[
+                html.Div([
+                    # Options chain controls
+                    html.Div([
+                        dcc.Dropdown(
+                            id="expiration-date-dropdown",
+                            placeholder="Select expiration date",
+                            className="expiration-dropdown"
+                        )
+                    ], className="tab-controls"),
+                    
+                    # Export button for Options Chain
+                    create_export_button("options-chain", "Export Options Chain to Excel"),
+                    
+                    # Options chain tables
+                    html.Div([
+                        html.Div([
+                            html.H3("Calls", className="table-header"),
+                            dash_table.DataTable(
+                                id="calls-table",
+                                page_size=10,
+                                style_table={"overflowX": "auto"},
+                                style_cell={
+                                    "textAlign": "left",
+                                    "padding": "10px",
+                                    "whiteSpace": "normal",
+                                    "height": "auto"
+                                },
+                                style_header={
+                                    "backgroundColor": "#f8f9fa",
+                                    "fontWeight": "bold",
+                                    "border": "1px solid #ddd"
+                                },
+                                style_data_conditional=[
+                                    {
+                                        "if": {"row_index": "odd"},
+                                        "backgroundColor": "#f5f5f5"
+                                    }
+                                ],
+                                className="data-table"
+                            )
+                        ], className="table-container"),
+                        html.Div([
+                            html.H3("Puts", className="table-header"),
+                            dash_table.DataTable(
+                                id="puts-table",
+                                page_size=10,
+                                style_table={"overflowX": "auto"},
+                                style_cell={
+                                    "textAlign": "left",
+                                    "padding": "10px",
+                                    "whiteSpace": "normal",
+                                    "height": "auto"
+                                },
+                                style_header={
+                                    "backgroundColor": "#f8f9fa",
+                                    "fontWeight": "bold",
+                                    "border": "1px solid #ddd"
+                                },
+                                style_data_conditional=[
+                                    {
+                                        "if": {"row_index": "odd"},
+                                        "backgroundColor": "#f5f5f5"
+                                    }
+                                ],
+                                className="data-table"
+                            )
+                        ], className="table-container")
+                    ], className="options-tables-container")
+                ], className="tab-content")
+            ]),
+            
+            # Recommendations Tab
+            dcc.Tab(label="Recommendations", children=[
+                html.Div([
+                    # Recommendations controls
+                    html.Div([
+                        html.Button("Generate Recommendations", id="generate-recommendations-button", n_clicks=0)
+                    ], style={'margin': '10px 0px'}),
+                    
+                    # Export button for Recommendations
+                    create_export_button("recommendations", "Export Recommendations to Excel"),
+                    
+                    # Market Direction Panel
+                    html.Div([
+                        html.H3("Market Direction Analysis", className="panel-header"),
+                        html.Div([
+                            html.Div([
+                                html.Div(id="market-direction-indicator", className="direction-indicator"),
+                                html.Div(id="market-direction-text", className="direction-text")
+                            ], className="direction-container"),
+                            html.Div([
+                                html.Div("Bullish Score:", className="score-label"),
+                                html.Div(id="bullish-score", className="score-value")
+                            ], className="score-container"),
+                            html.Div([
+                                html.Div("Bearish Score:", className="score-label"),
+                                html.Div(id="bearish-score", className="score-value")
+                            ], className="score-container")
+                        ], className="direction-scores")
+                    ], className="panel market-direction-panel"),
+                    
+                    # Recommendations Tables
+                    html.Div([
+                        # Call Recommendations
+                        html.Div([
+                            html.H3("Call Recommendations", className="panel-header"),
+                            dash_table.DataTable(
+                                id="call-recommendations-table",
+                                columns=[
+                                    {"name": "Symbol", "id": "symbol"},
+                                    {"name": "Strike", "id": "strikePrice", "type": "numeric", "format": {"specifier": ".2f"}},
+                                    {"name": "Expiration", "id": "expirationDate"},
+                                    {"name": "Current Price", "id": "currentPrice", "type": "numeric", "format": {"specifier": ".2f"}},
+                                    {"name": "Target Price", "id": "targetSellPrice", "type": "numeric", "format": {"specifier": ".2f"}},
+                                    {"name": "Expected Profit", "id": "expectedProfitPct", "type": "numeric", "format": {"specifier": ".1f%"}},
+                                    {"name": "Confidence", "id": "confidenceScore", "type": "numeric", "format": {"specifier": ".0f%"}}
+                                ],
+                                data=[],
+                                page_size=5,
+                                style_table={"overflowX": "auto"},
+                                style_cell={
+                                    "textAlign": "left",
+                                    "padding": "10px",
+                                    "whiteSpace": "normal",
+                                    "height": "auto"
+                                },
+                                style_header={
+                                    "backgroundColor": "#f8f9fa",
+                                    "fontWeight": "bold",
+                                    "border": "1px solid #ddd"
+                                },
+                                style_data_conditional=[
+                                    {
+                                        "if": {"row_index": "odd"},
+                                        "backgroundColor": "#f5f5f5"
+                                    }
+                                ],
+                                row_selectable="single",
+                                selected_rows=[],
+                                className="data-table"
+                            )
+                        ], className="panel recommendations-panel"),
+                        
+                        # Put Recommendations
+                        html.Div([
+                            html.H3("Put Recommendations", className="panel-header"),
+                            dash_table.DataTable(
+                                id="put-recommendations-table",
+                                columns=[
+                                    {"name": "Symbol", "id": "symbol"},
+                                    {"name": "Strike", "id": "strikePrice", "type": "numeric", "format": {"specifier": ".2f"}},
+                                    {"name": "Expiration", "id": "expirationDate"},
+                                    {"name": "Current Price", "id": "currentPrice", "type": "numeric", "format": {"specifier": ".2f"}},
+                                    {"name": "Target Price", "id": "targetSellPrice", "type": "numeric", "format": {"specifier": ".2f"}},
+                                    {"name": "Expected Profit", "id": "expectedProfitPct", "type": "numeric", "format": {"specifier": ".1f%"}},
+                                    {"name": "Confidence", "id": "confidenceScore", "type": "numeric", "format": {"specifier": ".0f%"}}
+                                ],
+                                data=[],
+                                page_size=5,
+                                style_table={"overflowX": "auto"},
+                                style_cell={
+                                    "textAlign": "left",
+                                    "padding": "10px",
+                                    "whiteSpace": "normal",
+                                    "height": "auto"
+                                },
+                                style_header={
+                                    "backgroundColor": "#f8f9fa",
+                                    "fontWeight": "bold",
+                                    "border": "1px solid #ddd"
+                                },
+                                style_data_conditional=[
+                                    {
+                                        "if": {"row_index": "odd"},
+                                        "backgroundColor": "#f5f5f5"
+                                    }
+                                ],
+                                row_selectable="single",
+                                selected_rows=[],
+                                className="data-table"
+                            )
+                        ], className="panel recommendations-panel")
+                    ], className="recommendations-tables"),
+                    
+                    # Contract Details Panel
+                    html.Div([
+                        html.H3("Contract Details", className="panel-header"),
+                        html.Div([
+                            html.Div([
+                                html.Div("Symbol:", className="detail-label"),
+                                html.Div(id="detail-symbol", className="detail-value")
+                            ], className="detail-item"),
+                            html.Div([
+                                html.Div("Type:", className="detail-label"),
+                                html.Div(id="detail-type", className="detail-value")
+                            ], className="detail-item"),
+                            html.Div([
+                                html.Div("Strike Price:", className="detail-label"),
+                                html.Div(id="detail-strike", className="detail-value")
+                            ], className="detail-item"),
+                            html.Div([
+                                html.Div("Expiration:", className="detail-label"),
+                                html.Div(id="detail-expiration", className="detail-value")
+                            ], className="detail-item"),
+                            html.Div([
+                                html.Div("Delta:", className="detail-label"),
+                                html.Div(id="detail-delta", className="detail-value")
+                            ], className="detail-item"),
+                            html.Div([
+                                html.Div("Gamma:", className="detail-label"),
+                                html.Div(id="detail-gamma", className="detail-value")
+                            ], className="detail-item"),
+                            html.Div([
+                                html.Div("Theta:", className="detail-label"),
+                                html.Div(id="detail-theta", className="detail-value")
+                            ], className="detail-item"),
+                            html.Div([
+                                html.Div("Vega:", className="detail-label"),
+                                html.Div(id="detail-vega", className="detail-value")
+                            ], className="detail-item"),
+                            html.Div([
+                                html.Div("Implied Volatility:", className="detail-label"),
+                                html.Div(id="detail-iv", className="detail-value")
+                            ], className="detail-item")
+                        ], className="panel details-panel")
+                    ], className="recommendations-panels"),
+                    
+                    # Last updated timestamp
+                    html.Div(id="recommendations-last-updated", className="last-updated")
+                ], className="tab-content")
             ])
         ])
     ]),
@@ -221,150 +405,171 @@ app.layout = html.Div([
         Output("expiration-date-dropdown", "options"),
         Output("expiration-date-dropdown", "value"),
         Output("status-message", "children"),
-        Output("error-store", "data"),
-        Output("last-valid-options-store", "data")  # Added for state preservation
+        Output("error-store", "data")
     ],
     [
         Input("refresh-button", "n_clicks")
     ],
     [
-        State("symbol-input", "value"),
-        State("last-valid-options-store", "data")  # Added for state preservation
+        State("symbol-input", "value")
     ],
     prevent_initial_call=True
 )
-def refresh_data(n_clicks, symbol, last_valid_options):
-    """Refreshes all data for the given symbol."""
-    if not n_clicks or not symbol:
-        return None, None, None, None, [], None, "", None, last_valid_options
-    
-    symbol = symbol.upper()
-    app_logger.info(f"Refreshing data for {symbol}")
+def refresh_data(n_clicks, symbol):
+    """Refreshes all data for the selected symbol."""
+    if not symbol:
+        return None, None, None, None, [], None, "Please enter a valid symbol", {
+            "source": "Refresh Data",
+            "message": "No symbol provided",
+            "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
     
     try:
-        # Initialize Schwab client with consistent token file path
-        client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file=TOKEN_FILE_PATH, capture_callback=False)
-        
-        # Fetch minute data
-        minute_data, error = get_minute_data(client, symbol)
-        
-        if error:
-            app_logger.error(f"Error fetching minute data: {error}")
-            return None, None, None, None, [], None, f"Error: {error}", {
-                "source": "Minute Data",
-                "message": error,
-                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }, last_valid_options
+        # Get minute data
+        minute_data = get_minute_data(symbol)
+        if minute_data is None or minute_data.empty:
+            return None, None, None, None, [], None, f"No data found for {symbol}", {
+                "source": "Refresh Data",
+                "message": f"No minute data found for {symbol}",
+                "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
         
         # Calculate technical indicators
-        tech_indicators, error = get_technical_indicators(client, symbol)
+        tech_indicators = get_technical_indicators(minute_data)
         
-        if error:
-            app_logger.error(f"Error calculating technical indicators: {error}")
-            return {"data": minute_data}, None, None, None, [], None, f"Error: {error}", {
-                "source": "Technical Indicators",
-                "message": error,
-                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }, last_valid_options
+        # Get options chain data
+        options_chain = get_options_chain_data(symbol)
+        if options_chain is None or not options_chain.get("options"):
+            return None, None, None, None, [], None, f"No options data found for {symbol}", {
+                "source": "Refresh Data",
+                "message": f"No options data found for {symbol}",
+                "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
         
-        # Fetch options chain
-        options_df, expiration_dates, underlying_price, error = get_options_chain_data(client, symbol)
+        # Ensure putCall field exists
+        options_chain["options"] = ensure_putcall_field(options_chain["options"])
         
-        if error:
-            app_logger.error(f"Error fetching options chain: {error}")
-            return {"data": minute_data}, {"data": tech_indicators}, None, None, [], None, f"Error: {error}", {
-                "source": "Options Chain",
-                "message": error,
-                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }, last_valid_options
+        # Get expiration dates
+        expiration_dates = sorted(list(set(opt["expirationDate"] for opt in options_chain["options"])))
+        expiration_options = [{"label": date, "value": date} for date in expiration_dates]
         
-        # Prepare dropdown options
-        dropdown_options = [{"label": date, "value": date} for date in expiration_dates]
-        default_expiration = expiration_dates[0] if expiration_dates else None
-        
-        # Prepare data for the stores
-        minute_data_store = {
-            "data": minute_data,
+        # Selected symbol data
+        selected_symbol = {
             "symbol": symbol,
-            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "price": options_chain.get("underlyingPrice", 0)
         }
         
-        # Prepare technical indicators store with timeframe data structure
-        timeframe_data = {}
-        if tech_indicators:
-            # Group indicators by timeframe
-            df = pd.DataFrame(tech_indicators)
-            if 'timeframe' in df.columns:
-                for timeframe in df['timeframe'].unique():
-                    timeframe_data[timeframe] = df[df['timeframe'] == timeframe].to_dict('records')
-            
-        tech_indicators_store = {
-            "data": tech_indicators,
-            "timeframe_data": timeframe_data,
-            "symbol": symbol,
-            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
+        return (
+            minute_data.to_dict("records"),
+            tech_indicators,
+            options_chain,
+            selected_symbol,
+            expiration_options,
+            expiration_dates[0] if expiration_dates else None,
+            f"Data for {symbol} refreshed at {pd.Timestamp.now().strftime('%H:%M:%S')}",
+            None
+        )
         
-        # Ensure putCall field is properly set for all options
-        options_df = ensure_putcall_field(options_df)
-        
-        options_data = {
-            "symbol": symbol,
-            "options": options_df.to_dict("records"),
-            "expiration_dates": expiration_dates,
-            "underlyingPrice": underlying_price,
-            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        
-        # Create selected symbol store
-        selected_symbol_store = {
-            "symbol": symbol,
-            "price": underlying_price,
-            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        
-        status_message = f"Data refreshed for {symbol} at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        app_logger.info(status_message)
-        
-        # Also store the options data as the last valid options data
-        last_valid_options_store = options_data.copy()
-        
-        return minute_data_store, tech_indicators_store, options_data, selected_symbol_store, dropdown_options, default_expiration, status_message, None, last_valid_options_store
-    
     except Exception as e:
         error_msg = f"Error refreshing data: {str(e)}"
-        app_logger.error(error_msg, exc_info=True)
+        logger.error(error_msg)
+        logger.error(traceback.format_exc())
+        
         return None, None, None, None, [], None, f"Error: {str(e)}", {
-            "source": "Data Refresh",
+            "source": "Refresh Data",
             "message": error_msg,
-            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }, last_valid_options
+            "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "traceback": traceback.format_exc()
+        }
+
+# Minute Data Chart Callback
+@app.callback(
+    Output("minute-data-chart", "figure"),
+    Input("minute-data-store", "data"),
+    Input("minute-data-timeframe-dropdown", "value"),
+    prevent_initial_call=True
+)
+def update_minute_data_chart(minute_data, timeframe):
+    """Updates the minute data chart with the selected timeframe."""
+    if not minute_data:
+        return go.Figure()
+    
+    df = pd.DataFrame(minute_data)
+    
+    # Filter data based on timeframe
+    if timeframe == "1day":
+        df = df.tail(390)  # Approximately one trading day (6.5 hours * 60 minutes)
+    elif timeframe == "5day":
+        df = df.tail(390 * 5)  # Approximately five trading days
+    
+    # Create candlestick chart
+    fig = go.Figure(data=[go.Candlestick(
+        x=df["timestamp"],
+        open=df["open"],
+        high=df["high"],
+        low=df["low"],
+        close=df["close"],
+        increasing_line_color="#26a69a",
+        decreasing_line_color="#ef5350"
+    )])
+    
+    # Add volume as bar chart
+    fig.add_trace(go.Bar(
+        x=df["timestamp"],
+        y=df["volume"],
+        marker_color="rgba(128, 128, 128, 0.5)",
+        opacity=0.5,
+        yaxis="y2",
+        name="Volume"
+    ))
+    
+    # Update layout
+    fig.update_layout(
+        title=f"Minute Data for {df['symbol'].iloc[0] if 'symbol' in df.columns else 'Symbol'}",
+        xaxis_title="Time",
+        yaxis_title="Price",
+        xaxis_rangeslider_visible=False,
+        yaxis2=dict(
+            title="Volume",
+            overlaying="y",
+            side="right",
+            showgrid=False
+        ),
+        height=500,
+        margin=dict(l=50, r=50, t=50, b=50)
+    )
+    
+    return fig
 
 # Minute Data Table Callback
 @app.callback(
     Output("minute-data-table", "data"),
     Output("minute-data-table", "columns"),
     Input("minute-data-store", "data"),
+    Input("minute-data-timeframe-dropdown", "value"),
     prevent_initial_call=True
 )
-def update_minute_data_table(minute_data):
-    """Updates the minute data table with the fetched data."""
-    if not minute_data or not minute_data.get("data"):
+def update_minute_data_table(minute_data, timeframe):
+    """Updates the minute data table with the selected timeframe."""
+    if not minute_data:
         return [], []
     
-    data = minute_data["data"]
+    df = pd.DataFrame(minute_data)
     
-    # Define columns
-    columns = [
-        {"name": "Timestamp", "id": "timestamp"},
-        {"name": "Open", "id": "open"},
-        {"name": "High", "id": "high"},
-        {"name": "Low", "id": "low"},
-        {"name": "Close", "id": "close"},
-        {"name": "Volume", "id": "volume"}
-    ]
+    # Filter data based on timeframe
+    if timeframe == "1day":
+        df = df.tail(390)  # Approximately one trading day (6.5 hours * 60 minutes)
+    elif timeframe == "5day":
+        df = df.tail(390 * 5)  # Approximately five trading days
     
-    return data, columns
+    # Format timestamp
+    if "timestamp" in df.columns:
+        df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Create columns
+    columns = [{"name": col.capitalize(), "id": col} for col in df.columns]
+    
+    return df.to_dict("records"), columns
 
 # Technical Indicators Table Callback
 @app.callback(
@@ -378,108 +583,114 @@ def update_tech_indicators_table(tech_indicators_data):
     if not tech_indicators_data or not tech_indicators_data.get("data"):
         return [], []
     
-    data = tech_indicators_data.get("data", [])
-    
-    if not data:
+    # Get the selected timeframe data
+    timeframe_data = tech_indicators_data.get("timeframe_data", {})
+    if not timeframe_data:
         return [], []
     
-    # Get column names from the first row
-    first_row = data[0]
-    columns = [{"name": col, "id": col} for col in first_row.keys()]
+    # Default to 1hour timeframe if available
+    timeframe = "1hour"
+    if timeframe not in timeframe_data and timeframe_data:
+        timeframe = list(timeframe_data.keys())[0]
     
-    # Ensure timeframe column is first
-    if "timeframe" in first_row:
-        timeframe_col = {"name": "Timeframe", "id": "timeframe"}
-        columns = [timeframe_col] + [col for col in columns if col["id"] != "timeframe"]
+    # Get data for the selected timeframe
+    df = pd.DataFrame(timeframe_data.get(timeframe, []))
+    if df.empty:
+        return [], []
     
-    return data, columns
+    # Format timestamp
+    if "timestamp" in df.columns:
+        df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Create columns
+    columns = [{"name": col.capitalize(), "id": col} for col in df.columns]
+    
+    return df.to_dict("records"), columns
 
 # Options Chain Tables Callback
 @app.callback(
-    [
-        Output("calls-table", "data"),
-        Output("puts-table", "data")
-    ],
-    [
-        Input("options-chain-store", "data"),
-        Input("expiration-date-dropdown", "value"),
-        Input("option-type-radio", "value")
-    ],
-    [
-        State("last-valid-options-store", "data")  # Added for state preservation
-    ],
+    Output("calls-table", "data"),
+    Output("calls-table", "columns"),
+    Output("puts-table", "data"),
+    Output("puts-table", "columns"),
+    Output("last-valid-options-store", "data"),
+    Input("options-chain-store", "data"),
+    Input("expiration-date-dropdown", "value"),
+    State("last-valid-options-store", "data"),
     prevent_initial_call=True
 )
-def update_options_tables(options_data, expiration_date, option_type, last_valid_options):
-    """Updates the options chain tables with the fetched data."""
-    app_logger.info(f"Update options tables callback triggered: expiration={expiration_date}, option_type={option_type}")
+def update_options_tables(options_chain_data, expiration_date, last_valid_options):
+    """Updates the options chain tables with the selected expiration date."""
+    if not options_chain_data or not options_chain_data.get("options"):
+        return [], [], [], [], last_valid_options
     
-    try:
-        # First, check if we have valid options data
-        if not options_data or not options_data.get("options"):
-            # If no current options data, try to use last valid options data
-            if last_valid_options and last_valid_options.get("options"):
-                app_logger.warning("Using last valid options data as fallback")
-                options_data = last_valid_options
-            else:
-                app_logger.warning("No options data available")
-                return [], []
-        
-        # Use the utility function to split options by type
-        options_df = pd.DataFrame(options_data["options"])
-        
-        # Log the shape of the DataFrame for debugging
-        app_logger.debug(f"Options DataFrame shape: {options_df.shape}")
-        
-        # Use the enhanced split_options_by_type function with last_valid_options
-        calls_data, puts_data = split_options_by_type(
-            options_df, 
-            expiration_date=expiration_date,
-            option_type=option_type,
-            last_valid_options=last_valid_options
-        )
-        
-        return calls_data, puts_data
+    # Get options data
+    options = options_chain_data.get("options", [])
     
-    except Exception as e:
-        app_logger.error(f"Error in update_options_tables: {str(e)}", exc_info=True)
-        return [], []
-
-# Error Display Callback
-@app.callback(
-    Output("error-messages", "children"),
-    Input("error-store", "data"),
-    prevent_initial_call=True
-)
-def display_error(error_data):
-    """Displays error messages from the error store."""
-    if not error_data:
-        return ""
+    # Filter by expiration date
+    if expiration_date:
+        options = [opt for opt in options if opt.get("expirationDate") == expiration_date]
     
-    source = error_data.get("source", "Unknown")
-    message = error_data.get("message", "An unknown error occurred")
-    timestamp = error_data.get("timestamp", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    # Split into calls and puts
+    calls, puts = split_options_by_type(options)
     
-    return f"Error in {source} at {timestamp}: {message}"
+    if not calls and not puts:
+        return [], [], [], [], last_valid_options
+    
+    # Create DataFrames
+    calls_df = pd.DataFrame(calls) if calls else pd.DataFrame()
+    puts_df = pd.DataFrame(puts) if puts else pd.DataFrame()
+    
+    # Sort by strike price
+    if not calls_df.empty and "strikePrice" in calls_df.columns:
+        calls_df = calls_df.sort_values("strikePrice")
+    if not puts_df.empty and "strikePrice" in puts_df.columns:
+        puts_df = puts_df.sort_values("strikePrice")
+    
+    # Create columns for calls
+    calls_columns = []
+    if not calls_df.empty:
+        # Select and order columns
+        column_order = [
+            "symbol", "strikePrice", "lastPrice", "bid", "ask", "change", "percentChange",
+            "volume", "openInterest", "impliedVolatility", "delta", "gamma", "theta", "vega"
+        ]
+        calls_df = calls_df[[col for col in column_order if col in calls_df.columns]]
+        calls_columns = [{"name": col.capitalize(), "id": col} for col in calls_df.columns]
+    
+    # Create columns for puts
+    puts_columns = []
+    if not puts_df.empty:
+        # Select and order columns
+        column_order = [
+            "symbol", "strikePrice", "lastPrice", "bid", "ask", "change", "percentChange",
+            "volume", "openInterest", "impliedVolatility", "delta", "gamma", "theta", "vega"
+        ]
+        puts_df = puts_df[[col for col in column_order if col in puts_df.columns]]
+        puts_columns = [{"name": col.capitalize(), "id": col} for col in puts_df.columns]
+    
+    # Store valid options data
+    valid_options = {
+        "calls": calls_df.to_dict("records") if not calls_df.empty else [],
+        "puts": puts_df.to_dict("records") if not puts_df.empty else [],
+        "expiration_date": expiration_date
+    }
+    
+    return (
+        calls_df.to_dict("records") if not calls_df.empty else [],
+        calls_columns,
+        puts_df.to_dict("records") if not puts_df.empty else [],
+        puts_columns,
+        valid_options
+    )
 
-# Register recommendation callbacks
-register_recommendation_callbacks(app)
-
-# Register download callbacks
-register_download_callback(app, "minute-data-download")
-register_download_callback(app, "tech-indicators-download")
-register_download_callback(app, "options-chain-download")
-register_download_callback(app, "recommendations-download")
-
-# Register download click callbacks
-register_download_click_callback(app, "minute-data-download")
-register_download_click_callback(app, "tech-indicators-download")
-register_download_click_callback(app, "options-chain-download")
-register_download_click_callback(app, "recommendations-download")
-
-# Register export callbacks
+# Register callbacks
 register_export_callbacks(app)
+register_download_callback(app)
+register_download_click_callback(app)
+# Use the enhanced recommendation callbacks instead of the standard ones
+register_recommendation_callbacks_enhanced(app)
 
+# Run the app
 if __name__ == "__main__":
-    # Updated to use app.run instead of app.run_server for Dash 3.x compatibility
-    app.run(debug=True, host='0.0.0.0', port=8050)
+    app.run_server(debug=True, host="0.0.0.0", port=8050)
