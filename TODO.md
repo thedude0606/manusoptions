@@ -1,36 +1,23 @@
 # TODO List
 
-## Dashboard App Fixes
-- [x] Fix missing market direction components in Dash callbacks
-- [x] Identify root cause of callback errors in dashboard_app_updated_fixed.py
-- [x] Add all missing components ('market-direction-text', 'bullish-score', 'bearish-score', 'market-signals') to layout
-- [x] Test application to verify all errors are resolved
-- [x] Update documentation with comprehensive fix details
-- [x] Fix options chain streaming update issue
-  - [x] Implement StreamingFieldMapper.map_streaming_fields method
-  - [x] Ensure proper data mapping between streaming data and DataFrame columns
-  - [x] Test streaming updates with real-time data
-  - [x] Document the fix in PROGRESS.md and DECISIONS.md
-- [x] Fix minute tab and technical indicators tab not showing data tables
-  - [x] Implement callback functions for minute-data-table and tech-indicators-table
-  - [x] Ensure proper data formatting and error handling
-  - [x] Add consistent tab value IDs across the application
-  - [x] Test data flow from backend stores to frontend tables
+## Dashboard App
+- [x] Fix minute tab data table display
+- [x] Fix technical indicators tab data table display
+- [x] Add comprehensive debugging for recommendation engine
+- [x] Add debug information panel to recommendation tab UI
+- [ ] Fix recommendation engine to generate actionable recommendations
+- [ ] Test recommendation engine with debug panel
+- [ ] Implement fixes based on debug information
+- [ ] Fix Safari export button compatibility issue
+- [ ] Add additional error handling for data fetching
+- [ ] Improve UI responsiveness on mobile devices
 
-## Export Button Fix
-- [x] Analyze repository structure and identify export button issue
-- [x] Review export button implementation and Safari compatibility
-- [ ] Implement fix for Safari compatibility using dcc.Download component
-- [ ] Test export functionality in Safari environment
-- [ ] Update documentation with fix details
-- [ ] Push changes to GitHub repository
-
-## Documentation Updates
+## Documentation
 - [x] Update PROGRESS.md with current status
-- [x] Update DECISIONS.md with architectural decisions
-- [ ] Document Safari-specific considerations
+- [x] Update TODO.md with prioritized tasks
+- [x] Update DECISIONS.md with technical rationale
+- [ ] Create user guide for debugging features
 
-## Future Enhancements
-- [ ] Consider additional browser compatibility improvements
-- [ ] Add error handling for download failures
-- [ ] Implement user feedback for download status
+## Dependencies
+- Recommendation engine fixes depend on debug panel testing results
+- UI improvements depend on core functionality fixes
