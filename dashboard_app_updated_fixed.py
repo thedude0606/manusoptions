@@ -201,6 +201,19 @@ app.layout = html.Div([
                     html.Div(id="market-direction-indicator", className="direction-indicator", style={'display': 'none'}),
                     # Added market-direction-text div to match callback output
                     html.Div(id="market-direction-text", className="direction-text"),
+                    # Added score containers to match callback outputs
+                    html.Div([
+                        html.Div([
+                            html.Label("Bullish", className="score-label"),
+                            html.Div(id="bullish-score", className="score-value")
+                        ], className="score-container"),
+                        html.Div([
+                            html.Label("Bearish", className="score-label"),
+                            html.Div(id="bearish-score", className="score-value")
+                        ], className="score-container")
+                    ], className="scores-container"),
+                    # Added market-signals div to match callback output
+                    html.Div(id="market-signals", className="market-signals"),
                     html.Div(id="market-direction-content")
                 ]),
                 
