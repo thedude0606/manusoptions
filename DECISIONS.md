@@ -6,10 +6,10 @@
    - Consolidated functionality into a single application file with streaming capabilities
    - Rationale: Reduces code duplication, simplifies maintenance, and provides a single source of truth for the dashboard application
 2. **Dash Callback Management**
-   - Added `allow_duplicate=True` to callbacks that share output targets
-   - Ensures multiple callbacks can update the same output component without conflicts
-   - Particularly important for error-store.data which is updated by multiple callbacks
-   - Rationale: Prevents duplicate callback output errors while maintaining modular callback structure
+   - Refactored callbacks to ensure each output is controlled by exactly one callback
+   - Split multi-output callbacks into separate callbacks with single responsibilities
+   - Eliminated need for `allow_duplicate=True` by proper separation of concerns
+   - Rationale: Prevents duplicate callback output errors while maintaining clean, maintainable code structure
 
 ## Recommendation Generation Functionality
 ### Architecture Decisions
@@ -18,9 +18,12 @@
    - Added comprehensive error logging and debugging information
    - Rationale: Improves visibility into issues and makes troubleshooting easier
 2. **Callback Structure Improvement**
-   - Enhanced callbacks provide better state management and error reporting
-   - Maintains same interface but with improved internal logic
-   - Rationale: Ensures backward compatibility while fixing issues
+   - Separated recommendation callbacks into three distinct callbacks:
+     1. Data generation callback (updates recommendations-store and status)
+     2. Error reporting callback (updates error-store based on status)
+     3. UI update callback (updates all UI elements based on recommendations data)
+   - Each callback has a single responsibility and clear inputs/outputs
+   - Rationale: Ensures clean separation of concerns and eliminates duplicate output conflicts
 3. **Improved User Feedback System**
    - Added explicit error reporting to error-store for better visibility
    - Enhanced status message styling and positioning for clearer feedback
@@ -28,9 +31,10 @@
    - Rationale: Ensures users understand why actions may not be working as expected
 ### Implementation Details
 1. **Callback Registration Approach**
-   - Modified dashboard_app.py to import and use enhanced callback registration
-   - Kept original callback structure intact to maintain compatibility
-   - Rationale: Minimizes changes to the codebase while fixing the issue
+   - Implemented a clear callback chain where outputs from one callback become inputs to the next
+   - Used recommendation-status as an intermediary between data generation and error reporting
+   - Eliminated direct error-store updates from the data generation callback
+   - Rationale: Creates a clean flow of data and prevents duplicate output conflicts
 2. **Error Visibility**
    - Enhanced callbacks provide more detailed error messages
    - Added logging of input data state to help diagnose issues

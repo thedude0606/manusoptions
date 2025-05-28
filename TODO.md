@@ -1,4 +1,15 @@
 # TODO List
+
+## Duplicate Callback Outputs Fix
+### High Priority
+- [x] Identify all callbacks using error-store.data output
+- [x] Identify all callbacks using recommendations-store.data output
+- [x] Determine which callbacks are actually registered at runtime
+- [x] Refactor callback registrations to eliminate duplicate outputs
+- [x] Test application to verify error is resolved
+- [x] Update documentation with new findings and solutions
+- [x] Push changes to GitHub
+
 ## Export Functionality Implementation
 ### High Priority
 - [x] Review repository structure and identify tabs
@@ -51,6 +62,7 @@
 - All components must be integrated before testing can begin
 - Testing must be completed before final deployment
 - Enhanced recommendation callbacks must be properly registered for button to work
+- Callback outputs must not have duplicates unless explicitly allowed with allow_duplicate=True
 
 ## Status
 - **Not Started**: Items without checkmarks
