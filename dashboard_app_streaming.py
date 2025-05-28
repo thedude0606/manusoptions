@@ -91,7 +91,7 @@ app.layout = html.Div([
     html.Div(id="error-messages", style={'margin': '10px 0px', 'color': 'red'}),
     
     # Tabs for different data views
-    dcc.Tabs([
+    dcc.Tabs(id="tabs", value="tab-minute-data", children=[
         # Minute Data Tab
         dcc.Tab(label="Minute Data", children=[
             html.Div([
@@ -145,7 +145,7 @@ app.layout = html.Div([
         ]),
         
         # Options Chain Tab
-        dcc.Tab(label="Options Chain", children=[
+        dcc.Tab(label="Options Chain", value="tab-options-chain", children=[
             html.Div([
                 # Options chain controls
                 html.Div([
@@ -270,11 +270,11 @@ app.layout = html.Div([
     dcc.Interval(id="update-interval", interval=60000, n_intervals=0),
     dcc.Interval(id="streaming-update-interval", interval=1000, n_intervals=0, disabled=False),
     
-    # Debug information display
+    # Debug information display - only shown in Options Chain tab
     html.Div([
         html.H3("Streaming Debug Information", style={'marginTop': '20px'}),
         html.Div(id="streaming-debug-info", style={'whiteSpace': 'pre-wrap', 'fontFamily': 'monospace', 'fontSize': '12px'})
-    ], style={'marginTop': '30px', 'padding': '10px', 'border': '1px solid #ddd'})
+    ], id="streaming-debug-container", style={'marginTop': '30px', 'padding': '10px', 'border': '1px solid #ddd', 'display': 'none'})
 ])
 
 # Refresh data callback
@@ -456,6 +456,19 @@ def toggle_streaming(toggle_value, options_data):
         app_logger.error(error_msg, exc_info=True)
         return f"Streaming: Error - {str(e)}", True
 
+# Add callback to show/hide debug container based on active tab
+@app.callback(
+    Output("streaming-debug-container", "style"),
+    [Input("tabs", "value")],
+    prevent_initial_call=False
+)
+def toggle_debug_container(active_tab):
+    """Shows or hides the streaming debug container based on the active tab."""
+    if active_tab == "tab-options-chain":
+        return {'marginTop': '30px', 'padding': '10px', 'border': '1px solid #ddd', 'display': 'block'}
+    else:
+        return {'marginTop': '30px', 'padding': '10px', 'border': '1px solid #ddd', 'display': 'none'}
+
 # Streaming Update Callback
 @app.callback(
     [
@@ -498,10 +511,14 @@ def update_streaming_data(n_intervals, options_data):
                 if field in ["bidPrice", "askPrice", "lastPrice", "delta", "gamma", "theta", "vega"]:
                     debug_info.append(f"  {field}: {value}")
         
+        # Force a timestamp change to ensure the callback is triggered
+        # This is critical for ensuring the UI updates even when the data structure hasn't changed
+        current_timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
+        
         # Return the streaming data and debug info
         return {
             "streaming_data": streaming_data,
-            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "timestamp": current_timestamp
         }, "\n".join(debug_info)
     
     except Exception as e:
@@ -530,6 +547,10 @@ def update_options_tables(options_data, streaming_data, expiration_date, option_
     """Updates the options chain tables with the fetched data and streaming updates."""
     app_logger.info(f"Update options tables callback triggered: expiration={expiration_date}, option_type={option_type}")
     
+    # Log streaming data timestamp to verify callback triggering
+    if streaming_data and streaming_data.get("timestamp"):
+        app_logger.info(f"Streaming data timestamp: {streaming_data['timestamp']}")
+    
     try:
         # First, check if we have valid options data
         if not options_data or not options_data.get("options"):
@@ -548,7 +569,7 @@ def update_options_tables(options_data, streaming_data, expiration_date, option_
         # Apply streaming updates if available
         if streaming_data and streaming_data.get("streaming_data"):
             streaming_updates = streaming_data["streaming_data"]
-            app_logger.debug(f"Applying streaming updates for {len(streaming_updates)} contracts")
+            app_logger.info(f"Applying streaming updates for {len(streaming_updates)} contracts")
             
             field_mapper = StreamingFieldMapper()
             update_count = 0
@@ -593,7 +614,7 @@ def update_options_tables(options_data, streaming_data, expiration_date, option_
             last_valid_options=last_valid_options
         )
         
-        app_logger.debug(f"Split options: {len(calls_data)} calls and {len(puts_data)} puts")
+        app_logger.info(f"Split options: {len(calls_data)} calls and {len(puts_data)} puts")
         return calls_data, puts_data
     
     except Exception as e:

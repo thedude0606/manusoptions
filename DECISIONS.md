@@ -140,35 +140,39 @@
 ### Options Chain Streaming Update Issue
 
 #### Problem
-The options chain data table was not updating with real-time streaming data despite the streaming infrastructure being in place. The terminal output showed that the streaming manager was receiving data but the Dash tables were not reflecting these updates.
+The options chain data table was not updating with real-time streaming data despite the streaming infrastructure being in place. The terminal output showed that the streaming manager was receiving data in the debugging information section, but the Dash tables were not reflecting these updates.
 
 #### Root Cause Analysis
-After thorough investigation, we identified that the `update_options_tables` callback in `dashboard_app_streaming.py` was attempting to call a non-existent method `map_streaming_fields` from the `StreamingFieldMapper` class. This method was intended to map streaming data fields to DataFrame columns, but it was missing from the implementation.
+After thorough investigation, we identified that the streaming data updates were not consistently triggering reactivity in the Dash callback system. The issue was related to how Dash determines when to re-run callbacks based on input changes. When streaming data structure remained the same (only values changed), Dash wasn't detecting the change as a trigger for the callback.
 
 #### Solution Approach
-1. **Implemented Missing Method**: Added the `map_streaming_fields` method to the `StreamingFieldMapper` class to properly map streaming data fields to DataFrame columns.
+1. **Enhanced Timestamp Precision**: Implemented microsecond-precision timestamps in the streaming data store to ensure each update has a unique timestamp value.
+   - This forces Dash to recognize each streaming update as a change, even when the data structure remains the same
+   - The timestamp change ensures the callback is triggered reliably with each streaming update
 
-2. **Field Mapping Consistency**: Ensured consistent field mapping between streaming data and options chain DataFrame by:
-   - Correcting field name mappings for high52Week and low52Week to match actual DataFrame column names
-   - Implementing proper handling for contractType conversion (C/P to CALL/PUT)
-   - Maintaining backward compatibility by having `map_streaming_data_to_dataframe` call the new method
+2. **Improved Logging and Debugging**: Added enhanced logging in the update_options_tables callback to:
+   - Track streaming data timestamps for debugging purposes
+   - Provide more detailed information about the streaming update process
+   - Make it easier to diagnose similar issues in the future
 
-3. **Architecture Decision**: Made `map_streaming_fields` the primary mapping method to:
-   - Simplify the codebase by centralizing field mapping logic
-   - Improve maintainability by reducing duplicate code
-   - Ensure consistent mapping behavior across different parts of the application
+3. **Architecture Decision**: Isolated the streaming debug information to only appear in the options chain tab:
+   - Created a dedicated container for streaming debug information with conditional display
+   - Implemented a callback to show/hide the debug container based on active tab
+   - Added proper tab IDs and values to support conditional visibility
+   - Improved UI organization by keeping debugging information contextually relevant
 
 #### Implementation Details
-- The new `map_streaming_fields` method takes streaming data as input and returns a dictionary mapping DataFrame column names to values
-- Special handling was added for contractType field to convert "C" to "CALL" and "P" to "PUT"
-- Field name mappings were updated to ensure they match the actual column names in the options chain DataFrame
+- Modified the streaming update callback to include microsecond-precision timestamps
+- Added a new callback to control the visibility of the debugging section based on the active tab
+- Enhanced the update_options_tables callback with improved logging of streaming data timestamps
+- Added proper tab IDs and values to support the conditional visibility system
 
 #### Testing Approach
-- Verified that the streaming data is correctly mapped to DataFrame columns
-- Confirmed that the options chain tables update in real-time with streaming data
-- Tested with various option contracts to ensure consistent behavior
+- Verified that the options chain tables update in real-time with streaming data
+- Confirmed that the debugging section only appears when the options chain tab is active
+- Tested with various streaming data scenarios to ensure consistent behavior
 
 #### Future Considerations
-- Consider adding more robust error handling for field mapping
-- Implement logging for field mapping to aid in debugging
-- Consider adding unit tests for the StreamingFieldMapper class
+- Consider implementing a more robust state management system for streaming data
+- Add more comprehensive debugging tools that can be toggled by users
+- Consider implementing unit tests for the streaming update functionality
