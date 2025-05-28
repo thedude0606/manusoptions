@@ -1,4 +1,11 @@
 # Design Decisions
+## Dashboard Application Architecture
+### Architecture Decisions
+1. **Streamlined Application Structure**
+   - Deleted dashboard_app.py in favor of dashboard_app_streaming.py
+   - Consolidated functionality into a single application file with streaming capabilities
+   - Rationale: Reduces code duplication, simplifies maintenance, and provides a single source of truth for the dashboard application
+
 ## Excel Export Functionality
 ### Architecture Decisions
 1. **Modular Design Pattern**

@@ -20,6 +20,13 @@
 - [ ] Test recommendation generation with various symbols
 - [ ] Validate recommendation UI updates correctly
 
+## Dashboard Application Maintenance
+### High Priority
+- [x] Analyze dependencies between dashboard_app_streaming.py and dashboard_app.py
+- [x] Determine if dashboard_app.py can be safely deleted
+- [x] Delete dashboard_app.py if it doesn't affect dashboard_app_streaming.py functionality
+- [x] Update documentation to reflect the changes
+
 ### Medium Priority
 - [ ] Add progress indicators for large exports
 - [ ] Add progress indicators for recommendation generation
