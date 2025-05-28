@@ -29,7 +29,7 @@ def register_recommendation_callbacks_enhanced(app):
         [
             Output("recommendations-store", "data"),
             Output("recommendation-status", "children"),
-            Output("error-store", "data")  # Added to capture errors
+            Output("error-store", "data", allow_duplicate=True)  # Added to capture errors
         ],
         [
             Input("generate-recommendations-button", "n_clicks"),

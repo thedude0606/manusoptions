@@ -239,7 +239,8 @@ def register_recommendation_callbacks(app):
     @app.callback(
         [
             Output("recommendations-store", "data"),
-            Output("recommendation-status", "children")
+            Output("recommendation-status", "children"),
+            Output("error-store", "data", allow_duplicate=True)
         ],
         [
             Input("generate-recommendations-button", "n_clicks"),
