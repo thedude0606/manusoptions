@@ -687,4 +687,5 @@ register_recommendation_callbacks_enhanced(app)
 
 # Run the app
 if __name__ == "__main__":
-    app.run_server(debug=True, host="0.0.0.0", port=8050)
+    # Updated to use app.run instead of app.run_server for Dash 3.0.4 compatibility
+    app.run(debug=True, host="0.0.0.0", port=8050)
