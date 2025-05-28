@@ -421,4 +421,5 @@ for id_prefix in ["minute-data-download", "tech-indicators-download", "options-c
 
 # Run the app
 if __name__ == "__main__":
-    app.run_server(debug=True, host="0.0.0.0")
+    # Updated to use app.run() instead of app.run_server() for compatibility with newer Dash versions
+    app.run(debug=True, host="0.0.0.0")
