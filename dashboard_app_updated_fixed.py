@@ -197,6 +197,8 @@ app.layout = html.Div([
                 # Market direction section
                 html.Div([
                     html.H4("Market Direction"),
+                    # Added market-direction-indicator div to match callback output
+                    html.Div(id="market-direction-indicator", className="direction-indicator", style={'display': 'none'}),
                     html.Div(id="market-direction-content")
                 ]),
                 
