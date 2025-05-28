@@ -9,6 +9,7 @@ import logging
 
 # Configure logging
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)  # Set to DEBUG for more verbose logging
 
 class StreamingFieldMapper:
     """
@@ -154,7 +155,9 @@ class StreamingFieldMapper:
         Returns:
             str: The column name or the original field name if no mapping exists
         """
-        return cls.FIELD_TO_COLUMN_MAP.get(field_name, field_name)
+        column_name = cls.FIELD_TO_COLUMN_MAP.get(field_name, field_name)
+        logger.debug(f"Mapping field '{field_name}' to column '{column_name}'")
+        return column_name
     
     @classmethod
     def map_streaming_fields(cls, streaming_data):
@@ -167,6 +170,7 @@ class StreamingFieldMapper:
         Returns:
             dict: A dictionary mapping DataFrame column names to values
         """
+        logger.debug(f"Mapping streaming data: {streaming_data}")
         mapped_data = {}
         
         for field_name, value in streaming_data.items():
@@ -181,12 +185,16 @@ class StreamingFieldMapper:
             if field_name == "contractType":
                 if value == "C":
                     value = "CALL"
+                    logger.debug(f"Converted contractType 'C' to 'CALL'")
                 elif value == "P":
                     value = "PUT"
+                    logger.debug(f"Converted contractType 'P' to 'PUT'")
             
             # Add to mapped data
             mapped_data[column_name] = value
+            logger.debug(f"Mapped '{field_name}' -> '{column_name}' = {value}")
             
+        logger.debug(f"Final mapped data: {mapped_data}")
         return mapped_data
     
     @classmethod
@@ -201,6 +209,7 @@ class StreamingFieldMapper:
         Returns:
             dict: A dictionary mapping DataFrame column names to values
         """
+        logger.debug(f"map_streaming_data_to_dataframe called with streaming_data: {streaming_data}")
         return cls.map_streaming_fields(streaming_data)
     
     @classmethod

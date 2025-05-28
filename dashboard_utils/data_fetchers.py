@@ -268,42 +268,29 @@ def get_options_chain_data(client, symbol):
         logger.error(f"Exception while fetching options chain for {symbol}: {e}", exc_info=True)
         return pd.DataFrame(), [], 0, f"Exception while fetching options chain: {str(e)}"
 
-def get_option_contract_keys(client, symbol, expiration_date=None, option_type=None):
+def get_option_contract_keys(options_df):
     """
-    Get a list of option contract keys for a given symbol, optionally filtered by expiration date and option type.
+    Extract option contract keys from options DataFrame.
     
     Args:
-        client: Schwab API client
-        symbol: Stock symbol to fetch options for
-        expiration_date: Optional expiration date to filter by (format: YYYY-MM-DD)
-        option_type: Optional option type to filter by ('CALL' or 'PUT')
+        options_df: DataFrame containing options data
         
     Returns:
-        List of option contract keys, error message (if any)
+        list: List of option contract keys
     """
-    options_df, expiration_dates, underlying_price, error = get_options_chain_data(client, symbol)
+    logger.debug(f"Extracting option contract keys from DataFrame with {len(options_df)} rows")
     
-    if error:
-        return [], error
+    if options_df is None or options_df.empty:
+        logger.warning("Empty or None options DataFrame provided to get_option_contract_keys")
+        return []
     
-    if options_df.empty:
-        return [], "No options data available"
-    
-    # Filter by expiration date if provided
-    if expiration_date:
-        if expiration_date not in expiration_dates:
-            return [], f"Expiration date {expiration_date} not found in available dates: {expiration_dates}"
-        options_df = options_df[options_df['expirationDate'] == expiration_date]
-    
-    # Filter by option type if provided
-    if option_type:
-        if option_type not in ['CALL', 'PUT']:
-            return [], f"Invalid option type: {option_type}. Must be 'CALL' or 'PUT'."
-        options_df = options_df[options_df['putCall'] == option_type]
+    # Check if symbol column exists
+    if 'symbol' not in options_df.columns:
+        logger.error("Symbol column not found in options DataFrame")
+        return []
     
     # Extract contract keys (symbols)
-    if 'symbol' in options_df.columns:
-        contract_keys = options_df['symbol'].tolist()
-        return contract_keys, None
-    else:
-        return [], "Symbol column not found in options data"
+    contract_keys = options_df['symbol'].tolist()
+    logger.debug(f"Extracted {len(contract_keys)} contract keys")
+    
+    return contract_keys

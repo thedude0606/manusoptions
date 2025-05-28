@@ -1,3 +1,7 @@
+"""
+Updates the dashboard_app_streaming.py file to add enhanced debugging for streaming updates.
+"""
+
 import dash
 from dash import dcc, html, dash_table
 from dash.dependencies import Input, Output, State
@@ -24,8 +28,9 @@ from dashboard_utils.excel_export import (
 )
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 app_logger = logging.getLogger('dashboard_app')
+app_logger.setLevel(logging.DEBUG)  # Set to DEBUG for more verbose logging
 
 # Initialize Dash app
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
@@ -263,7 +268,13 @@ app.layout = html.Div([
     dcc.Store(id="last-valid-options-store"),  # New store to preserve last valid options data
     dcc.Store(id="recommendations-store"),  # Added explicit recommendations store
     dcc.Interval(id="update-interval", interval=60000, n_intervals=0),
-    dcc.Interval(id="streaming-update-interval", interval=1000, n_intervals=0, disabled=False)
+    dcc.Interval(id="streaming-update-interval", interval=1000, n_intervals=0, disabled=False),
+    
+    # Debug information display
+    html.Div([
+        html.H3("Streaming Debug Information", style={'marginTop': '20px'}),
+        html.Div(id="streaming-debug-info", style={'whiteSpace': 'pre-wrap', 'fontFamily': 'monospace', 'fontSize': '12px'})
+    ], style={'marginTop': '30px', 'padding': '10px', 'border': '1px solid #ddd'})
 ])
 
 # Refresh data callback
@@ -380,6 +391,16 @@ def refresh_data(n_clicks, symbol):
         # Also store the options data as the last valid options data
         last_valid_options_store = options_data.copy()
         
+        # Get option contract keys for streaming
+        option_keys = get_option_contract_keys(options_df)
+        app_logger.debug(f"Got {len(option_keys)} option contract keys for streaming")
+        
+        # Start streaming for the option keys if streaming is enabled
+        streaming_toggle_value = "ON"  # Default to ON
+        if streaming_toggle_value == "ON":
+            app_logger.info(f"Starting streaming for {len(option_keys)} option contracts")
+            streaming_manager.start_streaming(option_keys)
+        
         return minute_data_store, tech_indicators_store, options_data, selected_symbol_store, dropdown_options, default_expiration, status_message, None, last_valid_options_store
     
     except Exception as e:
@@ -387,145 +408,106 @@ def refresh_data(n_clicks, symbol):
         app_logger.error(error_msg, exc_info=True)
         return None, None, None, None, [], None, error_msg, {
             "source": "Data Refresh",
-            "message": error_msg,
+            "message": str(e),
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }, None
 
-# Minute Data Table Callback
-@app.callback(
-    Output("minute-data-table", "data"),
-    Output("minute-data-table", "columns"),
-    Input("minute-data-store", "data"),
-    prevent_initial_call=True
-)
-def update_minute_data_table(minute_data):
-    """Updates the minute data table with the fetched data."""
-    if not minute_data or not minute_data.get("data"):
-        return [], []
-    
-    data = minute_data["data"]
-    
-    # Define columns
-    columns = [
-        {"name": "Timestamp", "id": "timestamp"},
-        {"name": "Open", "id": "open"},
-        {"name": "High", "id": "high"},
-        {"name": "Low", "id": "low"},
-        {"name": "Close", "id": "close"},
-        {"name": "Volume", "id": "volume"}
-    ]
-    
-    return data, columns
-
-# Technical Indicators Table Callback
-@app.callback(
-    Output("tech-indicators-table", "data"),
-    Output("tech-indicators-table", "columns"),
-    Input("tech-indicators-store", "data"),
-    prevent_initial_call=True
-)
-def update_tech_indicators_table(tech_indicators_data):
-    """Updates the technical indicators table with the calculated data."""
-    if not tech_indicators_data or not tech_indicators_data.get("data"):
-        return [], []
-    
-    data = tech_indicators_data["data"]
-    
-    if not data:
-        return [], []
-    
-    # Get column names from the first row
-    first_row = data[0]
-    columns = [{"name": col, "id": col} for col in first_row.keys()]
-    
-    # Ensure timeframe column is first
-    if "timeframe" in first_row:
-        timeframe_col = {"name": "Timeframe", "id": "timeframe"}
-        columns = [timeframe_col] + [col for col in columns if col["id"] != "timeframe"]
-    
-    return data, columns
-
 # Streaming Toggle Callback
 @app.callback(
-    Output("streaming-update-interval", "disabled"),
-    Output("streaming-status", "children"),
-    Input("streaming-toggle", "value"),
-    Input("selected-symbol-store", "data"),
-    Input("expiration-date-dropdown", "value"),
-    Input("option-type-radio", "value"),
+    [
+        Output("streaming-status", "children"),
+        Output("streaming-update-interval", "disabled")
+    ],
+    [
+        Input("streaming-toggle", "value"),
+        Input("options-chain-store", "data")
+    ],
     prevent_initial_call=True
 )
-def toggle_streaming(toggle_value, selected_symbol, expiration_date, option_type):
-    """Toggles streaming updates on or off."""
-    if toggle_value == "OFF":
-        streaming_manager.stop_streaming()
-        return True, "Real-time updates are turned off."
+def toggle_streaming(toggle_value, options_data):
+    """Toggles streaming based on the toggle value."""
+    app_logger.info(f"Streaming toggle set to: {toggle_value}")
     
-    if not selected_symbol or not selected_symbol.get("symbol"):
-        return True, "Please select a symbol first."
-    
-    symbol = selected_symbol.get("symbol")
-    
-    # Get option contract keys for the selected symbol, expiration date, and option type
-    client = get_schwab_client()
-    if not client:
-        return True, "Failed to initialize Schwab client."
+    if not options_data or not options_data.get("options"):
+        return "Streaming: No options data available", True
     
     try:
-        # Filter option type for API call
-        api_option_type = None
-        if option_type == "CALL":
-            api_option_type = "CALL"
-        elif option_type == "PUT":
-            api_option_type = "PUT"
-        
-        contract_keys, error = get_option_contract_keys(client, symbol, expiration_date, api_option_type)
-        
-        if error:
-            app_logger.error(f"Error getting option contract keys: {error}")
-            return True, f"Error: {error}"
-        
-        if not contract_keys:
-            app_logger.warning(f"No option contracts found for {symbol} with expiration {expiration_date} and type {option_type}")
-            return True, f"No option contracts found for {symbol} with the selected criteria."
-        
-        # Start streaming for the selected contracts
-        streaming_manager.start_streaming(contract_keys)
-        
-        return False, f"Real-time updates are active for {len(contract_keys)} contracts."
+        if toggle_value == "ON":
+            # Get option contract keys
+            options_df = pd.DataFrame(options_data["options"])
+            option_keys = get_option_contract_keys(options_df)
+            app_logger.info(f"Starting streaming for {len(option_keys)} option contracts")
+            
+            # Start streaming
+            success = streaming_manager.start_streaming(option_keys)
+            
+            if success:
+                return "Streaming: Active", False
+            else:
+                return "Streaming: Failed to start", True
+        else:
+            # Stop streaming
+            app_logger.info("Stopping streaming")
+            streaming_manager.stop_streaming()
+            return "Streaming: Inactive", True
     
     except Exception as e:
-        app_logger.error(f"Error in toggle_streaming: {str(e)}", exc_info=True)
-        return True, f"Error: {str(e)}"
+        error_msg = f"Error toggling streaming: {str(e)}"
+        app_logger.error(error_msg, exc_info=True)
+        return f"Streaming: Error - {str(e)}", True
 
 # Streaming Update Callback
 @app.callback(
-    Output("streaming-options-store", "data"),
+    [
+        Output("streaming-options-store", "data"),
+        Output("streaming-debug-info", "children")
+    ],
     Input("streaming-update-interval", "n_intervals"),
     State("options-chain-store", "data"),
     prevent_initial_call=True
 )
 def update_streaming_data(n_intervals, options_data):
     """Updates the streaming options data."""
+    app_logger.debug(f"Streaming update callback triggered: interval={n_intervals}")
+    
     if not options_data:
-        return None
+        return None, "No options data available"
     
     try:
         # Get the latest streaming data
         streaming_data = streaming_manager.get_latest_data()
         
-        if not streaming_data:
-            return None
+        # Create debug information
+        debug_info = []
+        debug_info.append(f"Streaming Update Triggered: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        debug_info.append(f"Interval Count: {n_intervals}")
         
-        # Return the streaming data
+        if not streaming_data:
+            debug_info.append("No streaming data available")
+            return None, "\n".join(debug_info)
+        
+        # Add streaming data info to debug
+        debug_info.append(f"Streaming Data Available: {len(streaming_data)} contracts")
+        
+        # Sample a few contracts for debugging
+        sample_keys = list(streaming_data.keys())[:3]
+        for key in sample_keys:
+            data = streaming_data[key]
+            debug_info.append(f"\nContract: {key}")
+            for field, value in data.items():
+                if field in ["bidPrice", "askPrice", "lastPrice", "delta", "gamma", "theta", "vega"]:
+                    debug_info.append(f"  {field}: {value}")
+        
+        # Return the streaming data and debug info
         return {
             "streaming_data": streaming_data,
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
+        }, "\n".join(debug_info)
     
     except Exception as e:
-        app_logger.error(f"Error in update_streaming_data: {str(e)}", exc_info=True)
-        return None
+        error_msg = f"Error in update_streaming_data: {str(e)}"
+        app_logger.error(error_msg, exc_info=True)
+        return None, f"Error: {error_msg}"
 
 # Options Chain Tables Callback with Streaming Support
 @app.callback(
@@ -561,30 +543,47 @@ def update_options_tables(options_data, streaming_data, expiration_date, option_
         
         # Create a copy of the options data to avoid modifying the original
         options_df = pd.DataFrame(options_data["options"]).copy()
+        app_logger.debug(f"Original options DataFrame shape: {options_df.shape}")
         
         # Apply streaming updates if available
         if streaming_data and streaming_data.get("streaming_data"):
             streaming_updates = streaming_data["streaming_data"]
+            app_logger.debug(f"Applying streaming updates for {len(streaming_updates)} contracts")
+            
             field_mapper = StreamingFieldMapper()
+            update_count = 0
             
             # Update each contract with streaming data
             for contract_key, update_data in streaming_updates.items():
                 # Normalize the contract key to match the format in the options DataFrame
                 normalized_key = normalize_contract_key(contract_key)
+                app_logger.debug(f"Processing streaming update for contract: {normalized_key}")
                 
                 # Find the corresponding row in the DataFrame
                 mask = options_df["symbol"] == normalized_key
                 if mask.any():
+                    app_logger.debug(f"Found matching row for {normalized_key}")
+                    
                     # Get the mapped fields from the streaming data
                     mapped_fields = field_mapper.map_streaming_fields(update_data)
+                    app_logger.debug(f"Mapped fields for {normalized_key}: {mapped_fields}")
                     
                     # Update the DataFrame with the streaming data
                     for field, value in mapped_fields.items():
                         if field in options_df.columns:
+                            # Use .loc to avoid SettingWithCopyWarning
                             options_df.loc[mask, field] = value
+                            app_logger.debug(f"Updated {normalized_key}.{field} = {value}")
+                            update_count += 1
+                else:
+                    app_logger.debug(f"No matching row found for {normalized_key}")
+            
+            app_logger.info(f"Applied {update_count} field updates from streaming data")
+        else:
+            app_logger.debug("No streaming updates available")
         
         # Log the shape of the DataFrame for debugging
-        app_logger.debug(f"Options DataFrame shape: {options_df.shape}")
+        app_logger.debug(f"Updated options DataFrame shape: {options_df.shape}")
         
         # Use the utility function to split options by type
         calls_data, puts_data = split_options_by_type(
@@ -594,10 +593,12 @@ def update_options_tables(options_data, streaming_data, expiration_date, option_
             last_valid_options=last_valid_options
         )
         
+        app_logger.debug(f"Split options: {len(calls_data)} calls and {len(puts_data)} puts")
         return calls_data, puts_data
     
     except Exception as e:
-        app_logger.error(f"Error in update_options_tables: {str(e)}", exc_info=True)
+        error_msg = f"Error in update_options_tables: {str(e)}"
+        app_logger.error(error_msg, exc_info=True)
         return [], []
 
 # Error Display Callback
