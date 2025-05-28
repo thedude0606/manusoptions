@@ -235,11 +235,11 @@ def register_recommendation_callbacks(app):
     Args:
         app: The Dash app instance
     """
+    # First callback: Update recommendations data
     @app.callback(
         [
             Output("recommendations-store", "data"),
-            Output("recommendation-status", "children"),
-            Output("error-store", "data")  # Added error store output for better error visibility
+            Output("recommendation-status", "children")
         ],
         [
             Input("generate-recommendations-button", "n_clicks"),
@@ -251,8 +251,7 @@ def register_recommendation_callbacks(app):
         [
             State("selected-symbol-store", "data")
         ],
-        prevent_initial_call=True,
-        allow_duplicate=True  # Added allow_duplicate=True to fix the duplicate callback outputs error
+        prevent_initial_call=True
     )
     def update_recommendations(n_clicks, tech_indicators_data, options_chain_data, timeframe, n_intervals, selected_symbol):
         """Update recommendations based on technical indicators and options chain data."""
@@ -280,17 +279,13 @@ def register_recommendation_callbacks(app):
                 error_msg = f"Missing required data: {', '.join(missing_data)}. Please refresh data first."
                 logger.warning(error_msg)
                 
-                # Return error to both status and error store for visibility
-                return None, error_msg, {
-                    "source": "Recommendations",
-                    "message": error_msg,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
+                # Return error to status only
+                return None, error_msg
         
         # For non-button triggers, silently return if data is missing
         if not button_clicked and (not tech_indicators_data or not options_chain_data or not selected_symbol):
             logger.info("Non-button trigger with missing data, silently returning")
-            return dash.no_update, dash.no_update, dash.no_update
+            return dash.no_update, dash.no_update
         
         try:
             # Get the symbol and underlying price
@@ -302,12 +297,8 @@ def register_recommendation_callbacks(app):
                 error_msg = f"Missing symbol or price data. Please refresh data."
                 logger.warning(f"{error_msg} symbol={symbol}, underlying_price={underlying_price}")
                 
-                # Return error to both status and error store for visibility
-                return None, error_msg, {
-                    "source": "Recommendations",
-                    "message": error_msg,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
+                # Return error to status only
+                return None, error_msg
             
             # Get technical indicators for the selected timeframe
             tech_indicators_df = pd.DataFrame()
@@ -327,12 +318,8 @@ def register_recommendation_callbacks(app):
                 error_msg = f"No technical indicator data available for {timeframe} timeframe. Try a different timeframe or refresh data."
                 logger.warning(error_msg)
                 
-                # Return error to both status and error store for visibility
-                return None, error_msg, {
-                    "source": "Recommendations",
-                    "message": error_msg,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
+                # Return error to status only
+                return None, error_msg
             
             # Get options chain data
             options_df = pd.DataFrame()
@@ -348,12 +335,8 @@ def register_recommendation_callbacks(app):
                 error_msg = "No options chain data available. Please refresh data."
                 logger.warning(error_msg)
                 
-                # Return error to both status and error store for visibility
-                return None, error_msg, {
-                    "source": "Recommendations",
-                    "message": error_msg,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
+                # Return error to status only
+                return None, error_msg
             
             # Generate recommendations
             logger.info("Creating recommendation engine instance")
@@ -377,19 +360,38 @@ def register_recommendation_callbacks(app):
             recommendations["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
             success_msg = f"Recommendations updated for {symbol} ({timeframe})"
-            return recommendations, success_msg, None
+            return recommendations, success_msg
             
         except Exception as e:
             error_msg = f"Error generating recommendations: {str(e)}"
             logger.error(error_msg, exc_info=True)
             
-            # Return error to both status and error store for visibility
-            return None, error_msg, {
+            # Return error to status only
+            return None, error_msg
+    
+    # Second callback: Update error store based on recommendation status
+    @app.callback(
+        Output("error-store", "data"),
+        Input("recommendation-status", "children"),
+        prevent_initial_call=True
+    )
+    def update_error_store(status_message):
+        """Update error store based on recommendation status message."""
+        if not status_message:
+            return dash.no_update
+            
+        # Check if status message indicates an error
+        if status_message.startswith("Error") or "Missing" in status_message or "No " in status_message:
+            return {
                 "source": "Recommendations",
-                "message": error_msg,
+                "message": status_message,
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
+        
+        # If not an error, don't update the error store
+        return dash.no_update
     
+    # Third callback: Update recommendation UI
     @app.callback(
         [
             Output("market-direction-indicator", "children"),
