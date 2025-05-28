@@ -10,7 +10,7 @@ import os
 from config import APP_KEY, APP_SECRET, CALLBACK_URL, TOKEN_FILE_PATH
 from dashboard_utils.data_fetchers import get_minute_data, get_technical_indicators, get_options_chain_data, get_option_contract_keys
 from dashboard_utils.options_chain_utils import split_options_by_type
-from dashboard_utils.recommendation_tab import register_recommendation_callbacks
+from dashboard_utils.recommendation_tab import register_recommendation_callbacks, create_recommendation_tab
 from dashboard_utils.streaming_manager import StreamingManager
 from dashboard_utils.streaming_field_mapper import StreamingFieldMapper
 from dashboard_utils.contract_utils import normalize_contract_key
@@ -233,35 +233,19 @@ app.layout = html.Div([
         # Recommendations Tab
         dcc.Tab(label="Recommendations", children=[
             html.Div([
-                # Recommendations controls
+                # Generate Recommendations button
                 html.Div([
                     html.Button("Generate Recommendations", id="generate-recommendations-button", n_clicks=0, 
                                style={'backgroundColor': '#4CAF50', 'color': 'white', 'padding': '10px 15px', 
                                       'border': 'none', 'borderRadius': '4px', 'cursor': 'pointer'})
                 ], style={'margin': '10px 0px'}),
                 
-                # Recommendation status message - Enhanced visibility
-                html.Div(id="recommendation-status", style={'margin': '10px 0px', 'padding': '10px', 
-                                                           'backgroundColor': '#f8f9fa', 'border': '1px solid #ddd',
-                                                           'borderRadius': '4px', 'fontWeight': 'bold'}),
+                # Use the full recommendation tab layout from the utility module
+                # This includes the recommendation-timeframe-dropdown that was missing
+                create_recommendation_tab(),
                 
                 # Export button for Recommendations
                 create_export_button("recommendations", "Export Recommendations to Excel"),
-                
-                # Recommendations table
-                dash_table.DataTable(
-                    id="recommendations-table",
-                    page_size=10,
-                    style_table={'overflowX': 'auto'},
-                    style_cell={
-                        'textAlign': 'left',
-                        'padding': '5px'
-                    },
-                    style_header={
-                        'backgroundColor': 'rgb(230, 230, 230)',
-                        'fontWeight': 'bold'
-                    }
-                ),
                 
                 # Download component for Recommendations
                 create_download_component("recommendations-download")
