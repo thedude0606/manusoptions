@@ -251,7 +251,8 @@ def register_recommendation_callbacks(app):
         [
             State("selected-symbol-store", "data")
         ],
-        prevent_initial_call=True
+        prevent_initial_call=True,
+        allow_duplicate=True  # Added allow_duplicate=True to fix the duplicate callback outputs error
     )
     def update_recommendations(n_clicks, tech_indicators_data, options_chain_data, timeframe, n_intervals, selected_symbol):
         """Update recommendations based on technical indicators and options chain data."""

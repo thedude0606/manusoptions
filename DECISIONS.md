@@ -5,6 +5,11 @@
    - Deleted dashboard_app.py in favor of dashboard_app_streaming.py
    - Consolidated functionality into a single application file with streaming capabilities
    - Rationale: Reduces code duplication, simplifies maintenance, and provides a single source of truth for the dashboard application
+2. **Dash Callback Management**
+   - Added `allow_duplicate=True` to callbacks that share output targets
+   - Ensures multiple callbacks can update the same output component without conflicts
+   - Particularly important for error-store.data which is updated by multiple callbacks
+   - Rationale: Prevents duplicate callback output errors while maintaining modular callback structure
 
 ## Recommendation Generation Functionality
 ### Architecture Decisions

@@ -1,6 +1,7 @@
 # Progress Report
 
 ## May 28, 2025
+- Fixed duplicate callback outputs error in recommendation callbacks by adding allow_duplicate=True
 - Fixed Generate Recommendations button not working in dashboard_app_streaming.py
 - Improved error feedback and status messaging for recommendation generation
 - Enhanced UI for recommendation status messages to improve visibility

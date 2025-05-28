@@ -20,6 +20,7 @@
 - [x] Fix Generate Recommendations button in dashboard_app_streaming.py
 - [x] Improve error feedback and status messaging for recommendation generation
 - [x] Enhance UI for recommendation status messages
+- [x] Fix duplicate callback outputs error in recommendation callbacks
 - [ ] Test recommendation generation with various symbols
 - [ ] Validate recommendation UI updates correctly
 
