@@ -1,6 +1,10 @@
 # Progress Report
 
 ## May 28, 2025
+- Fixed Generate Recommendations button not working in dashboard_app_streaming.py
+- Improved error feedback and status messaging for recommendation generation
+- Enhanced UI for recommendation status messages to improve visibility
+- Added explicit error reporting to error-store for better user feedback
 - Analyzed dependencies between dashboard_app_streaming.py and dashboard_app.py
 - Confirmed dashboard_app.py is not required by dashboard_app_streaming.py or any runtime logic
 - Deleted dashboard_app.py as it's been replaced by dashboard_app_streaming.py

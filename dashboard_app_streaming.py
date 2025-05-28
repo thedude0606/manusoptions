@@ -235,8 +235,15 @@ app.layout = html.Div([
             html.Div([
                 # Recommendations controls
                 html.Div([
-                    html.Button("Generate Recommendations", id="generate-recommendations-button", n_clicks=0)
+                    html.Button("Generate Recommendations", id="generate-recommendations-button", n_clicks=0, 
+                               style={'backgroundColor': '#4CAF50', 'color': 'white', 'padding': '10px 15px', 
+                                      'border': 'none', 'borderRadius': '4px', 'cursor': 'pointer'})
                 ], style={'margin': '10px 0px'}),
+                
+                # Recommendation status message - Enhanced visibility
+                html.Div(id="recommendation-status", style={'margin': '10px 0px', 'padding': '10px', 
+                                                           'backgroundColor': '#f8f9fa', 'border': '1px solid #ddd',
+                                                           'borderRadius': '4px', 'fontWeight': 'bold'}),
                 
                 # Export button for Recommendations
                 create_export_button("recommendations", "Export Recommendations to Excel"),
@@ -270,6 +277,7 @@ app.layout = html.Div([
     dcc.Store(id="error-store"),
     dcc.Store(id="streaming-options-store"),
     dcc.Store(id="last-valid-options-store"),  # New store to preserve last valid options data
+    dcc.Store(id="recommendations-store"),  # Added explicit recommendations store
     dcc.Interval(id="update-interval", interval=60000, n_intervals=0),
     dcc.Interval(id="streaming-update-interval", interval=1000, n_intervals=0, disabled=False)
 ])
@@ -393,7 +401,7 @@ def refresh_data(n_clicks, symbol):
     except Exception as e:
         error_msg = f"Error refreshing data: {str(e)}"
         app_logger.error(error_msg, exc_info=True)
-        return None, None, None, None, [], None, f"Error: {str(e)}", {
+        return None, None, None, None, [], None, error_msg, {
             "source": "Data Refresh",
             "message": error_msg,
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")

@@ -238,10 +238,11 @@ def register_recommendation_callbacks(app):
     @app.callback(
         [
             Output("recommendations-store", "data"),
-            Output("recommendation-status", "children")
+            Output("recommendation-status", "children"),
+            Output("error-store", "data")  # Added error store output for better error visibility
         ],
         [
-            Input("generate-recommendations-button", "n_clicks"),  # Added button as trigger
+            Input("generate-recommendations-button", "n_clicks"),
             Input("tech-indicators-store", "data"),
             Input("options-chain-store", "data"),
             Input("recommendation-timeframe-dropdown", "value"),
@@ -264,10 +265,31 @@ def register_recommendation_callbacks(app):
         button_clicked = "generate-recommendations-button" in trigger
         if button_clicked:
             logger.info(f"Generate Recommendations button clicked, n_clicks: {n_clicks}")
+            
+            # If button was clicked but data is missing, provide clear error feedback
+            if not tech_indicators_data or not options_chain_data or not selected_symbol:
+                missing_data = []
+                if not selected_symbol:
+                    missing_data.append("symbol data")
+                if not tech_indicators_data:
+                    missing_data.append("technical indicators")
+                if not options_chain_data:
+                    missing_data.append("options chain data")
+                
+                error_msg = f"Missing required data: {', '.join(missing_data)}. Please refresh data first."
+                logger.warning(error_msg)
+                
+                # Return error to both status and error store for visibility
+                return None, error_msg, {
+                    "source": "Recommendations",
+                    "message": error_msg,
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
         
-        if not tech_indicators_data or not options_chain_data or not selected_symbol:
-            logger.warning(f"Missing required data: tech_indicators_data={bool(tech_indicators_data)}, options_chain_data={bool(options_chain_data)}, selected_symbol={bool(selected_symbol)}")
-            return None, "Please load symbol data first."
+        # For non-button triggers, silently return if data is missing
+        if not button_clicked and (not tech_indicators_data or not options_chain_data or not selected_symbol):
+            logger.info("Non-button trigger with missing data, silently returning")
+            return dash.no_update, dash.no_update, dash.no_update
         
         try:
             # Get the symbol and underlying price
@@ -276,8 +298,15 @@ def register_recommendation_callbacks(app):
             logger.info(f"Processing recommendations for symbol: {symbol}, underlying price: {underlying_price}")
             
             if not symbol or not underlying_price:
-                logger.warning(f"Missing symbol or price data: symbol={symbol}, underlying_price={underlying_price}")
-                return None, "Missing symbol or price data."
+                error_msg = f"Missing symbol or price data. Please refresh data."
+                logger.warning(f"{error_msg} symbol={symbol}, underlying_price={underlying_price}")
+                
+                # Return error to both status and error store for visibility
+                return None, error_msg, {
+                    "source": "Recommendations",
+                    "message": error_msg,
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
             
             # Get technical indicators for the selected timeframe
             tech_indicators_df = pd.DataFrame()
@@ -294,8 +323,15 @@ def register_recommendation_callbacks(app):
                 logger.warning("No timeframe_data found in tech_indicators_data")
             
             if tech_indicators_df.empty:
-                logger.warning(f"Empty technical indicators DataFrame for {timeframe} timeframe")
-                return None, f"No technical indicator data available for {timeframe} timeframe."
+                error_msg = f"No technical indicator data available for {timeframe} timeframe. Try a different timeframe or refresh data."
+                logger.warning(error_msg)
+                
+                # Return error to both status and error store for visibility
+                return None, error_msg, {
+                    "source": "Recommendations",
+                    "message": error_msg,
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
             
             # Get options chain data
             options_df = pd.DataFrame()
@@ -308,8 +344,15 @@ def register_recommendation_callbacks(app):
                 logger.warning("No options key found in options_chain_data")
             
             if options_df.empty:
-                logger.warning("Empty options chain DataFrame")
-                return None, "No options chain data available."
+                error_msg = "No options chain data available. Please refresh data."
+                logger.warning(error_msg)
+                
+                # Return error to both status and error store for visibility
+                return None, error_msg, {
+                    "source": "Recommendations",
+                    "message": error_msg,
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
             
             # Generate recommendations
             logger.info("Creating recommendation engine instance")
@@ -332,11 +375,19 @@ def register_recommendation_callbacks(app):
             # Add timestamp
             recommendations["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
-            return recommendations, f"Recommendations updated for {symbol} ({timeframe})"
+            success_msg = f"Recommendations updated for {symbol} ({timeframe})"
+            return recommendations, success_msg, None
             
         except Exception as e:
-            logger.error(f"Error updating recommendations: {e}", exc_info=True)
-            return None, f"Error: {str(e)}"
+            error_msg = f"Error generating recommendations: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            
+            # Return error to both status and error store for visibility
+            return None, error_msg, {
+                "source": "Recommendations",
+                "message": error_msg,
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
     
     @app.callback(
         [
@@ -399,116 +450,31 @@ def register_recommendation_callbacks(app):
             direction_text_html = html.Span(direction_text, className=f"direction-label {direction_class}")
             
             # Create signals list
-            signals_html = [html.Div("Technical Signals:", className="signals-header")]
-            if signals:
-                signals_html.extend([
-                    html.Div(signal, className="signal-item")
-                    for signal in signals[:10]  # Limit to top 10 signals
-                ])
-            else:
-                signals_html.append(html.Div("No signals detected", className="no-signals"))
+            signals_html = html.Ul([html.Li(signal) for signal in signals]) if signals else "No signals available"
             
-            # Get recommendations
-            call_recommendations = recommendations_data.get("calls", [])
-            put_recommendations = recommendations_data.get("puts", [])
-            
-            logger.info(f"Number of call recommendations: {len(call_recommendations)}")
-            logger.info(f"Number of put recommendations: {len(put_recommendations)}")
-            
-            if call_recommendations:
-                logger.info(f"Sample call recommendation: {call_recommendations[0]}")
-            if put_recommendations:
-                logger.info(f"Sample put recommendation: {put_recommendations[0]}")
+            # Get call and put recommendations
+            calls = recommendations_data.get("calls", [])
+            puts = recommendations_data.get("puts", [])
             
             # Get timestamp
             timestamp = recommendations_data.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            last_updated_html = f"Last updated: {timestamp}"
             
             return (
                 direction_indicator_html,
                 direction_text_html,
                 f"{bullish_score}",
                 f"{bearish_score}",
-                html.Div(signals_html, className="signals-list"),
-                call_recommendations,
-                put_recommendations,
-                f"Last updated: {timestamp}"
+                signals_html,
+                calls,
+                puts,
+                last_updated_html
             )
             
         except Exception as e:
             logger.error(f"Error updating recommendation UI: {e}", exc_info=True)
             return (
-                "Error", "Error", "Error", "Error", 
-                f"Error: {str(e)}", [], [], 
-                "Last updated: Error"
+                "Error", "Error", "Error", "Error",
+                f"Error: {str(e)}", [], [],
+                f"Error at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
             )
-    
-    @app.callback(
-        [
-            Output("detail-symbol", "children"),
-            Output("detail-type", "children"),
-            Output("detail-strike", "children"),
-            Output("detail-expiration", "children"),
-            Output("detail-delta", "children"),
-            Output("detail-gamma", "children"),
-            Output("detail-theta", "children"),
-            Output("detail-vega", "children"),
-            Output("detail-iv", "children")
-        ],
-        [
-            Input("call-recommendations-table", "active_cell"),
-            Input("put-recommendations-table", "active_cell")
-        ],
-        [
-            State("call-recommendations-table", "data"),
-            State("put-recommendations-table", "data")
-        ]
-    )
-    def update_contract_details(call_active_cell, put_active_cell, call_data, put_data):
-        """Update the contract details panel when a recommendation is selected."""
-        ctx = dash.callback_context
-        trigger = ctx.triggered[0]['prop_id'] if ctx.triggered else ""
-        
-        # Default values
-        default_values = ["N/A"] * 9
-        
-        if not ctx.triggered:
-            return default_values
-        
-        try:
-            if "call-recommendations-table" in trigger and call_active_cell and call_data:
-                row = call_active_cell['row']
-                if row < len(call_data):
-                    contract = call_data[row]
-                    return (
-                        contract.get("symbol", "N/A"),
-                        "CALL",
-                        f"{contract.get('strikePrice', 0):.2f}",
-                        contract.get("expirationDate", "N/A"),
-                        f"{contract.get('delta', 'N/A')}",
-                        f"{contract.get('gamma', 'N/A')}",
-                        f"{contract.get('theta', 'N/A')}",
-                        f"{contract.get('vega', 'N/A')}",
-                        f"{contract.get('iv', 'N/A')}"
-                    )
-            
-            elif "put-recommendations-table" in trigger and put_active_cell and put_data:
-                row = put_active_cell['row']
-                if row < len(put_data):
-                    contract = put_data[row]
-                    return (
-                        contract.get("symbol", "N/A"),
-                        "PUT",
-                        f"{contract.get('strikePrice', 0):.2f}",
-                        contract.get("expirationDate", "N/A"),
-                        f"{contract.get('delta', 'N/A')}",
-                        f"{contract.get('gamma', 'N/A')}",
-                        f"{contract.get('theta', 'N/A')}",
-                        f"{contract.get('vega', 'N/A')}",
-                        f"{contract.get('iv', 'N/A')}"
-                    )
-            
-            return default_values
-            
-        except Exception as e:
-            logger.error(f"Error updating contract details: {e}", exc_info=True)
-            return default_values

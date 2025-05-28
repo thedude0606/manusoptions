@@ -17,6 +17,9 @@
 - [x] Fix Generate Recommendations button not working
 - [x] Implement enhanced error handling for recommendation generation
 - [x] Update dashboard_app.py to use enhanced callbacks from debug_fixes
+- [x] Fix Generate Recommendations button in dashboard_app_streaming.py
+- [x] Improve error feedback and status messaging for recommendation generation
+- [x] Enhance UI for recommendation status messages
 - [ ] Test recommendation generation with various symbols
 - [ ] Validate recommendation UI updates correctly
 
