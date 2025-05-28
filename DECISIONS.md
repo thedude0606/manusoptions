@@ -16,6 +16,11 @@
    - Implemented comprehensive fix to maintain alignment between recommendation_tab.py callbacks and main layout structure
    - Mirrored the component structure from recommendation_tab.py in the main layout to ensure consistency
    - Rationale: Prevents "nonexistent object" errors in Dash callbacks, ensures proper component rendering, and provides a more maintainable codebase by reducing the likelihood of similar errors in the future
+4. **Data Table Display Implementation**
+   - Implemented dedicated callbacks for minute-data-table and tech-indicators-table components
+   - Ensured proper data flow from backend stores to frontend tables
+   - Added consistent tab value IDs across the application for proper tab navigation
+   - Rationale: Ensures data tables display correctly and consistently, improving user experience and data visibility
 
 ## Recommendation Generation Functionality
 ### Architecture Decisions
@@ -176,3 +181,54 @@ After thorough investigation, we identified that the streaming data updates were
 - Consider implementing a more robust state management system for streaming data
 - Add more comprehensive debugging tools that can be toggled by users
 - Consider implementing unit tests for the streaming update functionality
+
+# Data Table Display Fix - Technical Decisions
+
+## May 28, 2025
+
+### Minute and Technical Indicators Tab Data Table Issues
+
+#### Problem
+The minute tab and technical indicators tab were not displaying their data tables despite data being successfully fetched and stored in the respective dcc.Store components. The terminal output showed successful data fetching with no critical errors, but the tables remained empty.
+
+#### Root Cause Analysis
+After thorough investigation, we identified that the root cause was missing callback functions to update the DataTable components from their respective data stores. While the data was being correctly fetched and stored in the minute-data-store and tech-indicators-store components, there were no callbacks defined to transfer this data to the minute-data-table and tech-indicators-table components for display.
+
+#### Solution Approach
+1. **Implemented Missing Callbacks**: Added two new callback functions:
+   - update_minute_data_table: Connects minute-data-store to minute-data-table
+   - update_tech_indicators_table: Connects tech-indicators-store to tech-indicators-table
+   
+2. **Data Formatting and Transformation**: Implemented proper data formatting within the callbacks:
+   - Converted timestamp fields to human-readable format
+   - Created appropriate column configurations for the tables
+   - Handled empty or missing data gracefully
+
+3. **Consistent Tab Navigation**: Added consistent tab value IDs across the application:
+   - Assigned explicit value attributes to all tab components
+   - Ensured tab values match the expected values in callbacks
+   - Improved tab navigation and state management
+
+4. **Error Handling**: Added comprehensive error handling in the callbacks:
+   - Detailed logging for troubleshooting
+   - Graceful fallback to empty tables when data is unavailable
+   - Clear error messages in the application logs
+
+#### Implementation Details
+- Added update_minute_data_table callback with proper Input/Output configuration
+- Added update_tech_indicators_table callback with proper Input/Output configuration
+- Implemented data transformation logic to prepare data for table display
+- Added prevent_initial_call=True to avoid unnecessary initial callback execution
+- Enhanced logging to track data flow and potential issues
+
+#### Testing Approach
+- Verified that both tables display data correctly after refresh
+- Confirmed that data formatting is consistent and readable
+- Tested error handling by simulating missing or malformed data
+- Validated tab navigation and state preservation
+
+#### Future Considerations
+- Consider adding filtering and sorting capabilities to the tables
+- Implement pagination controls for better handling of large datasets
+- Add visual indicators for data freshness and update status
+- Consider implementing real-time updates for minute data similar to options chain

@@ -11,6 +11,11 @@
   - [x] Ensure proper data mapping between streaming data and DataFrame columns
   - [x] Test streaming updates with real-time data
   - [x] Document the fix in PROGRESS.md and DECISIONS.md
+- [x] Fix minute tab and technical indicators tab not showing data tables
+  - [x] Implement callback functions for minute-data-table and tech-indicators-table
+  - [x] Ensure proper data formatting and error handling
+  - [x] Add consistent tab value IDs across the application
+  - [x] Test data flow from backend stores to frontend tables
 
 ## Export Button Fix
 - [x] Analyze repository structure and identify export button issue
@@ -22,7 +27,7 @@
 
 ## Documentation Updates
 - [x] Update PROGRESS.md with current status
-- [ ] Update DECISIONS.md with architectural decisions
+- [x] Update DECISIONS.md with architectural decisions
 - [ ] Document Safari-specific considerations
 
 ## Future Enhancements

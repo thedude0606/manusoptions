@@ -1,6 +1,13 @@
 # Progress Report
 
 ## May 28, 2025
+- Fixed minute tab and technical indicators tab not showing data tables
+  - Identified root cause: Missing callback functions to update the DataTable components from their respective data stores
+  - Implemented new callback functions for both minute-data-table and tech-indicators-table
+  - Added proper data formatting and error handling in the callbacks
+  - Ensured consistent tab value IDs across the application for proper tab navigation
+  - Verified data flow from backend stores to frontend tables
+
 - Fixed options chain streaming update issue
   - Identified root cause: Streaming data updates were not triggering UI reactivity in the options chain data table
   - Implemented microsecond-precision timestamps to ensure callback reactivity even when data structure doesn't change

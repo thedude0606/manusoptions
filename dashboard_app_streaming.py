@@ -93,7 +93,7 @@ app.layout = html.Div([
     # Tabs for different data views
     dcc.Tabs(id="tabs", value="tab-minute-data", children=[
         # Minute Data Tab
-        dcc.Tab(label="Minute Data", children=[
+        dcc.Tab(label="Minute Data", value="tab-minute-data", children=[
             html.Div([
                 # Export button for Minute Data
                 create_export_button("minute-data", "Export Minute Data to Excel"),
@@ -119,7 +119,7 @@ app.layout = html.Div([
         ]),
         
         # Technical Indicators Tab
-        dcc.Tab(label="Technical Indicators", children=[
+        dcc.Tab(label="Technical Indicators", value="tab-tech-indicators", children=[
             html.Div([
                 # Export button for Technical Indicators
                 create_export_button("tech-indicators", "Export Technical Indicators to Excel"),
@@ -236,7 +236,7 @@ app.layout = html.Div([
         ]),
         
         # Recommendations Tab
-        dcc.Tab(label="Recommendations", children=[
+        dcc.Tab(label="Recommendations", value="tab-recommendations", children=[
             html.Div([
                 # Generate Recommendations button
                 html.Div([
@@ -411,6 +411,86 @@ def refresh_data(n_clicks, symbol):
             "message": str(e),
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }, None
+
+# Minute Data Table Callback
+@app.callback(
+    Output("minute-data-table", "data"),
+    Output("minute-data-table", "columns"),
+    Input("minute-data-store", "data"),
+    prevent_initial_call=True
+)
+def update_minute_data_table(minute_data_store):
+    """Updates the minute data table with the fetched data."""
+    app_logger.info("Update minute data table callback triggered")
+    
+    if not minute_data_store or not minute_data_store.get("data"):
+        app_logger.warning("No minute data available")
+        return [], []
+    
+    try:
+        # Get the minute data
+        minute_data = minute_data_store["data"]
+        
+        # Create DataFrame for easier manipulation
+        df = pd.DataFrame(minute_data)
+        
+        # Format timestamp for better readability
+        if 'timestamp' in df.columns:
+            df['timestamp'] = pd.to_datetime(df['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Create columns configuration for the table
+        columns = [{"name": col, "id": col} for col in df.columns]
+        
+        # Convert to records for the table
+        table_data = df.to_dict('records')
+        
+        app_logger.info(f"Minute data table updated with {len(table_data)} rows")
+        return table_data, columns
+    
+    except Exception as e:
+        error_msg = f"Error in update_minute_data_table: {str(e)}"
+        app_logger.error(error_msg, exc_info=True)
+        return [], []
+
+# Technical Indicators Table Callback
+@app.callback(
+    Output("tech-indicators-table", "data"),
+    Output("tech-indicators-table", "columns"),
+    Input("tech-indicators-store", "data"),
+    prevent_initial_call=True
+)
+def update_tech_indicators_table(tech_indicators_store):
+    """Updates the technical indicators table with the calculated data."""
+    app_logger.info("Update technical indicators table callback triggered")
+    
+    if not tech_indicators_store or not tech_indicators_store.get("data"):
+        app_logger.warning("No technical indicators data available")
+        return [], []
+    
+    try:
+        # Get the technical indicators data
+        tech_indicators = tech_indicators_store["data"]
+        
+        # Create DataFrame for easier manipulation
+        df = pd.DataFrame(tech_indicators)
+        
+        # Format timestamp for better readability
+        if 'timestamp' in df.columns:
+            df['timestamp'] = pd.to_datetime(df['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Create columns configuration for the table
+        columns = [{"name": col, "id": col} for col in df.columns]
+        
+        # Convert to records for the table
+        table_data = df.to_dict('records')
+        
+        app_logger.info(f"Technical indicators table updated with {len(table_data)} rows")
+        return table_data, columns
+    
+    except Exception as e:
+        error_msg = f"Error in update_tech_indicators_table: {str(e)}"
+        app_logger.error(error_msg, exc_info=True)
+        return [], []
 
 # Streaming Toggle Callback
 @app.callback(
