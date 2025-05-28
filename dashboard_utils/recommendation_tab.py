@@ -280,13 +280,13 @@ def register_recommendation_callbacks(app):
                 error_msg = f"Missing required data: {', '.join(missing_data)}. Please refresh data first."
                 logger.warning(error_msg)
                 
-                # Return error to status only
-                return None, error_msg
+                # Return error to status only, with no update to error-store
+                return None, error_msg, dash.no_update
         
         # For non-button triggers, silently return if data is missing
         if not button_clicked and (not tech_indicators_data or not options_chain_data or not selected_symbol):
             logger.info("Non-button trigger with missing data, silently returning")
-            return dash.no_update, dash.no_update
+            return dash.no_update, dash.no_update, dash.no_update
         
         try:
             # Get the symbol and underlying price
@@ -298,8 +298,8 @@ def register_recommendation_callbacks(app):
                 error_msg = f"Missing symbol or price data. Please refresh data."
                 logger.warning(f"{error_msg} symbol={symbol}, underlying_price={underlying_price}")
                 
-                # Return error to status only
-                return None, error_msg
+                # Return error to status only, with no update to error-store
+                return None, error_msg, dash.no_update
             
             # Get technical indicators for the selected timeframe
             tech_indicators_df = pd.DataFrame()
@@ -319,8 +319,8 @@ def register_recommendation_callbacks(app):
                 error_msg = f"No technical indicator data available for {timeframe} timeframe. Try a different timeframe or refresh data."
                 logger.warning(error_msg)
                 
-                # Return error to status only
-                return None, error_msg
+                # Return error to status only, with no update to error-store
+                return None, error_msg, dash.no_update
             
             # Get options chain data
             options_df = pd.DataFrame()
@@ -336,8 +336,8 @@ def register_recommendation_callbacks(app):
                 error_msg = "No options chain data available. Please refresh data."
                 logger.warning(error_msg)
                 
-                # Return error to status only
-                return None, error_msg
+                # Return error to status only, with no update to error-store
+                return None, error_msg, dash.no_update
             
             # Generate recommendations
             logger.info("Creating recommendation engine instance")
@@ -361,14 +361,15 @@ def register_recommendation_callbacks(app):
             recommendations["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
             success_msg = f"Recommendations updated for {symbol} ({timeframe})"
-            return recommendations, success_msg
+            # Return success with no update to error-store
+            return recommendations, success_msg, dash.no_update
             
         except Exception as e:
             error_msg = f"Error generating recommendations: {str(e)}"
             logger.error(error_msg, exc_info=True)
             
-            # Return error to status only
-            return None, error_msg
+            # Return error to status only, with no update to error-store
+            return None, error_msg, dash.no_update
     
     # Second callback: Update error store based on recommendation status
     @app.callback(
@@ -450,35 +451,115 @@ def register_recommendation_callbacks(app):
                 direction_text = "NEUTRAL"
                 direction_class = "neutral"
             
-            direction_indicator_html = html.Span(direction_indicator, className=f"direction-symbol {direction_class}")
-            direction_text_html = html.Span(direction_text, className=f"direction-label {direction_class}")
+            # Format scores
+            bullish_score_text = f"{bullish_score}%"
+            bearish_score_text = f"{bearish_score}%"
             
-            # Create signals list
-            signals_html = html.Ul([html.Li(signal) for signal in signals]) if signals else "No signals available"
+            # Format signals
+            signals_html = []
+            if signals:
+                for signal in signals:
+                    signal_type = signal.get("type", "")
+                    signal_direction = signal.get("direction", "")
+                    signal_strength = signal.get("strength", "")
+                    signal_text = f"{signal_type}: {signal_direction} ({signal_strength})"
+                    signals_html.append(html.Div(signal_text, className=f"signal {signal_direction.lower()}"))
+                signals_content = html.Div(signals_html, className="signals-list")
+            else:
+                signals_content = "No significant signals detected"
             
-            # Get call and put recommendations
-            calls = recommendations_data.get("calls", [])
-            puts = recommendations_data.get("puts", [])
+            # Extract recommendations
+            call_recommendations = recommendations_data.get("calls", [])
+            put_recommendations = recommendations_data.get("puts", [])
             
-            # Get timestamp
-            timestamp = recommendations_data.get("timestamp", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-            last_updated_html = f"Last updated: {timestamp}"
+            # Format timestamp
+            timestamp = recommendations_data.get("timestamp", "Unknown")
+            last_updated = f"Last updated: {timestamp}"
             
             return (
-                direction_indicator_html,
-                direction_text_html,
-                f"{bullish_score}",
-                f"{bearish_score}",
-                signals_html,
-                calls,
-                puts,
-                last_updated_html
+                direction_indicator,
+                direction_text,
+                bullish_score_text,
+                bearish_score_text,
+                signals_content,
+                call_recommendations,
+                put_recommendations,
+                last_updated
             )
             
         except Exception as e:
-            logger.error(f"Error updating recommendation UI: {e}", exc_info=True)
+            logger.error(f"Error updating recommendation UI: {str(e)}", exc_info=True)
             return (
                 "Error", "Error", "Error", "Error",
                 f"Error: {str(e)}", [], [],
-                f"Error at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                "Last updated: Error"
             )
+    
+    # Fourth callback: Update contract details when a recommendation is clicked
+    @app.callback(
+        [
+            Output("detail-symbol", "children"),
+            Output("detail-type", "children"),
+            Output("detail-strike", "children"),
+            Output("detail-expiration", "children"),
+            Output("detail-delta", "children"),
+            Output("detail-gamma", "children"),
+            Output("detail-theta", "children"),
+            Output("detail-vega", "children"),
+            Output("detail-iv", "children")
+        ],
+        [
+            Input("call-recommendations-table", "active_cell"),
+            Input("put-recommendations-table", "active_cell")
+        ],
+        [
+            State("call-recommendations-table", "data"),
+            State("put-recommendations-table", "data")
+        ]
+    )
+    def update_contract_details(call_active_cell, put_active_cell, call_data, put_data):
+        """Update contract details when a recommendation is clicked."""
+        ctx = dash.callback_context
+        trigger = ctx.triggered[0]['prop_id'] if ctx.triggered else ""
+        
+        # Default values
+        empty_details = ("", "", "", "", "", "", "", "", "")
+        
+        if not trigger:
+            return empty_details
+        
+        try:
+            if "call-recommendations-table" in trigger and call_active_cell:
+                row = call_active_cell['row']
+                if row < len(call_data):
+                    contract = call_data[row]
+                    contract_type = "CALL"
+                else:
+                    return empty_details
+            elif "put-recommendations-table" in trigger and put_active_cell:
+                row = put_active_cell['row']
+                if row < len(put_data):
+                    contract = put_data[row]
+                    contract_type = "PUT"
+                else:
+                    return empty_details
+            else:
+                return empty_details
+            
+            # Extract contract details
+            symbol = contract.get("symbol", "")
+            strike = f"${contract.get('strikePrice', 0):.2f}"
+            expiration = contract.get("expirationDate", "")
+            
+            # Extract greeks
+            delta = f"{contract.get('delta', 0):.4f}"
+            gamma = f"{contract.get('gamma', 0):.4f}"
+            theta = f"{contract.get('theta', 0):.4f}"
+            vega = f"{contract.get('vega', 0):.4f}"
+            iv = f"{contract.get('impliedVolatility', 0) * 100:.2f}%"
+            
+            return (symbol, contract_type, strike, expiration, delta, gamma, theta, vega, iv)
+            
+        except Exception as e:
+            logger.error(f"Error updating contract details: {str(e)}", exc_info=True)
+            return empty_details
