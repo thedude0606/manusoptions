@@ -32,19 +32,19 @@ server = app.server
 app.layout = html.Div([
     # Header
     html.Div([
-        html.H1("Options Trading Dashboard", className="dashboard-title"),
+        html.H1("Options Trading Dashboard", style={"font-size": "24px", "margin": "10px 0"}),
         html.Div([
             dcc.Input(
                 id="symbol-input",
                 type="text",
                 placeholder="Enter symbol (e.g., AAPL)",
                 value="AAPL",
-                className="symbol-input"
+                style={"margin-right": "10px", "padding": "5px"}
             ),
-            html.Button("Refresh Data", id="refresh-button", n_clicks=0, className="refresh-button"),
-            html.Div(id="status-message", className="status-message")
-        ], className="header-controls")
-    ], className="dashboard-header"),
+            html.Button("Refresh Data", id="refresh-button", n_clicks=0, style={"margin-right": "10px"}),
+            html.Div(id="status-message", style={"margin-left": "10px"})
+        ], style={"display": "flex", "align-items": "center"})
+    ], style={"padding": "10px", "background-color": "#f8f9fa", "border-bottom": "1px solid #ddd"}),
     
     # Main content
     html.Div([
@@ -64,15 +64,15 @@ app.layout = html.Div([
                             ],
                             value="1day",
                             clearable=False,
-                            className="timeframe-dropdown"
+                            style={"width": "200px", "margin": "10px 0"}
                         )
-                    ], className="tab-controls"),
+                    ], style={"margin-bottom": "10px"}),
                     
                     # Export button for Minute Data
                     create_export_button("minute-data", "Export Minute Data to Excel"),
                     
                     # Minute data chart
-                    dcc.Graph(id="minute-data-chart", className="data-chart"),
+                    dcc.Graph(id="minute-data-chart", style={"height": "500px"}),
                     
                     # Minute data table
                     dash_table.DataTable(
@@ -95,10 +95,9 @@ app.layout = html.Div([
                                 "if": {"row_index": "odd"},
                                 "backgroundColor": "#f5f5f5"
                             }
-                        ],
-                        className="data-table"
+                        ]
                     )
-                ], className="tab-content")
+                ], style={"padding": "15px"})
             ]),
             
             # Technical Indicators Tab
@@ -115,9 +114,9 @@ app.layout = html.Div([
                             ],
                             value="1hour",
                             clearable=False,
-                            className="timeframe-dropdown"
+                            style={"width": "200px", "margin": "10px 0"}
                         )
-                    ], className="tab-controls"),
+                    ], style={"margin-bottom": "10px"}),
                     
                     # Export button for Technical Indicators
                     create_export_button("tech-indicators", "Export Technical Indicators to Excel"),
@@ -143,10 +142,9 @@ app.layout = html.Div([
                                 "if": {"row_index": "odd"},
                                 "backgroundColor": "#f5f5f5"
                             }
-                        ],
-                        className="data-table"
+                        ]
                     )
-                ], className="tab-content")
+                ], style={"padding": "15px"})
             ]),
             
             # Options Chain Tab
@@ -157,9 +155,9 @@ app.layout = html.Div([
                         dcc.Dropdown(
                             id="expiration-date-dropdown",
                             placeholder="Select expiration date",
-                            className="expiration-dropdown"
+                            style={"width": "200px", "margin": "10px 0"}
                         )
-                    ], className="tab-controls"),
+                    ], style={"margin-bottom": "10px"}),
                     
                     # Export button for Options Chain
                     create_export_button("options-chain", "Export Options Chain to Excel"),
@@ -167,7 +165,7 @@ app.layout = html.Div([
                     # Options chain tables
                     html.Div([
                         html.Div([
-                            html.H3("Calls", className="table-header"),
+                            html.H3("Calls", style={"font-size": "18px", "margin": "10px 0"}),
                             dash_table.DataTable(
                                 id="calls-table",
                                 page_size=10,
@@ -188,12 +186,11 @@ app.layout = html.Div([
                                         "if": {"row_index": "odd"},
                                         "backgroundColor": "#f5f5f5"
                                     }
-                                ],
-                                className="data-table"
+                                ]
                             )
-                        ], className="table-container"),
+                        ], style={"width": "48%", "display": "inline-block", "vertical-align": "top"}),
                         html.Div([
-                            html.H3("Puts", className="table-header"),
+                            html.H3("Puts", style={"font-size": "18px", "margin": "10px 0"}),
                             dash_table.DataTable(
                                 id="puts-table",
                                 page_size=10,
@@ -214,12 +211,11 @@ app.layout = html.Div([
                                         "if": {"row_index": "odd"},
                                         "backgroundColor": "#f5f5f5"
                                     }
-                                ],
-                                className="data-table"
+                                ]
                             )
-                        ], className="table-container")
-                    ], className="options-tables-container")
-                ], className="tab-content")
+                        ], style={"width": "48%", "display": "inline-block", "vertical-align": "top", "marginLeft": "4%"})
+                    ], style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"})
+                ], style={"padding": "15px"})
             ]),
             
             # Recommendations Tab
@@ -235,28 +231,28 @@ app.layout = html.Div([
                     
                     # Market Direction Panel
                     html.Div([
-                        html.H3("Market Direction Analysis", className="panel-header"),
+                        html.H3("Market Direction Analysis", style={"font-size": "18px", "margin": "10px 0", "borderBottom": "1px solid #ddd", "paddingBottom": "5px"}),
                         html.Div([
                             html.Div([
-                                html.Div(id="market-direction-indicator", className="direction-indicator"),
-                                html.Div(id="market-direction-text", className="direction-text")
-                            ], className="direction-container"),
+                                html.Div(id="market-direction-indicator", style={"fontSize": "24px", "fontWeight": "bold"}),
+                                html.Div(id="market-direction-text", style={"marginLeft": "10px"})
+                            ], style={"display": "flex", "alignItems": "center", "marginBottom": "10px"}),
                             html.Div([
-                                html.Div("Bullish Score:", className="score-label"),
-                                html.Div(id="bullish-score", className="score-value")
-                            ], className="score-container"),
+                                html.Div("Bullish Score:", style={"marginRight": "5px", "fontWeight": "bold"}),
+                                html.Div(id="bullish-score")
+                            ], style={"display": "flex", "marginBottom": "5px"}),
                             html.Div([
-                                html.Div("Bearish Score:", className="score-label"),
-                                html.Div(id="bearish-score", className="score-value")
-                            ], className="score-container")
-                        ], className="direction-scores")
-                    ], className="panel market-direction-panel"),
+                                html.Div("Bearish Score:", style={"marginRight": "5px", "fontWeight": "bold"}),
+                                html.Div(id="bearish-score")
+                            ], style={"display": "flex"})
+                        ], style={"padding": "10px"})
+                    ], style={"border": "1px solid #ddd", "borderRadius": "5px", "marginBottom": "15px", "backgroundColor": "#f8f9fa"}),
                     
                     # Recommendations Tables
                     html.Div([
                         # Call Recommendations
                         html.Div([
-                            html.H3("Call Recommendations", className="panel-header"),
+                            html.H3("Call Recommendations", style={"font-size": "18px", "margin": "10px 0", "borderBottom": "1px solid #ddd", "paddingBottom": "5px"}),
                             dash_table.DataTable(
                                 id="call-recommendations-table",
                                 columns=[
@@ -289,14 +285,13 @@ app.layout = html.Div([
                                     }
                                 ],
                                 row_selectable="single",
-                                selected_rows=[],
-                                className="data-table"
+                                selected_rows=[]
                             )
-                        ], className="panel recommendations-panel"),
+                        ], style={"width": "100%", "marginBottom": "15px", "border": "1px solid #ddd", "borderRadius": "5px", "padding": "10px"}),
                         
                         # Put Recommendations
                         html.Div([
-                            html.H3("Put Recommendations", className="panel-header"),
+                            html.H3("Put Recommendations", style={"font-size": "18px", "margin": "10px 0", "borderBottom": "1px solid #ddd", "paddingBottom": "5px"}),
                             dash_table.DataTable(
                                 id="put-recommendations-table",
                                 columns=[
@@ -329,58 +324,57 @@ app.layout = html.Div([
                                     }
                                 ],
                                 row_selectable="single",
-                                selected_rows=[],
-                                className="data-table"
+                                selected_rows=[]
                             )
-                        ], className="panel recommendations-panel")
-                    ], className="recommendations-tables"),
+                        ], style={"width": "100%", "marginBottom": "15px", "border": "1px solid #ddd", "borderRadius": "5px", "padding": "10px"})
+                    ], style={"marginBottom": "15px"}),
                     
                     # Contract Details Panel
                     html.Div([
-                        html.H3("Contract Details", className="panel-header"),
+                        html.H3("Contract Details", style={"font-size": "18px", "margin": "10px 0", "borderBottom": "1px solid #ddd", "paddingBottom": "5px"}),
                         html.Div([
                             html.Div([
-                                html.Div("Symbol:", className="detail-label"),
-                                html.Div(id="detail-symbol", className="detail-value")
-                            ], className="detail-item"),
+                                html.Div("Symbol:", style={"fontWeight": "bold", "marginRight": "5px"}),
+                                html.Div(id="detail-symbol")
+                            ], style={"display": "flex", "marginBottom": "5px"}),
                             html.Div([
-                                html.Div("Type:", className="detail-label"),
-                                html.Div(id="detail-type", className="detail-value")
-                            ], className="detail-item"),
+                                html.Div("Type:", style={"fontWeight": "bold", "marginRight": "5px"}),
+                                html.Div(id="detail-type")
+                            ], style={"display": "flex", "marginBottom": "5px"}),
                             html.Div([
-                                html.Div("Strike Price:", className="detail-label"),
-                                html.Div(id="detail-strike", className="detail-value")
-                            ], className="detail-item"),
+                                html.Div("Strike Price:", style={"fontWeight": "bold", "marginRight": "5px"}),
+                                html.Div(id="detail-strike")
+                            ], style={"display": "flex", "marginBottom": "5px"}),
                             html.Div([
-                                html.Div("Expiration:", className="detail-label"),
-                                html.Div(id="detail-expiration", className="detail-value")
-                            ], className="detail-item"),
+                                html.Div("Expiration:", style={"fontWeight": "bold", "marginRight": "5px"}),
+                                html.Div(id="detail-expiration")
+                            ], style={"display": "flex", "marginBottom": "5px"}),
                             html.Div([
-                                html.Div("Delta:", className="detail-label"),
-                                html.Div(id="detail-delta", className="detail-value")
-                            ], className="detail-item"),
+                                html.Div("Delta:", style={"fontWeight": "bold", "marginRight": "5px"}),
+                                html.Div(id="detail-delta")
+                            ], style={"display": "flex", "marginBottom": "5px"}),
                             html.Div([
-                                html.Div("Gamma:", className="detail-label"),
-                                html.Div(id="detail-gamma", className="detail-value")
-                            ], className="detail-item"),
+                                html.Div("Gamma:", style={"fontWeight": "bold", "marginRight": "5px"}),
+                                html.Div(id="detail-gamma")
+                            ], style={"display": "flex", "marginBottom": "5px"}),
                             html.Div([
-                                html.Div("Theta:", className="detail-label"),
-                                html.Div(id="detail-theta", className="detail-value")
-                            ], className="detail-item"),
+                                html.Div("Theta:", style={"fontWeight": "bold", "marginRight": "5px"}),
+                                html.Div(id="detail-theta")
+                            ], style={"display": "flex", "marginBottom": "5px"}),
                             html.Div([
-                                html.Div("Vega:", className="detail-label"),
-                                html.Div(id="detail-vega", className="detail-value")
-                            ], className="detail-item"),
+                                html.Div("Vega:", style={"fontWeight": "bold", "marginRight": "5px"}),
+                                html.Div(id="detail-vega")
+                            ], style={"display": "flex", "marginBottom": "5px"}),
                             html.Div([
-                                html.Div("Implied Volatility:", className="detail-label"),
-                                html.Div(id="detail-iv", className="detail-value")
-                            ], className="detail-item")
-                        ], className="panel details-panel")
-                    ], className="recommendations-panels"),
+                                html.Div("Implied Volatility:", style={"fontWeight": "bold", "marginRight": "5px"}),
+                                html.Div(id="detail-iv")
+                            ], style={"display": "flex", "marginBottom": "5px"})
+                        ], style={"padding": "10px"})
+                    ], style={"border": "1px solid #ddd", "borderRadius": "5px", "marginBottom": "15px", "backgroundColor": "#f8f9fa"}),
                     
                     # Last updated timestamp
-                    html.Div(id="recommendations-last-updated", className="last-updated")
-                ], className="tab-content")
+                    html.Div(id="recommendations-last-updated", style={"fontSize": "12px", "color": "#666", "marginTop": "10px"})
+                ], style={"padding": "15px"})
             ])
         ])
     ]),

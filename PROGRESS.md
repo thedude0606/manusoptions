@@ -49,6 +49,7 @@ The Excel export functionality has been implemented with the following component
 - Fixed issue with Generate Recommendations button not working
 - Implemented enhanced error handling for recommendation generation
 - Updated dashboard_app.py to use the enhanced recommendation callbacks from debug_fixes/recommendations_fix.py
+- Updated DataTable components to be compatible with Dash 3.0.4 by removing unsupported 'className' parameters
 
 ### Current Work in Progress
 - Pushing code changes to GitHub repository
@@ -61,6 +62,12 @@ The Excel export functionality has been implemented with the following component
 - Replaced standard callback registration with enhanced version from debug_fixes/recommendations_fix.py
 - Enhanced callbacks provide better error visibility and debugging information
 - Updated import statements and callback registration in dashboard_app.py
+
+#### Dash 3.0.4 Compatibility Fix
+- Removed unsupported 'className' parameters from all DataTable components
+- Replaced with equivalent inline styles using the style_* properties
+- Maintained consistent visual appearance while ensuring compatibility
+- Restructured layout to use inline styles instead of class-based styling
 
 ### Known Issues or Challenges
 - Need to validate recommendation generation with various symbols and market conditions
