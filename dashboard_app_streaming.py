@@ -292,7 +292,7 @@ app.layout = html.Div([
         Output("expiration-date-dropdown", "options"),
         Output("expiration-date-dropdown", "value"),
         Output("status-message", "children"),
-        Output("error-store", "data"),
+        Output("error-store", "data", allow_duplicate=True),
         Output("last-valid-options-store", "data")  # Add output for last valid options store
     ],
     [
