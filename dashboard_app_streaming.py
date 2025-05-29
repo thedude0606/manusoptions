@@ -378,35 +378,14 @@ def refresh_data(n_clicks, symbol):
             "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
         
-        # Create selected symbol store
-        selected_symbol_store = {
-            "symbol": symbol,
-            "price": underlying_price,
-            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
+        # Create a copy for the last valid options store
+        last_valid_options = options_data.copy()
         
-        status_message = f"Data refreshed for {symbol} at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        app_logger.info(status_message)
-        
-        # Also store the options data as the last valid options data
-        last_valid_options_store = options_data.copy()
-        
-        # Get option contract keys for streaming
-        option_keys = get_option_contract_keys(options_df)
-        app_logger.debug(f"Got {len(option_keys)} option contract keys for streaming")
-        
-        # Start streaming for the option keys if streaming is enabled
-        streaming_toggle_value = "ON"  # Default to ON
-        if streaming_toggle_value == "ON":
-            app_logger.info(f"Starting streaming for {len(option_keys)} option contracts")
-            streaming_manager.start_streaming(option_keys)
-        
-        return minute_data_store, tech_indicators_store, options_data, selected_symbol_store, dropdown_options, default_expiration, status_message, None, last_valid_options_store
+        return minute_data_store, tech_indicators_store, options_data, symbol, dropdown_options, default_expiration, f"Data refreshed for {symbol}", None, last_valid_options
     
     except Exception as e:
-        error_msg = f"Error refreshing data: {str(e)}"
-        app_logger.error(error_msg, exc_info=True)
-        return None, None, None, None, [], None, error_msg, {
+        app_logger.error(f"Error refreshing data: {e}", exc_info=True)
+        return None, None, None, None, [], None, f"Error: {str(e)}", {
             "source": "Data Refresh",
             "message": str(e),
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -431,25 +410,13 @@ def update_minute_data_table(minute_data_store):
         # Get the minute data
         minute_data = minute_data_store["data"]
         
-        # Create DataFrame for easier manipulation
-        df = pd.DataFrame(minute_data)
+        # Create DataFrame columns
+        columns = [{"name": col, "id": col} for col in minute_data[0].keys()]
         
-        # Format timestamp for better readability
-        if 'timestamp' in df.columns:
-            df['timestamp'] = pd.to_datetime(df['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
-        
-        # Create columns configuration for the table
-        columns = [{"name": col, "id": col} for col in df.columns]
-        
-        # Convert to records for the table
-        table_data = df.to_dict('records')
-        
-        app_logger.info(f"Minute data table updated with {len(table_data)} rows")
-        return table_data, columns
+        return minute_data, columns
     
     except Exception as e:
-        error_msg = f"Error in update_minute_data_table: {str(e)}"
-        app_logger.error(error_msg, exc_info=True)
+        app_logger.error(f"Error updating minute data table: {e}", exc_info=True)
         return [], []
 
 # Technical Indicators Table Callback
@@ -460,7 +427,7 @@ def update_minute_data_table(minute_data_store):
     prevent_initial_call=True
 )
 def update_tech_indicators_table(tech_indicators_store):
-    """Updates the technical indicators table with the calculated data."""
+    """Updates the technical indicators table with the fetched data."""
     app_logger.info("Update technical indicators table callback triggered")
     
     if not tech_indicators_store or not tech_indicators_store.get("data"):
@@ -471,33 +438,19 @@ def update_tech_indicators_table(tech_indicators_store):
         # Get the technical indicators data
         tech_indicators = tech_indicators_store["data"]
         
-        # Create DataFrame for easier manipulation
-        df = pd.DataFrame(tech_indicators)
+        # Create DataFrame columns
+        columns = [{"name": col, "id": col} for col in tech_indicators[0].keys()]
         
-        # Format timestamp for better readability
-        if 'timestamp' in df.columns:
-            df['timestamp'] = pd.to_datetime(df['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
-        
-        # Create columns configuration for the table
-        columns = [{"name": col, "id": col} for col in df.columns]
-        
-        # Convert to records for the table
-        table_data = df.to_dict('records')
-        
-        app_logger.info(f"Technical indicators table updated with {len(table_data)} rows")
-        return table_data, columns
+        return tech_indicators, columns
     
     except Exception as e:
-        error_msg = f"Error in update_tech_indicators_table: {str(e)}"
-        app_logger.error(error_msg, exc_info=True)
+        app_logger.error(f"Error updating technical indicators table: {e}", exc_info=True)
         return [], []
 
 # Streaming Toggle Callback
 @app.callback(
-    [
-        Output("streaming-status", "children"),
-        Output("streaming-update-interval", "disabled")
-    ],
+    Output("streaming-status", "children"),
+    Output("streaming-update-interval", "disabled"),
     [
         Input("streaming-toggle", "value"),
         Input("options-chain-store", "data")
@@ -646,19 +599,46 @@ def update_options_tables(options_data, streaming_data, expiration_date, option_
         options_df = pd.DataFrame(options_data["options"]).copy()
         app_logger.debug(f"Original options DataFrame shape: {options_df.shape}")
         
+        # Enhanced debugging: Log the first few rows of the DataFrame to see what columns and data we have
+        app_logger.debug(f"Options DataFrame first 3 rows: {options_df.head(3).to_dict('records')}")
+        app_logger.debug(f"Options DataFrame columns: {list(options_df.columns)}")
+        
+        # Enhanced debugging: Log the symbol column format for the first few rows
+        if 'symbol' in options_df.columns:
+            app_logger.debug(f"Symbol column sample: {options_df['symbol'].head(5).tolist()}")
+        
         # Apply streaming updates if available
         if streaming_data and streaming_data.get("streaming_data"):
             streaming_updates = streaming_data["streaming_data"]
             app_logger.info(f"Applying streaming updates for {len(streaming_updates)} contracts")
             
+            # Enhanced debugging: Log a sample of the streaming update keys
+            sample_update_keys = list(streaming_updates.keys())[:5]
+            app_logger.debug(f"Streaming update keys sample: {sample_update_keys}")
+            
             field_mapper = StreamingFieldMapper()
             update_count = 0
+            match_count = 0
+            
+            # Create a dictionary to store all the different formats of each contract key for debugging
+            key_formats = {}
             
             # Update each contract with streaming data
             for contract_key, update_data in streaming_updates.items():
+                # Store original key for debugging
+                original_key = contract_key
+                
                 # Normalize the contract key to match the format in the options DataFrame
                 normalized_key = normalize_contract_key(contract_key)
-                app_logger.debug(f"Processing streaming update for contract: {normalized_key}")
+                
+                # Store all formats for debugging
+                key_formats[original_key] = {
+                    'original': original_key,
+                    'normalized': normalized_key,
+                    'no_underscore': normalized_key.replace("_", "") if normalized_key else None
+                }
+                
+                app_logger.debug(f"Processing streaming update for contract: {normalized_key} (original: {original_key})")
                 
                 # Find the corresponding row in the DataFrame
                 mask = options_df["symbol"] == normalized_key
@@ -666,20 +646,33 @@ def update_options_tables(options_data, streaming_data, expiration_date, option_
                 # If no match found with normalized key, try alternative formats
                 if not mask.any():
                     # Try without underscore
-                    alt_key = normalized_key.replace("_", "")
+                    alt_key = normalized_key.replace("_", "") if normalized_key else ""
                     mask = options_df["symbol"] == alt_key
                     if mask.any():
                         app_logger.debug(f"Found match using alternative key format: {alt_key}")
+                        key_formats[original_key]['matched_format'] = 'no_underscore'
                     else:
                         # Try direct match with original key
                         mask = options_df["symbol"] == contract_key
                         if mask.any():
                             app_logger.debug(f"Found match using original key: {contract_key}")
+                            key_formats[original_key]['matched_format'] = 'original'
                         else:
+                            # Enhanced debugging: Try to find what's in the DataFrame that might match
+                            if 'symbol' in options_df.columns:
+                                # Get the first part of the symbol (e.g., "AAPL" from "AAPL_250530C180")
+                                if normalized_key and '_' in normalized_key:
+                                    symbol_prefix = normalized_key.split('_')[0]
+                                    similar_symbols = options_df[options_df['symbol'].str.contains(symbol_prefix, na=False)]
+                                    if not similar_symbols.empty:
+                                        app_logger.debug(f"Similar symbols in DataFrame for {symbol_prefix}: {similar_symbols['symbol'].head(3).tolist()}")
+                                        key_formats[original_key]['similar_in_df'] = similar_symbols['symbol'].head(3).tolist()
+                            
                             app_logger.warning(f"No matching row found for {normalized_key} (original: {contract_key})")
                             continue
                 
                 if mask.any():
+                    match_count += 1
                     app_logger.debug(f"Found matching row for {normalized_key}")
                     
                     # Get the mapped fields from the streaming data
@@ -694,7 +687,21 @@ def update_options_tables(options_data, streaming_data, expiration_date, option_
                             app_logger.debug(f"Updated {normalized_key}.{field} = {value}")
                             update_count += 1
             
-            app_logger.info(f"Applied {update_count} field updates from streaming data")
+            # Enhanced debugging: Log match statistics and key format information
+            app_logger.info(f"Streaming update statistics: {match_count}/{len(streaming_updates)} contracts matched, {update_count} field updates applied")
+            app_logger.debug(f"Key format details for first 5 keys: {json.dumps({k: v for i, (k, v) in enumerate(key_formats.items()) if i < 5})}")
+            
+            # If we have very few matches, log more details about the DataFrame and streaming keys
+            if match_count < len(streaming_updates) * 0.1 and len(streaming_updates) > 0:
+                app_logger.warning(f"Very low match rate: {match_count}/{len(streaming_updates)} ({match_count/len(streaming_updates)*100:.1f}%)")
+                app_logger.debug("DataFrame symbol column sample:")
+                if 'symbol' in options_df.columns:
+                    for i, symbol in enumerate(options_df['symbol'].head(10)):
+                        app_logger.debug(f"  DataFrame symbol {i}: {symbol}")
+                
+                app_logger.debug("Streaming keys sample:")
+                for i, key in enumerate(list(streaming_updates.keys())[:10]):
+                    app_logger.debug(f"  Streaming key {i}: {key}")
         else:
             app_logger.debug("No streaming updates available")
         

@@ -9,7 +9,9 @@
 - Added comprehensive debugging panel to diagnose recommendation generation issues
 - Implemented detailed logging throughout the recommendation generation process
 - Added fallback mechanisms for missing data fields to improve robustness
-- Designed UI to clearly display market direction analysis and recommendation confidence## Recommendation Engine Enhancements
+- Designed UI to clearly display market direction analysis and recommendation confidence
+
+## Recommendation Engine Enhancements
 - Improved confidence scoring algorithm with higher base scores (60 instead of 50)
 - Increased market direction impact on confidence scores (25 point boost instead of 20)
 - Added liquidity preference based on open interest to favor more liquid options
@@ -27,8 +29,9 @@
 - Enhanced logging for streaming data updates to improve debugging and troubleshooting
 - Implemented multiple key format attempts to maximize successful matches between streaming data and DataFrame rows
 - Used a layered approach to contract key matching: normalized format, alternative format without underscore, and direct matching
+- Added detailed debugging to track contract key formats and matching success rates
 
-## Error Handling
+## Timeframe Bias Indicator
 - Implemented a comprehensive timeframe bias indicator to show dominant trend direction across timeframes
 - Used a multi-factor approach combining moving averages, momentum indicators, and price action analysis
 - Designed a scoring system from -100 (strongly bearish) to +100 (strongly bullish) for quantifiable bias measurement
@@ -49,8 +52,10 @@
 - Implemented detailed step-by-step logging of the recommendation generation process
 - Added data validation checks at each stage of processing
 - Designed debug output to clearly show data flow from technical indicators to final recommendations
+- Enhanced streaming data debugging to show contract key formats and matching statistics
 
 ## Error Handling
 - Improved error messages to provide clear guidance to users
 - Added graceful fallbacks when expected data is missing
 - Implemented comprehensive exception catching to prevent UI crashes
+- Added detailed logging of contract key matching attempts and failures to aid in troubleshooting
