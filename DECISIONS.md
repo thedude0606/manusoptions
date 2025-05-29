@@ -11,6 +11,16 @@
 - Added fallback mechanisms for missing data fields to improve robustness
 - Designed UI to clearly display market direction analysis and recommendation confidence
 
+## Recommendation Engine Enhancements
+- Improved confidence scoring algorithm with higher base scores (60 instead of 50)
+- Increased market direction impact on confidence scores (25 point boost instead of 20)
+- Added liquidity preference based on open interest to favor more liquid options
+- Implemented preference for options with 5-14 days to expiration for swing trading
+- Reduced penalties for IV, spread percentage, and strike distance to generate more recommendations
+- Added cap on expected profit (50% maximum) to ensure realistic projections
+- Improved projected move calculation based on days to expiration and volatility
+- Enhanced target timeframe calculation with more realistic bounds (4-72 hours)
+
 ## Data Tables Display Fix
 - Fixed minute tab and technical indicators tab data tables by implementing proper callback functions
 - Ensured consistent data formatting across all tables

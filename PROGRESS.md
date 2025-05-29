@@ -1,25 +1,28 @@
 # Progress Report
 
-## May 28, 2025
+## May 29, 2025
 
 ### Completed Features/Tasks
 - Fixed minute tab and technical indicators tab data tables display issues
 - Added comprehensive debugging for recommendation engine
 - Added debug information panel to recommendation tab UI
 - Improved error handling in recommendation generation process
+- Enhanced recommendation engine with improved confidence scoring
+- Refined filtering logic to be less aggressive
+- Fixed profit calculation to produce more realistic values
+- Improved market direction analysis with better signal detection
 
 ### Current Work in Progress
-- Investigating recommendation engine data flow issues
-- Enhancing recommendation engine to ensure it generates actionable recommendations
-- Adding better user feedback for recommendation generation process
+- Testing enhanced recommendation engine
+- Validating recommendation quality and confidence scores
 
 ### Known Issues/Challenges
-- Recommendation tables not showing data despite valid inputs
-- Potential data mismatches between technical indicators and recommendation engine
-- Possible overly strict filtering in recommendation logic
+- Previous recommendation tables showed very low confidence scores (10.0)
+- Unrealistic profit expectations in previous implementation (up to 195%)
+- Limited number of recommendations due to overly strict filtering
 
 ### Next Steps
-- Test recommendation engine with debug panel to identify exact issues
-- Implement fixes based on debug information
-- Consider relaxing filtering thresholds if needed
+- Validate the improved recommendation engine with real-world data
+- Consider additional UI improvements for recommendation display
 - Add Safari export button fix
+- Implement additional technical indicators if needed

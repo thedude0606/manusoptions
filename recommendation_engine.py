@@ -28,9 +28,10 @@ if not logger.hasHandlers():
 logger.setLevel(logging.INFO)
 
 # Constants for recommendation engine
-CONFIDENCE_THRESHOLD = 20  # Minimum confidence score to include in recommendations - Lowered from 40 to ensure recommendations are generated
+CONFIDENCE_THRESHOLD = 30  # Minimum confidence score to include in recommendations - Adjusted for better filtering
 MAX_RECOMMENDATIONS = 5    # Maximum number of recommendations to return
-MIN_EXPECTED_PROFIT = 0.05  # 5% minimum expected profit - Lowered from 10% to ensure recommendations are generated
+MIN_EXPECTED_PROFIT = 0.05  # 5% minimum expected profit
+MAX_EXPECTED_PROFIT = 0.50  # 50% maximum expected profit - Added cap for realistic profit expectations
 TARGET_TIMEFRAMES = ["1hour", "4hour"]  # Target timeframes for analysis
 
 class RecommendationEngine:
@@ -83,7 +84,7 @@ class RecommendationEngine:
             }
         
         # Analyze RSI
-        rsi_columns = [col for col in tech_indicators_df.columns if col.startswith('rsi_')]
+        rsi_columns = [col for col in tech_indicators_df.columns if col.startswith('rsi')]
         for rsi_col in rsi_columns:
             rsi_value = latest_data.get(rsi_col)
             if pd.notna(rsi_value):
@@ -95,8 +96,8 @@ class RecommendationEngine:
                     bearish_score += 10
         
         # Analyze MACD
-        if all(col in latest_data for col in ['macd', 'macd_signal']):
-            macd = latest_data['macd']
+        if all(col in latest_data for col in ['macd_line', 'macd_signal']):
+            macd = latest_data['macd_line']
             macd_signal = latest_data['macd_signal']
             if pd.notna(macd) and pd.notna(macd_signal):
                 if macd > macd_signal:
@@ -107,9 +108,9 @@ class RecommendationEngine:
                     bearish_score += 10
         
         # Analyze Bollinger Bands
-        bb_middle_cols = [col for col in tech_indicators_df.columns if col.startswith('bb_middle_')]
-        bb_upper_cols = [col for col in tech_indicators_df.columns if col.startswith('bb_upper_')]
-        bb_lower_cols = [col for col in tech_indicators_df.columns if col.startswith('bb_lower_')]
+        bb_middle_cols = [col for col in tech_indicators_df.columns if col.startswith('bb_middle')]
+        bb_upper_cols = [col for col in tech_indicators_df.columns if col.startswith('bb_upper')]
+        bb_lower_cols = [col for col in tech_indicators_df.columns if col.startswith('bb_lower')]
         
         for i, bb_middle_col in enumerate(bb_middle_cols):
             if i < len(bb_upper_cols) and i < len(bb_lower_cols):
@@ -127,7 +128,7 @@ class RecommendationEngine:
                         bullish_score += 8
         
         # Analyze MFI
-        mfi_columns = [col for col in tech_indicators_df.columns if col.startswith('mfi_')]
+        mfi_columns = [col for col in tech_indicators_df.columns if col.startswith('mfi')]
         for mfi_col in mfi_columns:
             mfi_value = latest_data.get(mfi_col)
             if pd.notna(mfi_value):
@@ -139,7 +140,7 @@ class RecommendationEngine:
                     bearish_score += 8
         
         # Analyze IMI
-        imi_columns = [col for col in tech_indicators_df.columns if col.startswith('imi_')]
+        imi_columns = [col for col in tech_indicators_df.columns if col.startswith('imi')]
         for imi_col in imi_columns:
             imi_value = latest_data.get(imi_col)
             if pd.notna(imi_value):
@@ -151,13 +152,30 @@ class RecommendationEngine:
                     bearish_score += 7
         
         # Analyze Fair Value Gaps
-        if 'fvg_bullish_top' in latest_data and pd.notna(latest_data['fvg_bullish_top']):
+        if 'bullish_fvg' in latest_data and pd.notna(latest_data['bullish_fvg']) and latest_data['bullish_fvg'] > 0:
             signals.append("Bullish Fair Value Gap detected")
             bullish_score += 12
         
-        if 'fvg_bearish_top' in latest_data and pd.notna(latest_data['fvg_bearish_top']):
+        if 'bearish_fvg' in latest_data and pd.notna(latest_data['bearish_fvg']) and latest_data['bearish_fvg'] > 0:
             signals.append("Bearish Fair Value Gap detected")
             bearish_score += 12
+        
+        # Analyze candlestick patterns
+        if 'bullish_engulfing' in latest_data and pd.notna(latest_data['bullish_engulfing']) and latest_data['bullish_engulfing'] > 0:
+            signals.append("Bullish engulfing pattern detected")
+            bullish_score += 8
+            
+        if 'bearish_engulfing' in latest_data and pd.notna(latest_data['bearish_engulfing']) and latest_data['bearish_engulfing'] > 0:
+            signals.append("Bearish engulfing pattern detected")
+            bearish_score += 8
+            
+        if 'morning_star' in latest_data and pd.notna(latest_data['morning_star']) and latest_data['morning_star'] > 0:
+            signals.append("Morning star pattern detected")
+            bullish_score += 10
+            
+        if 'evening_star' in latest_data and pd.notna(latest_data['evening_star']) and latest_data['evening_star'] > 0:
+            signals.append("Evening star pattern detected")
+            bearish_score += 10
         
         # Determine overall direction
         direction = "neutral"
@@ -209,6 +227,8 @@ class RecommendationEngine:
                 # Check for alternative column names
                 if col == 'mark' and 'lastPrice' in options_df.columns:
                     options_df['mark'] = options_df['lastPrice']
+                elif col == 'mark' and 'last' in options_df.columns:
+                    options_df['mark'] = options_df['last']
                 elif col == 'lastPrice' and 'last' in options_df.columns:
                     options_df['lastPrice'] = options_df['last']
                 elif col == 'bidPrice' and 'bid' in options_df.columns:
@@ -311,17 +331,17 @@ class RecommendationEngine:
         # Initialize confidence scores based on market direction
         direction = market_direction.get("direction", "neutral")
         
-        # Set initial confidence scores
-        calls_df["confidenceScore"] = 50.0
-        puts_df["confidenceScore"] = 50.0
+        # Set initial confidence scores - IMPROVED: Higher base confidence
+        calls_df["confidenceScore"] = 60.0
+        puts_df["confidenceScore"] = 60.0
         
-        # Adjust confidence based on market direction
+        # Adjust confidence based on market direction - IMPROVED: More significant impact
         if direction == "bullish":
-            calls_df["confidenceScore"] += 20
-            puts_df["confidenceScore"] -= 10
+            calls_df["confidenceScore"] += 25
+            puts_df["confidenceScore"] -= 15
         elif direction == "bearish":
-            calls_df["confidenceScore"] -= 10
-            puts_df["confidenceScore"] += 20
+            calls_df["confidenceScore"] -= 15
+            puts_df["confidenceScore"] += 25
         
         # Calculate additional metrics for scoring
         for df_name, df in [("calls", calls_df), ("puts", puts_df)]:
@@ -382,42 +402,50 @@ class RecommendationEngine:
                     # For calls in bullish market, prefer strikes slightly above current price
                     if direction == "bullish":
                         df['confidenceScore'] += df.apply(
-                            lambda row: 10 if 0 < (row['strikePrice'] - underlying_price) / underlying_price < 0.05 else 0,
+                            lambda row: 15 if 0 < (row['strikePrice'] - underlying_price) / underlying_price < 0.05 else 0,
                             axis=1
                         )
                     # For calls in bearish market, prefer strikes well below current price (deep ITM)
                     elif direction == "bearish":
                         df['confidenceScore'] += df.apply(
-                            lambda row: 10 if (underlying_price - row['strikePrice']) / underlying_price > 0.05 else 0,
+                            lambda row: 15 if (underlying_price - row['strikePrice']) / underlying_price > 0.05 else 0,
                             axis=1
                         )
                 else:  # puts
                     # For puts in bearish market, prefer strikes slightly below current price
                     if direction == "bearish":
                         df['confidenceScore'] += df.apply(
-                            lambda row: 10 if 0 < (underlying_price - row['strikePrice']) / underlying_price < 0.05 else 0,
+                            lambda row: 15 if 0 < (underlying_price - row['strikePrice']) / underlying_price < 0.05 else 0,
                             axis=1
                         )
                     # For puts in bullish market, prefer strikes well above current price (deep ITM)
                     elif direction == "bullish":
                         df['confidenceScore'] += df.apply(
-                            lambda row: 10 if (row['strikePrice'] - underlying_price) / underlying_price > 0.05 else 0,
+                            lambda row: 15 if (row['strikePrice'] - underlying_price) / underlying_price > 0.05 else 0,
                             axis=1
                         )
+                
+                # IMPROVED: Prefer options with higher open interest - better liquidity
+                if 'openInterest' in df.columns:
+                    df['confidenceScore'] += df.apply(
+                        lambda row: min(15, row['openInterest'] / 100) if pd.notna(row['openInterest']) else 0,
+                        axis=1
+                    )
                 
                 # IV - prefer options with moderate IV (not too high or low)
                 if 'volatility' in df.columns:
                     try:
                         df['volatility'] = pd.to_numeric(df['volatility'], errors='coerce')
+                        # IMPROVED: Less severe penalties for IV
                         # Penalize very high IV (>60%)
                         high_iv_mask = df['volatility'] > 0.6
                         if high_iv_mask.any():
-                            df.loc[high_iv_mask, 'confidenceScore'] -= (df.loc[high_iv_mask, 'volatility'] - 0.6) * 50
+                            df.loc[high_iv_mask, 'confidenceScore'] -= (df.loc[high_iv_mask, 'volatility'] - 0.6) * 30
                         
                         # Penalize very low IV (<15%)
                         low_iv_mask = df['volatility'] < 0.15
                         if low_iv_mask.any():
-                            df.loc[low_iv_mask, 'confidenceScore'] -= (0.15 - df.loc[low_iv_mask, 'volatility']) * 50
+                            df.loc[low_iv_mask, 'confidenceScore'] -= (0.15 - df.loc[low_iv_mask, 'volatility']) * 30
                         
                         logger.info(f"Adjusted {df_name} scores based on volatility")
                     except Exception as e:
@@ -428,7 +456,8 @@ class RecommendationEngine:
                     if 'spreadPct' in df.columns:
                         spread_mask = df['spreadPct'].notna()
                         if spread_mask.any():
-                            df.loc[spread_mask, 'confidenceScore'] -= df.loc[spread_mask, 'spreadPct'] * 100
+                            # IMPROVED: Less severe penalties for spread
+                            df.loc[spread_mask, 'confidenceScore'] -= df.loc[spread_mask, 'spreadPct'] * 60
                         logger.info(f"Adjusted {df_name} scores based on spread percentage")
                 except Exception as e:
                     logger.error(f"Error adjusting scores based on spread percentage: {e}")
@@ -438,7 +467,8 @@ class RecommendationEngine:
                     if 'strikeDistancePct' in df.columns:
                         distance_mask = df['strikeDistancePct'].notna()
                         if distance_mask.any():
-                            df.loc[distance_mask, 'confidenceScore'] -= df.loc[distance_mask, 'strikeDistancePct'] * 50
+                            # IMPROVED: Less severe penalties for strike distance
+                            df.loc[distance_mask, 'confidenceScore'] -= df.loc[distance_mask, 'strikeDistancePct'] * 30
                         logger.info(f"Adjusted {df_name} scores based on strike distance")
                 except Exception as e:
                     logger.error(f"Error adjusting scores based on strike distance: {e}")
@@ -446,9 +476,19 @@ class RecommendationEngine:
                 # Days to expiration - prefer options with at least a few days to expiration
                 try:
                     if 'daysToExpiration' in df.columns:
+                        # IMPROVED: Prefer options with 5-14 days to expiration for swing trading
+                        ideal_dte_mask = (df['daysToExpiration'] >= 5) & (df['daysToExpiration'] <= 14)
+                        if ideal_dte_mask.any():
+                            df.loc[ideal_dte_mask, 'confidenceScore'] += 10
+                            
                         short_exp_mask = df['daysToExpiration'] < 3
                         if short_exp_mask.any():
                             df.loc[short_exp_mask, 'confidenceScore'] -= (3 - df.loc[short_exp_mask, 'daysToExpiration']) * 5
+                            
+                        long_exp_mask = df['daysToExpiration'] > 30
+                        if long_exp_mask.any():
+                            df.loc[long_exp_mask, 'confidenceScore'] -= 10
+                            
                         logger.info(f"Adjusted {df_name} scores based on days to expiration")
                 except Exception as e:
                     logger.error(f"Error adjusting scores based on days to expiration: {e}")
@@ -494,16 +534,25 @@ class RecommendationEngine:
                 # Convert delta to numeric if it's not already
                 calls_df['delta'] = pd.to_numeric(calls_df['delta'], errors='coerce')
                 
-                # Project potential profit based on a 2% move in underlying and option's delta
-                projected_move_pct = 0.02  # 2% move
-                projected_move = underlying_price * projected_move_pct
-                calls_df['projectedProfit'] = calls_df['delta'] * projected_move
+                # IMPROVED: More realistic profit projection based on delta and volatility
+                # Use a more conservative projected move based on days to expiration
+                calls_df['projectedMovePct'] = calls_df.apply(
+                    lambda row: min(0.02, 0.005 * np.sqrt(row['daysToExpiration'])) 
+                    if pd.notna(row['daysToExpiration']) else 0.01,
+                    axis=1
+                )
+                
+                calls_df['projectedMove'] = underlying_price * calls_df['projectedMovePct']
+                calls_df['projectedProfit'] = calls_df['delta'] * calls_df['projectedMove']
                 
                 # Calculate reward/risk ratio
                 calls_df['rewardRiskRatio'] = calls_df['projectedProfit'] / calls_df['risk']
                 
-                # Calculate expected profit percentage
+                # Calculate expected profit percentage with realistic cap
                 calls_df['expectedProfitPct'] = calls_df['projectedProfit'] / calls_df['risk'] * 100
+                
+                # IMPROVED: Cap expected profit at realistic levels
+                calls_df['expectedProfitPct'] = calls_df['expectedProfitPct'].clip(0, MAX_EXPECTED_PROFIT * 100)
                 
                 # Adjust confidence score based on expected profit
                 calls_df.loc[calls_df['expectedProfitPct'] >= MIN_EXPECTED_PROFIT * 100, 'confidenceScore'] += 10
@@ -511,11 +560,11 @@ class RecommendationEngine:
             else:
                 # If delta is missing, use a default value
                 calls_df['delta'] = 0.5
-                projected_move_pct = 0.02
+                projected_move_pct = 0.01  # More conservative 1% move
                 projected_move = underlying_price * projected_move_pct
                 calls_df['projectedProfit'] = calls_df['delta'] * projected_move
                 calls_df['rewardRiskRatio'] = calls_df['projectedProfit'] / calls_df['risk']
-                calls_df['expectedProfitPct'] = calls_df['projectedProfit'] / calls_df['risk'] * 100
+                calls_df['expectedProfitPct'] = (calls_df['projectedProfit'] / calls_df['risk'] * 100).clip(0, MAX_EXPECTED_PROFIT * 100)
             
             # Calculate target sell price
             calls_df['targetSellPrice'] = calls_df['risk'] * (1 + MIN_EXPECTED_PROFIT)
@@ -523,11 +572,14 @@ class RecommendationEngine:
             # Calculate target timeframe to sell (in hours, based on theta decay)
             if 'theta' in calls_df.columns:
                 calls_df['theta'] = pd.to_numeric(calls_df['theta'], errors='coerce')
-                # Calculate hours until theta decay would reduce price by 10%
+                # Calculate hours until theta decay would reduce price by MIN_EXPECTED_PROFIT
                 # Theta is daily decay, so divide by 24 for hourly
-                calls_df['targetTimeframeHours'] = abs(calls_df['risk'] * MIN_EXPECTED_PROFIT / (calls_df['theta'] / 24))
-                # Cap at reasonable values
-                calls_df['targetTimeframeHours'] = calls_df['targetTimeframeHours'].clip(1, 72)
+                # IMPROVED: More realistic target timeframe calculation
+                calls_df['targetTimeframeHours'] = calls_df.apply(
+                    lambda row: min(72, max(4, abs(row['risk'] * MIN_EXPECTED_PROFIT / (row['theta'] / 24)))) 
+                    if pd.notna(row['theta']) and row['theta'] != 0 else 24,
+                    axis=1
+                )
             else:
                 # Default target timeframe if theta not available
                 calls_df['targetTimeframeHours'] = 24
@@ -542,17 +594,25 @@ class RecommendationEngine:
                 # Convert delta to numeric if it's not already
                 puts_df['delta'] = pd.to_numeric(puts_df['delta'], errors='coerce')
                 
-                # Project potential profit based on a 2% move in underlying and option's delta
-                # For puts, delta is negative, so take absolute value
-                projected_move_pct = 0.02  # 2% move
-                projected_move = underlying_price * projected_move_pct
-                puts_df['projectedProfit'] = abs(puts_df['delta']) * projected_move
+                # IMPROVED: More realistic profit projection based on delta and volatility
+                # Use a more conservative projected move based on days to expiration
+                puts_df['projectedMovePct'] = puts_df.apply(
+                    lambda row: min(0.02, 0.005 * np.sqrt(row['daysToExpiration'])) 
+                    if pd.notna(row['daysToExpiration']) else 0.01,
+                    axis=1
+                )
+                
+                puts_df['projectedMove'] = underlying_price * puts_df['projectedMovePct']
+                puts_df['projectedProfit'] = abs(puts_df['delta']) * puts_df['projectedMove']
                 
                 # Calculate reward/risk ratio
                 puts_df['rewardRiskRatio'] = puts_df['projectedProfit'] / puts_df['risk']
                 
-                # Calculate expected profit percentage
+                # Calculate expected profit percentage with realistic cap
                 puts_df['expectedProfitPct'] = puts_df['projectedProfit'] / puts_df['risk'] * 100
+                
+                # IMPROVED: Cap expected profit at realistic levels
+                puts_df['expectedProfitPct'] = puts_df['expectedProfitPct'].clip(0, MAX_EXPECTED_PROFIT * 100)
                 
                 # Adjust confidence score based on expected profit
                 puts_df.loc[puts_df['expectedProfitPct'] >= MIN_EXPECTED_PROFIT * 100, 'confidenceScore'] += 10
@@ -560,11 +620,11 @@ class RecommendationEngine:
             else:
                 # If delta is missing, use a default value
                 puts_df['delta'] = -0.5
-                projected_move_pct = 0.02
+                projected_move_pct = 0.01  # More conservative 1% move
                 projected_move = underlying_price * projected_move_pct
                 puts_df['projectedProfit'] = abs(puts_df['delta']) * projected_move
                 puts_df['rewardRiskRatio'] = puts_df['projectedProfit'] / puts_df['risk']
-                puts_df['expectedProfitPct'] = puts_df['projectedProfit'] / puts_df['risk'] * 100
+                puts_df['expectedProfitPct'] = (puts_df['projectedProfit'] / puts_df['risk'] * 100).clip(0, MAX_EXPECTED_PROFIT * 100)
             
             # Calculate target sell price
             puts_df['targetSellPrice'] = puts_df['risk'] * (1 + MIN_EXPECTED_PROFIT)
@@ -572,11 +632,14 @@ class RecommendationEngine:
             # Calculate target timeframe to sell (in hours, based on theta decay)
             if 'theta' in puts_df.columns:
                 puts_df['theta'] = pd.to_numeric(puts_df['theta'], errors='coerce')
-                # Calculate hours until theta decay would reduce price by 10%
+                # Calculate hours until theta decay would reduce price by MIN_EXPECTED_PROFIT
                 # Theta is daily decay, so divide by 24 for hourly
-                puts_df['targetTimeframeHours'] = abs(puts_df['risk'] * MIN_EXPECTED_PROFIT / (puts_df['theta'] / 24))
-                # Cap at reasonable values
-                puts_df['targetTimeframeHours'] = puts_df['targetTimeframeHours'].clip(1, 72)
+                # IMPROVED: More realistic target timeframe calculation
+                puts_df['targetTimeframeHours'] = puts_df.apply(
+                    lambda row: min(72, max(4, abs(row['risk'] * MIN_EXPECTED_PROFIT / (row['theta'] / 24)))) 
+                    if pd.notna(row['theta']) and row['theta'] != 0 else 24,
+                    axis=1
+                )
             else:
                 # Default target timeframe if theta not available
                 puts_df['targetTimeframeHours'] = 24
@@ -609,10 +672,10 @@ class RecommendationEngine:
             calls_df = calls_df[calls_df['confidenceScore'] >= CONFIDENCE_THRESHOLD]
             logger.info(f"Filtered calls by confidence score >= {CONFIDENCE_THRESHOLD}, remaining: {len(calls_df)}")
             
-            # If no calls pass the threshold, take the top 2 anyway to ensure recommendations
+            # If no calls pass the threshold, take the top 3 anyway to ensure recommendations
             if len(calls_df) == 0:
-                logger.warning("No calls passed confidence threshold, taking top 2 anyway")
-                calls_df = options_with_risk_reward['calls'].sort_values('confidenceScore', ascending=False).head(2)
+                logger.warning("No calls passed confidence threshold, taking top 3 anyway")
+                calls_df = options_with_risk_reward['calls'].sort_values('confidenceScore', ascending=False).head(3)
         
         if not puts_df.empty:
             # Log confidence score distribution before filtering
@@ -621,10 +684,10 @@ class RecommendationEngine:
             puts_df = puts_df[puts_df['confidenceScore'] >= CONFIDENCE_THRESHOLD]
             logger.info(f"Filtered puts by confidence score >= {CONFIDENCE_THRESHOLD}, remaining: {len(puts_df)}")
             
-            # If no puts pass the threshold, take the top 2 anyway to ensure recommendations
+            # If no puts pass the threshold, take the top 3 anyway to ensure recommendations
             if len(puts_df) == 0:
-                logger.warning("No puts passed confidence threshold, taking top 2 anyway")
-                puts_df = options_with_risk_reward['puts'].sort_values('confidenceScore', ascending=False).head(2)
+                logger.warning("No puts passed confidence threshold, taking top 3 anyway")
+                puts_df = options_with_risk_reward['puts'].sort_values('confidenceScore', ascending=False).head(3)
         
         # Sort by confidence score (descending)
         if not calls_df.empty:
