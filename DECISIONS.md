@@ -49,6 +49,7 @@
 - Added data flow monitoring to detect and recover from situations where subscriptions exist but no data is received
 - Enhanced logging with detailed timestamps and context information for better troubleshooting
 - Implemented proper cleanup of resources when stopping the stream to prevent resource leaks
+- Added robust shutdown mechanism with proper state checking to prevent application crashes during teardown
 
 ## Timeframe Bias Indicator
 - Implemented a comprehensive timeframe bias indicator to show dominant trend direction across timeframes
@@ -83,3 +84,4 @@
 - Added detailed logging of contract key matching attempts and failures to aid in troubleshooting
 - Added type checking for selected_symbol parameter to handle both dictionary and string formats
 - Implemented defensive programming approach to handle variable data types in callback parameters
+- Implemented exception-safe shutdown mechanism with proper state checking to prevent application crashes during teardown

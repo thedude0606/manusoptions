@@ -937,10 +937,40 @@ register_export_callbacks(app)
 def shutdown_streaming(exception=None):
     """Stops streaming when the app shuts down."""
     print(f"DASHBOARD_APP: shutdown_streaming called at {datetime.datetime.now()}", file=sys.stderr)
-    streaming_manager.stop_streaming()
-    debug_monitor.stop_monitoring()
-    app_logger.info("Streaming stopped on app shutdown")
-    print(f"DASHBOARD_APP: Streaming and debug monitor stopped on app shutdown", file=sys.stderr)
+    try:
+        # Check if streaming_manager exists and has stop_streaming method
+        if streaming_manager is not None and hasattr(streaming_manager, 'stop_streaming'):
+            # Check if streaming is actually running before stopping
+            if hasattr(streaming_manager, 'is_running') and streaming_manager.is_running:
+                streaming_manager.stop_streaming()
+                app_logger.info("Streaming stopped on app shutdown")
+                print(f"DASHBOARD_APP: Streaming stopped on app shutdown", file=sys.stderr)
+            else:
+                app_logger.info("Streaming was not running, no need to stop")
+                print(f"DASHBOARD_APP: Streaming was not running, no need to stop", file=sys.stderr)
+        else:
+            app_logger.warning("streaming_manager not available or missing stop_streaming method")
+            print(f"DASHBOARD_APP: streaming_manager not available or missing stop_streaming method", file=sys.stderr)
+            
+        # Check if debug_monitor exists and has stop_monitoring method
+        if debug_monitor is not None and hasattr(debug_monitor, 'stop_monitoring'):
+            # Check if monitoring is actually running before stopping
+            if hasattr(debug_monitor, 'is_monitoring') and debug_monitor.is_monitoring:
+                debug_monitor.stop_monitoring()
+                app_logger.info("Debug monitor stopped on app shutdown")
+                print(f"DASHBOARD_APP: Debug monitor stopped on app shutdown", file=sys.stderr)
+            else:
+                app_logger.info("Debug monitor was not running, no need to stop")
+                print(f"DASHBOARD_APP: Debug monitor was not running, no need to stop", file=sys.stderr)
+        else:
+            app_logger.warning("debug_monitor not available or missing stop_monitoring method")
+            print(f"DASHBOARD_APP: debug_monitor not available or missing stop_monitoring method", file=sys.stderr)
+            
+    except Exception as e:
+        app_logger.error(f"Error during shutdown_streaming: {e}", exc_info=True)
+        print(f"DASHBOARD_APP: Error during shutdown_streaming: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        # Don't re-raise the exception to avoid breaking the teardown process
 
 if __name__ == "__main__":
     # Use app.run instead of app.run_server for Dash 3.x compatibility

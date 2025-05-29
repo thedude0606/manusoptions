@@ -42,6 +42,7 @@
 - Limited number of recommendations due to overly strict filtering
 - Contract key format differences between REST API and streaming data causing matching issues
 - Streaming data may not be triggering recommendation updates as expected
+- Application failing to load due to error in shutdown_streaming function during app context teardown
 
 ### Next Steps
 - Validate the improved streaming manager with real-world data
