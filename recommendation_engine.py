@@ -519,6 +519,22 @@ class RecommendationEngine:
             "puts": puts_df
         }
     
+    def get_recommendations(self, tech_indicators_dict, options_df, underlying_price, symbol="UNKNOWN"):
+        """
+        Compatibility method for dashboard integration - calls generate_recommendations with the same parameters.
+        
+        Args:
+            tech_indicators_dict: Dictionary of DataFrames with technical indicators for each timeframe
+            options_df: DataFrame containing options chain data
+            underlying_price: Current price of the underlying asset
+            symbol: Symbol of the underlying asset
+            
+        Returns:
+            dict: Recommendations with market direction analysis and options recommendations
+        """
+        logger.info(f"get_recommendations called for {symbol} - forwarding to generate_recommendations")
+        return self.generate_recommendations(tech_indicators_dict, options_df, underlying_price, symbol)
+    
     def generate_recommendations(self, tech_indicators_dict, options_df, underlying_price, symbol="UNKNOWN"):
         """
         Generate options trading recommendations based on technical indicators and options chain data.
