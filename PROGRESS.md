@@ -18,6 +18,7 @@
 - Fixed TypeError when tech_indicators_dict is not a dictionary by adding robust type checking
 - Fixed options chain data table not updating with streaming data by improving contract key normalization
 - Added enhanced debugging to streaming data updates to identify contract key matching issues
+- Fixed AttributeError in recommendation generation when selected_symbol is a string instead of a dictionary
 
 ### Current Work in Progress
 - Testing enhanced recommendation engine with timeframe bias integration

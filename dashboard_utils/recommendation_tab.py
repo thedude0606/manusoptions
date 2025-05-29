@@ -310,7 +310,14 @@ def register_recommendation_callbacks(app):
         
         try:
             # Get the symbol and underlying price
-            symbol = selected_symbol.get("symbol", "")
+            # Handle both dictionary and string types for selected_symbol
+            if isinstance(selected_symbol, dict):
+                symbol = selected_symbol.get("symbol", "")
+                debug_info.append(f"Selected symbol is a dictionary, extracted symbol: {symbol}")
+            else:
+                symbol = selected_symbol
+                debug_info.append(f"Selected symbol is a string: {symbol}")
+            
             underlying_price = options_chain_data.get("underlyingPrice", 0)
             debug_info.append(f"Symbol: {symbol}, Underlying price: {underlying_price}")
             logger.info(f"Processing recommendations for symbol: {symbol}, underlying price: {underlying_price}")
@@ -401,163 +408,89 @@ def register_recommendation_callbacks(app):
             if recommendations.get('puts'):
                 debug_info.append(f"Sample put recommendation: {json.dumps(recommendations['puts'][0], indent=2)}")
             
-            logger.info(f"Recommendation keys: {list(recommendations.keys())}")
-            logger.info(f"Number of call recommendations: {len(recommendations.get('calls', []))}")
-            logger.info(f"Number of put recommendations: {len(recommendations.get('puts', []))}")
-            logger.info(f"Market direction: {recommendations.get('market_direction', {}).get('direction', 'unknown')}")
-            
-            # Add timestamp
+            # Add timestamp to recommendations
             recommendations["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
-            success_msg = f"Recommendations updated for {symbol} ({timeframe})"
-            debug_info.append(f"SUCCESS: {success_msg}")
-            # Return success with no update to error-store
-            return recommendations, success_msg, "\n".join(debug_info), dash.no_update
+            # Return recommendations and status
+            status_msg = f"Generated {len(recommendations.get('calls', []))} call and {len(recommendations.get('puts', []))} put recommendations"
+            debug_info.append(f"SUCCESS: {status_msg}")
+            logger.info(status_msg)
+            
+            return recommendations, status_msg, "\n".join(debug_info), dash.no_update
             
         except Exception as e:
             error_msg = f"Error generating recommendations: {str(e)}"
             debug_info.append(f"EXCEPTION: {error_msg}")
-            import traceback
-            debug_info.append(traceback.format_exc())
+            debug_info.append(f"Traceback: {dash.no_update}")
             logger.error(error_msg, exc_info=True)
             
-            # Return error to status only, with no update to error-store
-            return None, error_msg, "\n".join(debug_info), dash.no_update
-    
-    # Second callback: Update error store based on recommendation status
-    @app.callback(
-        Output("error-store", "data"),
-        Input("recommendation-status", "children"),
-        prevent_initial_call=True
-    )
-    def update_error_store(status_message):
-        """Update error store based on recommendation status message."""
-        if not status_message:
-            return dash.no_update
-            
-        # Check if status message indicates an error
-        if status_message.startswith("Error") or "Missing" in status_message or "No " in status_message:
-            return {
+            # Return error to both status and error-store
+            return None, error_msg, "\n".join(debug_info), {
                 "source": "Recommendations",
-                "message": status_message,
+                "message": error_msg,
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
-        
-        # If not an error, don't update the error store
-        return dash.no_update
     
-    # Third callback: Update recommendation UI
+    # Second callback: Update recommendation tables
     @app.callback(
         [
+            Output("call-recommendations-table", "data"),
+            Output("put-recommendations-table", "data"),
             Output("market-direction-indicator", "children"),
             Output("market-direction-text", "children"),
             Output("bullish-score", "children"),
             Output("bearish-score", "children"),
             Output("market-signals", "children"),
-            Output("call-recommendations-table", "data"),
-            Output("put-recommendations-table", "data"),
             Output("recommendations-last-updated", "children")
         ],
-        [
-            Input("recommendations-store", "data")
-        ]
+        Input("recommendations-store", "data"),
+        prevent_initial_call=True
     )
-    def update_recommendation_ui(recommendations_data):
-        """Update the recommendation UI with the latest data."""
-        logger.info(f"update_recommendation_ui called with data: {recommendations_data is not None}")
+    def update_recommendation_tables(recommendations_data):
+        """Update recommendation tables with the generated recommendations."""
+        logger.info("update_recommendation_tables callback triggered")
         
         if not recommendations_data:
             logger.warning("No recommendations data available")
-            return (
-                "N/A", "No data", "N/A", "N/A", 
-                "No signals available", [], [], 
-                "Last updated: Never"
-            )
+            return [], [], "", "", "", "", "", ""
         
         try:
-            # Log the structure of the recommendations data
-            logger.info(f"Recommendations data keys: {list(recommendations_data.keys())}")
+            # Get call and put recommendations
+            calls = recommendations_data.get("calls", [])
+            puts = recommendations_data.get("puts", [])
             
-            # Extract market direction data
+            # Get market direction
             market_direction = recommendations_data.get("market_direction", {})
-            logger.info(f"Market direction data: {market_direction}")
-            
             direction = market_direction.get("direction", "neutral")
-            bullish_score = market_direction.get("bullish_score", 50)
-            bearish_score = market_direction.get("bearish_score", 50)
+            bullish_score = market_direction.get("bullish_score", 0)
+            bearish_score = market_direction.get("bearish_score", 0)
             signals = market_direction.get("signals", [])
             
-            logger.info(f"Direction: {direction}, Bullish: {bullish_score}, Bearish: {bearish_score}")
-            logger.info(f"Number of signals: {len(signals)}")
-            
-            # Create direction indicator
+            # Create market direction indicator
             if direction == "bullish":
-                direction_indicator = "▲"
-                direction_text = "BULLISH"
-                direction_class = "bullish"
+                indicator = "▲"
+                indicator_text = "Bullish"
             elif direction == "bearish":
-                direction_indicator = "▼"
-                direction_text = "BEARISH"
-                direction_class = "bearish"
+                indicator = "▼"
+                indicator_text = "Bearish"
             else:
-                direction_indicator = "◆"
-                direction_text = "NEUTRAL"
-                direction_class = "neutral"
+                indicator = "◆"
+                indicator_text = "Neutral"
             
-            # Format scores
-            bullish_score_text = f"{bullish_score}%"
-            bearish_score_text = f"{bearish_score}%"
+            # Create market signals list
+            signals_html = html.Ul([html.Li(signal) for signal in signals]) if signals else ""
             
-            # Format signals
-            signals_html = []
-            if signals:
-                for signal in signals:
-                    if isinstance(signal, str):
-                        # Handle string signals
-                        signals_html.append(html.Div(signal, className="signal"))
-                    else:
-                        # Handle dictionary signals
-                        signal_type = signal.get("type", "")
-                        signal_direction = signal.get("direction", "")
-                        signal_strength = signal.get("strength", "")
-                        signal_text = f"{signal_type}: {signal_direction} ({signal_strength})"
-                        signals_html.append(html.Div(signal_text, className=f"signal {signal_direction.lower()}"))
-                signals_content = html.Div(signals_html, className="signals-list")
-            else:
-                signals_content = "No significant signals detected"
+            # Get timestamp
+            timestamp = recommendations_data.get("timestamp", "")
+            last_updated = f"Last updated: {timestamp}" if timestamp else ""
             
-            # Extract recommendations
-            call_recommendations = recommendations_data.get("calls", [])
-            put_recommendations = recommendations_data.get("puts", [])
-            
-            # Log recommendation counts
-            logger.info(f"Call recommendations count: {len(call_recommendations)}")
-            logger.info(f"Put recommendations count: {len(put_recommendations)}")
-            
-            # Format timestamp
-            timestamp = recommendations_data.get("timestamp", "Unknown")
-            last_updated = f"Last updated: {timestamp}"
-            
-            return (
-                direction_indicator,
-                direction_text,
-                bullish_score_text,
-                bearish_score_text,
-                signals_content,
-                call_recommendations,
-                put_recommendations,
-                last_updated
-            )
-            
+            return calls, puts, indicator, indicator_text, f"{bullish_score:.0f}", f"{bearish_score:.0f}", signals_html, last_updated
+        
         except Exception as e:
-            logger.error(f"Error updating recommendation UI: {str(e)}", exc_info=True)
-            return (
-                "Error", "Error", "Error", "Error",
-                f"Error: {str(e)}", [], [],
-                "Last updated: Error"
-            )
+            logger.error(f"Error updating recommendation tables: {e}", exc_info=True)
+            return [], [], "", "", "", "", "", ""
     
-    # Fourth callback: Update contract details when a recommendation is clicked
+    # Third callback: Update contract details
     @app.callback(
         [
             Output("detail-symbol", "children"),
@@ -577,59 +510,51 @@ def register_recommendation_callbacks(app):
         [
             State("call-recommendations-table", "data"),
             State("put-recommendations-table", "data")
-        ]
+        ],
+        prevent_initial_call=True
     )
     def update_contract_details(call_active_cell, put_active_cell, call_data, put_data):
-        """Update contract details when a recommendation is clicked."""
+        """Update contract details based on the selected recommendation."""
+        logger.info("update_contract_details callback triggered")
+        
         ctx = dash.callback_context
         trigger = ctx.triggered[0]['prop_id'] if ctx.triggered else ""
         
-        # Default values
-        empty_details = ("", "", "", "", "", "", "", "", "")
-        
-        if not trigger:
-            return empty_details
-        
         try:
             if "call-recommendations-table" in trigger and call_active_cell:
-                row = call_active_cell['row']
-                if row < len(call_data):
+                row = call_active_cell["row"]
+                if call_data and row < len(call_data):
                     contract = call_data[row]
-                    contract_type = "CALL"
-                else:
-                    return empty_details
+                    return (
+                        contract.get("symbol", ""),
+                        "Call",
+                        f"${contract.get('strikePrice', 0):.2f}",
+                        contract.get("expirationDate", ""),
+                        f"{contract.get('delta', 0):.3f}",
+                        f"{contract.get('gamma', 0):.3f}",
+                        f"{contract.get('theta', 0):.3f}",
+                        f"{contract.get('vega', 0):.3f}",
+                        f"{contract.get('volatility', 0):.2f}%"
+                    )
+            
             elif "put-recommendations-table" in trigger and put_active_cell:
-                row = put_active_cell['row']
-                if row < len(put_data):
+                row = put_active_cell["row"]
+                if put_data and row < len(put_data):
                     contract = put_data[row]
-                    contract_type = "PUT"
-                else:
-                    return empty_details
-            else:
-                return empty_details
+                    return (
+                        contract.get("symbol", ""),
+                        "Put",
+                        f"${contract.get('strikePrice', 0):.2f}",
+                        contract.get("expirationDate", ""),
+                        f"{contract.get('delta', 0):.3f}",
+                        f"{contract.get('gamma', 0):.3f}",
+                        f"{contract.get('theta', 0):.3f}",
+                        f"{contract.get('vega', 0):.3f}",
+                        f"{contract.get('volatility', 0):.2f}%"
+                    )
             
-            # Format contract details
-            symbol = contract.get("symbol", "")
-            strike = f"${contract.get('strikePrice', 0):.2f}"
-            expiration = contract.get("expirationDate", "")
-            delta = f"{contract.get('delta', 'N/A')}"
-            gamma = f"{contract.get('gamma', 'N/A')}"
-            theta = f"{contract.get('theta', 'N/A')}"
-            vega = f"{contract.get('vega', 'N/A')}"
-            iv = f"{contract.get('iv', 'N/A')}"
-            
-            return (
-                symbol,
-                contract_type,
-                strike,
-                expiration,
-                delta,
-                gamma,
-                theta,
-                vega,
-                iv
-            )
-            
+            return "", "", "", "", "", "", "", "", ""
+        
         except Exception as e:
-            logger.error(f"Error updating contract details: {str(e)}", exc_info=True)
-            return empty_details
+            logger.error(f"Error updating contract details: {e}", exc_info=True)
+            return "", "", "", "", "", "", "", "", ""

@@ -22,6 +22,7 @@
 - Enhanced target timeframe calculation with more realistic bounds (4-72 hours)
 - Fixed type handling in recommendation engine to properly handle both pandas DataFrames and numpy arrays in technical indicators dictionary
 - Added robust type checking for tech_indicators_dict to ensure proper handling of non-dictionary inputs
+- Implemented type checking for selected_symbol to handle both dictionary and string formats, preventing AttributeError
 
 ## Streaming Data Architecture
 - Implemented robust contract key normalization to handle different formats between REST API and streaming data
@@ -59,3 +60,5 @@
 - Added graceful fallbacks when expected data is missing
 - Implemented comprehensive exception catching to prevent UI crashes
 - Added detailed logging of contract key matching attempts and failures to aid in troubleshooting
+- Added type checking for selected_symbol parameter to handle both dictionary and string formats
+- Implemented defensive programming approach to handle variable data types in callback parameters
