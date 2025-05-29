@@ -529,9 +529,9 @@ def toggle_streaming(toggle_value, options_data):
             print(f"DASHBOARD_APP: Starting streaming for {len(option_keys)} option contracts", file=sys.stderr)
             
             # Start streaming
-            print(f"DASHBOARD_APP: Calling streaming_manager.start_streaming", file=sys.stderr)
-            success = streaming_manager.start_streaming(option_keys)
-            print(f"DASHBOARD_APP: streaming_manager.start_streaming returned {success}", file=sys.stderr)
+            print(f"DASHBOARD_APP: Calling streaming_manager.start_stream", file=sys.stderr)
+            success = streaming_manager.start_stream(option_keys)
+            print(f"DASHBOARD_APP: streaming_manager.start_stream returned {success}", file=sys.stderr)
             
             # Make sure debug monitor is running
             print(f"DASHBOARD_APP: Ensuring debug monitor is running", file=sys.stderr)
@@ -549,7 +549,7 @@ def toggle_streaming(toggle_value, options_data):
             # Stop streaming
             app_logger.info("Stopping streaming")
             print(f"DASHBOARD_APP: Stopping streaming", file=sys.stderr)
-            streaming_manager.stop_streaming()
+            streaming_manager.stop_stream()
             return "Streaming: Inactive", True
     
     except Exception as e:

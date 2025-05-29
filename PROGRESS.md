@@ -35,6 +35,7 @@
 - Validating automatic reconnection logic for streaming data
 - Monitoring streaming data updates to ensure consistent data flow
 - Validating streaming debug monitor effectiveness in diagnosing update issues
+- Fixing method name mismatch in streaming functionality
 
 ### Known Issues/Challenges
 - Previous recommendation tables showed very low confidence scores (10.0)

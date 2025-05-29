@@ -24,6 +24,7 @@
 - [x] Add heartbeat monitoring and automatic reconnection for streaming
 - [x] Improve contract key normalization for streaming data
 - [x] Fix application loading error in shutdown_streaming function
+- [x] Fix method name mismatch in streaming functionality (start_streaming → start_stream)
 - [ ] Test enhanced streaming manager with real-world data
 - [ ] Validate automatic reconnection logic across different conditions
 - [ ] Test timeframe bias indicator across different market conditions
