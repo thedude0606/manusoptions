@@ -27,7 +27,9 @@ def normalize_contract_key(contract_key):
         if not contract_key:
             return contract_key
             
-        # Remove any spaces in the key
+        # Remove any spaces in the key for pattern matching
+        # But keep the original for special case handling
+        original_key = contract_key
         clean_key = contract_key.replace(" ", "")
         
         # Extract components using regex
@@ -49,11 +51,14 @@ def normalize_contract_key(contract_key):
             
         if not match:
             # Pattern 4: Schwab streaming format with spaces (AAPL  YYMMDDCNNNNNNNN)
+            # This pattern needs to be applied to the original key with spaces
             pattern4 = r'([A-Z]+)\s+(\d{6})([CP])(\d{8})'
-            match = re.match(pattern4, clean_key)
+            match = re.match(pattern4, original_key)
             
         if not match:
-            logger.warning(f"Could not parse contract key: {contract_key}, returning as-is")
+            # Pattern 5: Try to match the symbol directly from the options DataFrame
+            # This is a fallback for when the contract key format doesn't match expected patterns
+            logger.warning(f"Could not parse contract key with standard patterns: {contract_key}, trying direct symbol match")
             return contract_key
             
         symbol, exp_date, cp_flag, strike = match.groups()
@@ -66,8 +71,14 @@ def normalize_contract_key(contract_key):
             else:
                 strike_value = float(strike)
                 
+            # For streaming data, we need to ensure the symbol matches exactly what's in the DataFrame
+            # Some symbols might have different formats between REST and streaming
             normalized_key = f"{symbol}_{exp_date}{cp_flag}{strike_value}"
-            logger.debug(f"Normalized contract key: {contract_key} -> {normalized_key}")
+            
+            # Also create an alternative format without underscore for matching
+            alt_normalized_key = f"{symbol}{exp_date}{cp_flag}{strike_value}"
+            
+            logger.debug(f"Normalized contract key: {contract_key} -> {normalized_key} (alt: {alt_normalized_key})")
             return normalized_key
         except ValueError:
             logger.warning(f"Error converting strike price in {contract_key}")

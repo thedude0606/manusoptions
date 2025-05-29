@@ -662,6 +662,23 @@ def update_options_tables(options_data, streaming_data, expiration_date, option_
                 
                 # Find the corresponding row in the DataFrame
                 mask = options_df["symbol"] == normalized_key
+                
+                # If no match found with normalized key, try alternative formats
+                if not mask.any():
+                    # Try without underscore
+                    alt_key = normalized_key.replace("_", "")
+                    mask = options_df["symbol"] == alt_key
+                    if mask.any():
+                        app_logger.debug(f"Found match using alternative key format: {alt_key}")
+                    else:
+                        # Try direct match with original key
+                        mask = options_df["symbol"] == contract_key
+                        if mask.any():
+                            app_logger.debug(f"Found match using original key: {contract_key}")
+                        else:
+                            app_logger.warning(f"No matching row found for {normalized_key} (original: {contract_key})")
+                            continue
+                
                 if mask.any():
                     app_logger.debug(f"Found matching row for {normalized_key}")
                     
@@ -676,8 +693,6 @@ def update_options_tables(options_data, streaming_data, expiration_date, option_
                             options_df.loc[mask, field] = value
                             app_logger.debug(f"Updated {normalized_key}.{field} = {value}")
                             update_count += 1
-                else:
-                    app_logger.debug(f"No matching row found for {normalized_key}")
             
             app_logger.info(f"Applied {update_count} field updates from streaming data")
         else:

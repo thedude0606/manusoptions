@@ -21,7 +21,14 @@
 - Fixed type handling in recommendation engine to properly handle both pandas DataFrames and numpy arrays in technical indicators dictionary
 - Added robust type checking for tech_indicators_dict to ensure proper handling of non-dictionary inputs
 
-## Error Handlingas Indicator
+## Streaming Data Architecture
+- Implemented robust contract key normalization to handle different formats between REST API and streaming data
+- Added fallback matching logic to ensure streaming updates are correctly applied to options data tables
+- Enhanced logging for streaming data updates to improve debugging and troubleshooting
+- Implemented multiple key format attempts to maximize successful matches between streaming data and DataFrame rows
+- Used a layered approach to contract key matching: normalized format, alternative format without underscore, and direct matching
+
+## Error Handling
 - Implemented a comprehensive timeframe bias indicator to show dominant trend direction across timeframes
 - Used a multi-factor approach combining moving averages, momentum indicators, and price action analysis
 - Designed a scoring system from -100 (strongly bearish) to +100 (strongly bullish) for quantifiable bias measurement

@@ -13,6 +13,7 @@
 - [x] Integrate timeframe bias with recommendation engine
 - [x] Fix TypeError in recommendation engine when handling numpy arrays
 - [x] Fix TypeError when tech_indicators_dict is not a dictionary
+- [x] Fix options call chain data table not updating with streaming data
 - [ ] Test enhanced recommendation engine with real-world data
 - [ ] Test timeframe bias indicator across different market conditions
 - [ ] Add UI components to display timeframe bias information
