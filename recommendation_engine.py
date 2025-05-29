@@ -550,8 +550,8 @@ class RecommendationEngine:
         """
         logger.info(f"Generating recommendations for {symbol}")
         
-        # Check if we have technical indicators
-        if not tech_indicators_dict or all(df.empty for df in tech_indicators_dict.values()):
+        # Check if we have technical indicators - FIX: Avoid direct DataFrame boolean evaluation
+        if tech_indicators_dict is None or len(tech_indicators_dict) == 0 or all(isinstance(df, pd.DataFrame) and df.empty for df in tech_indicators_dict.values()):
             logger.warning("No technical indicators provided")
             return {
                 "symbol": symbol,
@@ -573,7 +573,7 @@ class RecommendationEngine:
         # Analyze market direction for each timeframe
         market_direction_analysis = {}
         for timeframe, indicators_df in tech_indicators_dict.items():
-            if not indicators_df.empty:
+            if isinstance(indicators_df, pd.DataFrame) and not indicators_df.empty:
                 market_direction_analysis[timeframe] = self.analyze_market_direction(indicators_df, timeframe)
         
         # If no valid timeframes were analyzed, return empty recommendations
