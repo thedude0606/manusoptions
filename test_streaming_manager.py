@@ -12,6 +12,7 @@ import datetime
 import threading
 import json
 from dashboard_utils.streaming_manager import StreamingManager
+from dashboard_utils.data_fetchers import get_options_chain_data, get_option_contract_keys
 from config import APP_KEY, APP_SECRET, CALLBACK_URL, TOKEN_FILE_PATH
 import schwabdev
 
@@ -65,8 +66,8 @@ def get_account_id():
         print(f"TEST_STREAMING: Error getting account ID: {e}", file=sys.stderr)
         return None
 
-# Function to get option contract keys for a symbol
-def get_option_contract_keys(symbol):
+# Function to get option contract keys for a symbol using the repository's existing functions
+def get_symbol_option_contract_keys(symbol):
     print(f"TEST_STREAMING: Getting option contract keys for {symbol}", file=sys.stderr)
     try:
         client = get_schwab_client()
@@ -74,51 +75,21 @@ def get_option_contract_keys(symbol):
             print(f"TEST_STREAMING: Failed to get Schwab client", file=sys.stderr)
             return []
         
-        # Get option chain data
-        response = client.option_chain(
-            symbol=symbol,
-            contract_type="ALL",
-            strike_count=10,  # Limit to 10 strikes around the money for testing
-            include_quotes=True,
-            strategy="SINGLE",
-            interval=None,
-            strike=None,
-            range="NTM",  # Near the money
-            from_date=None,
-            to_date=None,
-            exp_month="ALL",
-            option_type="ALL"
-        )
+        # Use the repository's existing function to get options chain data
+        options_df, expiration_dates, underlying_price, error = get_options_chain_data(client, symbol)
         
-        if not response.ok:
-            logger.error(f"Error fetching option chain: {response.status_code} - {response.text}")
-            print(f"TEST_STREAMING: Error fetching option chain: {response.status_code} - {response.text}", file=sys.stderr)
+        if error:
+            logger.error(f"Error fetching option chain: {error}")
+            print(f"TEST_STREAMING: Error fetching option chain: {error}", file=sys.stderr)
             return []
         
-        option_chain = response.json()
+        if options_df.empty:
+            logger.warning(f"No options data found for {symbol}")
+            print(f"TEST_STREAMING: No options data found for {symbol}", file=sys.stderr)
+            return []
         
-        # Extract contract keys
-        contract_keys = []
-        
-        # Process call options
-        call_exp_date_map = option_chain.get("callExpDateMap", {})
-        for exp_date, strikes in call_exp_date_map.items():
-            for strike, contracts in strikes.items():
-                for contract in contracts:
-                    if contract.get("openInterest", 0) > 0:  # Only include contracts with open interest
-                        symbol = contract.get("symbol", "")
-                        if symbol:
-                            contract_keys.append(symbol)
-        
-        # Process put options
-        put_exp_date_map = option_chain.get("putExpDateMap", {})
-        for exp_date, strikes in put_exp_date_map.items():
-            for strike, contracts in strikes.items():
-                for contract in contracts:
-                    if contract.get("openInterest", 0) > 0:  # Only include contracts with open interest
-                        symbol = contract.get("symbol", "")
-                        if symbol:
-                            contract_keys.append(symbol)
+        # Use the repository's existing function to extract contract keys
+        contract_keys = get_option_contract_keys(options_df)
         
         print(f"TEST_STREAMING: Found {len(contract_keys)} contract keys", file=sys.stderr)
         return contract_keys
@@ -174,7 +145,7 @@ def main():
     # Get option contract keys for a test symbol
     symbol = "AAPL"  # Use Apple as a test symbol
     print(f"TEST_STREAMING: Getting contract keys for {symbol}", file=sys.stderr)
-    contract_keys = get_option_contract_keys(symbol)
+    contract_keys = get_symbol_option_contract_keys(symbol)
     
     if not contract_keys:
         print(f"TEST_STREAMING: No contract keys found for {symbol}. Exiting test.", file=sys.stderr)
