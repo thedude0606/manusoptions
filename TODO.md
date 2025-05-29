@@ -11,6 +11,7 @@
 - [x] Fix profit calculation for realistic outputs
 - [x] Implement timeframe bias indicator for trend direction analysis
 - [x] Integrate timeframe bias with recommendation engine
+- [x] Fix TypeError in recommendation engine when handling numpy arrays
 - [ ] Test enhanced recommendation engine with real-world data
 - [ ] Test timeframe bias indicator across different market conditions
 - [ ] Add UI components to display timeframe bias information

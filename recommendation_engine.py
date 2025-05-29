@@ -550,8 +550,12 @@ class RecommendationEngine:
         """
         logger.info(f"Generating recommendations for {symbol}")
         
-        # Check if we have technical indicators - FIX: Avoid direct DataFrame boolean evaluation
-        if tech_indicators_dict is None or len(tech_indicators_dict) == 0 or all(isinstance(df, pd.DataFrame) and df.empty for df in tech_indicators_dict.values()):
+        # Check if we have technical indicators - FIX: Handle both DataFrames and numpy arrays
+        if tech_indicators_dict is None or len(tech_indicators_dict) == 0 or all(
+            (isinstance(df, pd.DataFrame) and df.empty) or 
+            (isinstance(df, np.ndarray) and df.size == 0) 
+            for df in tech_indicators_dict.values()
+        ):
             logger.warning("No technical indicators provided")
             return {
                 "symbol": symbol,

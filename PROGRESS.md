@@ -14,6 +14,7 @@
 - Implemented timeframe bias indicator showing dominant trend direction for each timeframe
 - Integrated timeframe bias with recommendation engine for enhanced signal detection
 - Added bias confidence scoring to improve recommendation quality
+- Fixed TypeError in recommendation engine when handling numpy arrays in tech_indicators_dict
 
 ### Current Work in Progress
 - Testing enhanced recommendation engine with timeframe bias integration

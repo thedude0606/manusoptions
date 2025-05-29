@@ -9,9 +9,7 @@
 - Added comprehensive debugging panel to diagnose recommendation generation issues
 - Implemented detailed logging throughout the recommendation generation process
 - Added fallback mechanisms for missing data fields to improve robustness
-- Designed UI to clearly display market direction analysis and recommendation confidence
-
-## Recommendation Engine Enhancements
+- Designed UI to clearly display market direction analysis and recommendation confidence## Recommendation Engine Enhancements
 - Improved confidence scoring algorithm with higher base scores (60 instead of 50)
 - Increased market direction impact on confidence scores (25 point boost instead of 20)
 - Added liquidity preference based on open interest to favor more liquid options
@@ -20,8 +18,9 @@
 - Added cap on expected profit (50% maximum) to ensure realistic projections
 - Improved projected move calculation based on days to expiration and volatility
 - Enhanced target timeframe calculation with more realistic bounds (4-72 hours)
+- Fixed type handling in recommendation engine to properly handle both pandas DataFrames and numpy arrays in technical indicators dictionary
 
-## Timeframe Bias Indicator
+## Error Handlingas Indicator
 - Implemented a comprehensive timeframe bias indicator to show dominant trend direction across timeframes
 - Used a multi-factor approach combining moving averages, momentum indicators, and price action analysis
 - Designed a scoring system from -100 (strongly bearish) to +100 (strongly bullish) for quantifiable bias measurement
