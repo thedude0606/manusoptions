@@ -21,6 +21,17 @@
 - Improved projected move calculation based on days to expiration and volatility
 - Enhanced target timeframe calculation with more realistic bounds (4-72 hours)
 
+## Timeframe Bias Indicator
+- Implemented a comprehensive timeframe bias indicator to show dominant trend direction across timeframes
+- Used a multi-factor approach combining moving averages, momentum indicators, and price action analysis
+- Designed a scoring system from -100 (strongly bearish) to +100 (strongly bullish) for quantifiable bias measurement
+- Added categorical labels for easy interpretation (strongly_bearish, bearish, slightly_bearish, neutral, slightly_bullish, bullish, strongly_bullish)
+- Included confidence metrics to indicate the strength and reliability of the bias signal
+- Integrated bias scores with recommendation engine to enhance confidence scoring
+- Applied weighted adjustments to recommendation confidence based on bias strength and direction
+- Designed the indicator to be additive to existing technical signals rather than replacing them
+- Implemented the bias calculation for all timeframes (1min, 15min, 30min, 1hour, daily) to provide complete market context
+
 ## Data Tables Display Fix
 - Fixed minute tab and technical indicators tab data tables by implementing proper callback functions
 - Ensured consistent data formatting across all tables

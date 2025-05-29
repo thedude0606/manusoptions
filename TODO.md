@@ -9,7 +9,11 @@
 - [x] Implement improved confidence scoring
 - [x] Refine filtering logic to be less aggressive
 - [x] Fix profit calculation for realistic outputs
+- [x] Implement timeframe bias indicator for trend direction analysis
+- [x] Integrate timeframe bias with recommendation engine
 - [ ] Test enhanced recommendation engine with real-world data
+- [ ] Test timeframe bias indicator across different market conditions
+- [ ] Add UI components to display timeframe bias information
 - [ ] Fix Safari export button compatibility issue
 - [ ] Add additional error handling for data fetching
 - [ ] Improve UI responsiveness on mobile devices
@@ -19,7 +23,9 @@
 - [x] Update TODO.md with prioritized tasks
 - [x] Update DECISIONS.md with technical rationale
 - [ ] Create user guide for recommendation engine features
+- [ ] Document timeframe bias indicator usage and interpretation
 
 ## Dependencies
 - UI improvements depend on core functionality fixes
 - Additional features depend on validation of current enhancements
+- Timeframe bias UI display depends on validation of indicator accuracy

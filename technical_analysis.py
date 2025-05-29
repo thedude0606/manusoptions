@@ -149,6 +149,182 @@ def calculate_mfi(df, window=14):
     
     return df
 
+def calculate_timeframe_bias(df, short_ma_period=5, medium_ma_period=20, long_ma_period=50):
+    """
+    Calculate the timeframe bias indicator showing dominant trend direction.
+    
+    The bias is calculated using a combination of:
+    1. Moving average relationships
+    2. Momentum indicators (RSI, MACD)
+    3. Price action analysis
+    
+    Args:
+        df: DataFrame containing price data and technical indicators
+        short_ma_period: Period for short-term moving average
+        medium_ma_period: Period for medium-term moving average
+        long_ma_period: Period for long-term moving average
+        
+    Returns:
+        DataFrame with timeframe bias indicators added
+    """
+    try:
+        if 'close' not in df.columns:
+            ta_logger.warning("Timeframe Bias: 'close' column not found in DataFrame")
+            return df
+        
+        # Calculate moving averages if not already present
+        if f'sma_{short_ma_period}' not in df.columns:
+            df[f'sma_{short_ma_period}'] = df['close'].rolling(window=short_ma_period).mean()
+        
+        if f'sma_{medium_ma_period}' not in df.columns:
+            df[f'sma_{medium_ma_period}'] = df['close'].rolling(window=medium_ma_period).mean()
+        
+        if f'sma_{long_ma_period}' not in df.columns:
+            df[f'sma_{long_ma_period}'] = df['close'].rolling(window=long_ma_period).mean()
+        
+        # Initialize bias score (from -100 to +100)
+        df['tf_bias_score'] = 0
+        
+        # 1. Moving Average Relationships (contributes up to ±50 points)
+        # Short MA vs Medium MA
+        df['tf_bias_score'] += np.where(
+            df[f'sma_{short_ma_period}'] > df[f'sma_{medium_ma_period}'], 
+            25, 
+            np.where(
+                df[f'sma_{short_ma_period}'] < df[f'sma_{medium_ma_period}'], 
+                -25, 
+                0
+            )
+        )
+        
+        # Short MA vs Long MA
+        df['tf_bias_score'] += np.where(
+            df[f'sma_{short_ma_period}'] > df[f'sma_{long_ma_period}'], 
+            25, 
+            np.where(
+                df[f'sma_{short_ma_period}'] < df[f'sma_{long_ma_period}'], 
+                -25, 
+                0
+            )
+        )
+        
+        # 2. Momentum Indicators (contributes up to ±30 points)
+        # RSI
+        if 'rsi' in df.columns:
+            df['tf_bias_score'] += np.where(
+                df['rsi'] > 70, 
+                10, 
+                np.where(
+                    df['rsi'] < 30, 
+                    -10, 
+                    np.where(
+                        df['rsi'] > 50, 
+                        5, 
+                        -5
+                    )
+                )
+            )
+        
+        # MACD
+        if all(col in df.columns for col in ['macd_line', 'macd_signal']):
+            df['tf_bias_score'] += np.where(
+                df['macd_line'] > df['macd_signal'], 
+                10, 
+                np.where(
+                    df['macd_line'] < df['macd_signal'], 
+                    -10, 
+                    0
+                )
+            )
+            
+            # MACD Histogram direction
+            if 'macd_histogram' in df.columns:
+                df['macd_hist_diff'] = df['macd_histogram'].diff()
+                df['tf_bias_score'] += np.where(
+                    df['macd_hist_diff'] > 0, 
+                    10, 
+                    np.where(
+                        df['macd_hist_diff'] < 0, 
+                        -10, 
+                        0
+                    )
+                )
+                df.drop(['macd_hist_diff'], axis=1, inplace=True)
+        
+        # 3. Price Action Analysis (contributes up to ±20 points)
+        # Recent price movement vs medium MA
+        df['price_vs_medium_ma'] = df['close'] - df[f'sma_{medium_ma_period}']
+        df['price_vs_medium_ma_diff'] = df['price_vs_medium_ma'].diff(3)  # 3-period change
+        
+        df['tf_bias_score'] += np.where(
+            df['price_vs_medium_ma_diff'] > 0, 
+            10, 
+            np.where(
+                df['price_vs_medium_ma_diff'] < 0, 
+                -10, 
+                0
+            )
+        )
+        
+        # Higher highs and higher lows (bullish) or lower highs and lower lows (bearish)
+        df['rolling_max_5'] = df['high'].rolling(window=5).max()
+        df['rolling_min_5'] = df['low'].rolling(window=5).min()
+        
+        df['prev_rolling_max_5'] = df['rolling_max_5'].shift(5)
+        df['prev_rolling_min_5'] = df['rolling_min_5'].shift(5)
+        
+        df['tf_bias_score'] += np.where(
+            (df['rolling_max_5'] > df['prev_rolling_max_5']) & 
+            (df['rolling_min_5'] > df['prev_rolling_min_5']), 
+            10, 
+            np.where(
+                (df['rolling_max_5'] < df['prev_rolling_max_5']) & 
+                (df['rolling_min_5'] < df['prev_rolling_min_5']), 
+                -10, 
+                0
+            )
+        )
+        
+        # Clean up intermediate columns
+        df.drop(['price_vs_medium_ma', 'price_vs_medium_ma_diff', 
+                 'rolling_max_5', 'rolling_min_5', 
+                 'prev_rolling_max_5', 'prev_rolling_min_5'], axis=1, inplace=True)
+        
+        # Ensure bias score is within bounds (-100 to +100)
+        df['tf_bias_score'] = df['tf_bias_score'].clip(-100, 100)
+        
+        # Add categorical bias label
+        conditions = [
+            (df['tf_bias_score'] >= 75),
+            (df['tf_bias_score'] >= 50) & (df['tf_bias_score'] < 75),
+            (df['tf_bias_score'] >= 25) & (df['tf_bias_score'] < 50),
+            (df['tf_bias_score'] > -25) & (df['tf_bias_score'] < 25),
+            (df['tf_bias_score'] <= -25) & (df['tf_bias_score'] > -50),
+            (df['tf_bias_score'] <= -50) & (df['tf_bias_score'] > -75),
+            (df['tf_bias_score'] <= -75)
+        ]
+        
+        choices = [
+            'strongly_bullish',
+            'bullish',
+            'slightly_bullish',
+            'neutral',
+            'slightly_bearish',
+            'bearish',
+            'strongly_bearish'
+        ]
+        
+        df['tf_bias_label'] = np.select(conditions, choices, default='neutral')
+        
+        # Calculate bias confidence (absolute value of bias score)
+        df['tf_bias_confidence'] = df['tf_bias_score'].abs()
+        
+        ta_logger.info("Timeframe bias calculated successfully")
+    except Exception as e:
+        ta_logger.error(f"Error calculating timeframe bias: {e}")
+    
+    return df
+
 def identify_fair_value_gaps(df):
     """Identify Fair Value Gaps (FVG) in price data."""
     try:
@@ -311,6 +487,9 @@ def calculate_all_technical_indicators(df, symbol="N/A"):
     df_ta = calculate_mfi(df_ta)
     df_ta = identify_fair_value_gaps(df_ta)
     
+    # Calculate timeframe bias indicator
+    df_ta = calculate_timeframe_bias(df_ta)
+    
     # Calculate candlestick patterns
     df_ta = calculate_all_candlestick_patterns(df_ta, symbol=symbol)
     
@@ -394,25 +573,50 @@ if __name__ == '__main__':
             '2023-01-01 09:33:00', '2023-01-01 09:34:00', '2023-01-01 09:35:00',
             '2023-01-01 09:36:00', '2023-01-01 09:37:00', '2023-01-01 09:38:00',
             '2023-01-01 09:39:00', '2023-01-01 09:40:00', '2023-01-01 09:41:00',
-            '2023-01-01 09:42:00', '2023-01-01 09:43:00', '2023-01-01 09:44:00'
+            '2023-01-01 09:42:00', '2023-01-01 09:43:00', '2023-01-01 09:44:00',
+            '2023-01-01 09:45:00', '2023-01-01 09:46:00', '2023-01-01 09:47:00',
+            '2023-01-01 09:48:00', '2023-01-01 09:49:00', '2023-01-01 09:50:00',
+            '2023-01-01 09:51:00', '2023-01-01 09:52:00', '2023-01-01 09:53:00',
+            '2023-01-01 09:54:00', '2023-01-01 09:55:00', '2023-01-01 09:56:00',
+            '2023-01-01 09:57:00', '2023-01-01 09:58:00', '2023-01-01 09:59:00',
+            '2023-01-01 10:00:00'
         ]),
-        'open': [150.0, 151.0, 152.0, 153.0, 154.0, 155.0, 154.0, 153.0, 152.0, 151.0, 150.0, 149.0, 148.0, 147.0, 146.0],
-        'high': [152.0, 153.0, 154.0, 155.0, 156.0, 157.0, 156.0, 155.0, 154.0, 153.0, 152.0, 151.0, 150.0, 149.0, 148.0],
-        'low': [149.0, 150.0, 151.0, 152.0, 153.0, 154.0, 153.0, 152.0, 151.0, 150.0, 149.0, 148.0, 147.0, 146.0, 145.0],
-        'close': [151.0, 152.0, 153.0, 154.0, 155.0, 156.0, 155.0, 154.0, 153.0, 152.0, 151.0, 150.0, 149.0, 148.0, 147.0],
-        'volume': [1000, 1100, 1200, 1300, 1400, 1500, 1400, 1300, 1200, 1100, 1000, 900, 800, 700, 600]
+        'open': [150.0, 150.5, 151.0, 151.5, 152.0, 151.5, 151.0, 150.5, 150.0, 
+                149.5, 149.0, 148.5, 148.0, 147.5, 147.0, 147.5, 148.0, 148.5, 
+                149.0, 149.5, 150.0, 150.5, 151.0, 151.5, 152.0, 152.5, 153.0, 
+                153.5, 154.0, 154.5, 155.0],
+        'high': [150.5, 151.0, 151.5, 152.0, 152.5, 152.0, 151.5, 151.0, 150.5, 
+                150.0, 149.5, 149.0, 148.5, 148.0, 147.5, 148.0, 148.5, 149.0, 
+                149.5, 150.0, 150.5, 151.0, 151.5, 152.0, 152.5, 153.0, 153.5, 
+                154.0, 154.5, 155.0, 155.5],
+        'low': [149.5, 150.0, 150.5, 151.0, 151.5, 151.0, 150.5, 150.0, 149.5, 
+               149.0, 148.5, 148.0, 147.5, 147.0, 146.5, 147.0, 147.5, 148.0, 
+               148.5, 149.0, 149.5, 150.0, 150.5, 151.0, 151.5, 152.0, 152.5, 
+               153.0, 153.5, 154.0, 154.5],
+        'close': [150.5, 151.0, 151.5, 152.0, 151.5, 151.0, 150.5, 150.0, 149.5, 
+                 149.0, 148.5, 148.0, 147.5, 147.0, 147.5, 148.0, 148.5, 149.0, 
+                 149.5, 150.0, 150.5, 151.0, 151.5, 152.0, 152.5, 153.0, 153.5, 
+                 154.0, 154.5, 155.0, 155.5],
+        'volume': [1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 
+                  1900, 2000, 2100, 2200, 2300, 2400, 2500, 2600, 2700, 
+                  2800, 2900, 3000, 3100, 3200, 3300, 3400, 3500, 3600, 
+                  3700, 3800, 3900, 4000]
     }
     
-    sample_df = pd.DataFrame(sample_data)
-    sample_df.set_index('datetime', inplace=True)
+    # Create DataFrame and set datetime as index
+    df = pd.DataFrame(sample_data)
+    df.set_index('datetime', inplace=True)
     
-    # Test multi-timeframe indicators
-    multi_tf_results = calculate_multi_timeframe_indicators(sample_df, symbol="SAMPLE")
+    # Calculate technical indicators
+    ta_df = calculate_all_technical_indicators(df, symbol="SAMPLE")
+    
+    # Print results
+    print(ta_df.tail())
+    
+    # Calculate multi-timeframe indicators
+    multi_tf_results = calculate_multi_timeframe_indicators(df, symbol="SAMPLE")
     
     # Print results for each timeframe
-    for tf, df in multi_tf_results.items():
-        print(f"\n=== {tf} Timeframe ===")
-        print(f"Shape: {df.shape}")
-        print(f"First few rows:")
-        print(df.head(2))
-        print(f"Columns: {df.columns.tolist()[:5]}...")
+    for tf_name, tf_df in multi_tf_results.items():
+        print(f"\nTimeframe: {tf_name}")
+        print(tf_df.tail(1))

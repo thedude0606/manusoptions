@@ -63,7 +63,12 @@ class RecommendationEngine:
                 "direction": "neutral",
                 "bullish_score": 50,
                 "bearish_score": 50,
-                "signals": []
+                "signals": [],
+                "timeframe_bias": {
+                    "score": 0,
+                    "label": "neutral",
+                    "confidence": 0
+                }
             }
         
         # Initialize signals list and scores
@@ -80,8 +85,42 @@ class RecommendationEngine:
                 "direction": "neutral",
                 "bullish_score": bullish_score,
                 "bearish_score": bearish_score,
-                "signals": signals
+                "signals": signals,
+                "timeframe_bias": {
+                    "score": 0,
+                    "label": "neutral",
+                    "confidence": 0
+                }
             }
+        
+        # Initialize timeframe bias information
+        timeframe_bias = {
+            "score": 0,
+            "label": "neutral",
+            "confidence": 0
+        }
+        
+        # Extract timeframe bias if available
+        if 'tf_bias_score' in latest_data and pd.notna(latest_data['tf_bias_score']):
+            timeframe_bias["score"] = latest_data['tf_bias_score']
+            
+            # Add timeframe bias to signals
+            signals.append(f"Timeframe bias score: {latest_data['tf_bias_score']:.2f}")
+            
+            # Adjust bullish/bearish scores based on timeframe bias
+            if latest_data['tf_bias_score'] > 0:
+                bullish_score += min(latest_data['tf_bias_score'] / 5, 15)  # Max +15 points for strong bullish bias
+                signals.append(f"Bullish timeframe bias adding {min(latest_data['tf_bias_score'] / 5, 15):.2f} to bullish score")
+            elif latest_data['tf_bias_score'] < 0:
+                bearish_score += min(abs(latest_data['tf_bias_score']) / 5, 15)  # Max +15 points for strong bearish bias
+                signals.append(f"Bearish timeframe bias adding {min(abs(latest_data['tf_bias_score']) / 5, 15):.2f} to bearish score")
+        
+        if 'tf_bias_label' in latest_data and pd.notna(latest_data['tf_bias_label']):
+            timeframe_bias["label"] = latest_data['tf_bias_label']
+            signals.append(f"Timeframe bias: {latest_data['tf_bias_label']}")
+        
+        if 'tf_bias_confidence' in latest_data and pd.notna(latest_data['tf_bias_confidence']):
+            timeframe_bias["confidence"] = latest_data['tf_bias_confidence']
         
         # Analyze RSI
         rsi_columns = [col for col in tech_indicators_df.columns if col.startswith('rsi')]
@@ -196,7 +235,8 @@ class RecommendationEngine:
             "direction": direction,
             "bullish_score": bullish_score,
             "bearish_score": bearish_score,
-            "signals": signals
+            "signals": signals,
+            "timeframe_bias": timeframe_bias
         }
     
     def _ensure_required_columns(self, options_df):
@@ -343,6 +383,25 @@ class RecommendationEngine:
             calls_df["confidenceScore"] -= 15
             puts_df["confidenceScore"] += 25
         
+        # Adjust confidence based on timeframe bias if available
+        timeframe_bias = market_direction.get("timeframe_bias", {})
+        bias_score = timeframe_bias.get("score", 0)
+        bias_confidence = timeframe_bias.get("confidence", 0)
+        
+        if bias_score != 0 and bias_confidence > 0:
+            # Scale the adjustment based on bias confidence
+            adjustment_factor = bias_confidence / 100
+            
+            # Apply adjustments
+            if bias_score > 0:  # Bullish bias
+                calls_df["confidenceScore"] += 10 * adjustment_factor
+                puts_df["confidenceScore"] -= 5 * adjustment_factor
+                logger.info(f"Applied bullish timeframe bias adjustment: +{10 * adjustment_factor:.2f} for calls, -{5 * adjustment_factor:.2f} for puts")
+            elif bias_score < 0:  # Bearish bias
+                calls_df["confidenceScore"] -= 5 * adjustment_factor
+                puts_df["confidenceScore"] += 10 * adjustment_factor
+                logger.info(f"Applied bearish timeframe bias adjustment: -{5 * adjustment_factor:.2f} for calls, +{10 * adjustment_factor:.2f} for puts")
+        
         # Calculate additional metrics for scoring
         for df_name, df in [("calls", calls_df), ("puts", puts_df)]:
             if not df.empty:
@@ -351,447 +410,276 @@ class RecommendationEngine:
                     # Use askPrice and bidPrice if available
                     df['spreadPct'] = df.apply(
                         lambda row: (row['askPrice'] - row['bidPrice']) / ((row['askPrice'] + row['bidPrice']) / 2) 
-                        if pd.notna(row['askPrice']) and pd.notna(row['bidPrice']) and row['bidPrice'] > 0 else 0.05,
-                        axis=1
-                    )
-                elif all(col in df.columns for col in ['ask', 'bid']):
-                    # Fallback to ask and bid
-                    df['spreadPct'] = df.apply(
-                        lambda row: (row['ask'] - row['bid']) / ((row['ask'] + row['bid']) / 2) 
-                        if pd.notna(row['ask']) and pd.notna(row['bid']) and row['bid'] > 0 else 0.05,
+                        if pd.notna(row['askPrice']) and pd.notna(row['bidPrice']) and
+                           row['askPrice'] > 0 and row['bidPrice'] > 0 
+                        else 0.5,  # Default to 50% spread if missing or invalid
                         axis=1
                     )
                 else:
-                    # Default value if no price data available
-                    df['spreadPct'] = 0.05
-                    logger.warning("No bid/ask price data available, using default spreadPct")
+                    # Default spread if columns missing
+                    df['spreadPct'] = 0.5
                 
-                # Calculate distance from current price (as percentage)
-                df['strikeDistancePct'] = df.apply(
-                    lambda row: abs(row['strikePrice'] - underlying_price) / underlying_price 
-                    if pd.notna(row['strikePrice']) and underlying_price > 0 else 0.05,
-                    axis=1
-                )
+                # Penalize options with wide spreads - IMPROVED: Reduced penalty
+                df['confidenceScore'] -= df['spreadPct'] * 20  # 20% spread = -10 points (was -20)
                 
-                # Calculate time value with fallbacks
-                if 'mark' in df.columns:
-                    price_col = 'mark'
-                elif 'lastPrice' in df.columns:
-                    price_col = 'lastPrice'
-                elif 'last' in df.columns:
-                    price_col = 'last'
-                else:
-                    # Use average of bid and ask if available
-                    if all(col in df.columns for col in ['bid', 'ask']):
-                        df['mark'] = df.apply(
-                            lambda row: (row['bid'] + row['ask']) / 2 
-                            if pd.notna(row['bid']) and pd.notna(row['ask']) else None,
-                            axis=1
-                        )
-                        price_col = 'mark'
-                    else:
-                        # Default to a small percentage of underlying price
-                        df['mark'] = underlying_price * 0.05
-                        price_col = 'mark'
-                        logger.warning("No price data available, using default mark price")
-                
-                # Adjust confidence scores based on various factors
-                
-                # Strike price - prefer options with strike prices aligned with market direction
-                if df_name == "calls":
-                    # For calls in bullish market, prefer strikes slightly above current price
-                    if direction == "bullish":
-                        df['confidenceScore'] += df.apply(
-                            lambda row: 15 if 0 < (row['strikePrice'] - underlying_price) / underlying_price < 0.05 else 0,
-                            axis=1
-                        )
-                    # For calls in bearish market, prefer strikes well below current price (deep ITM)
-                    elif direction == "bearish":
-                        df['confidenceScore'] += df.apply(
-                            lambda row: 15 if (underlying_price - row['strikePrice']) / underlying_price > 0.05 else 0,
-                            axis=1
-                        )
-                else:  # puts
-                    # For puts in bearish market, prefer strikes slightly below current price
-                    if direction == "bearish":
-                        df['confidenceScore'] += df.apply(
-                            lambda row: 15 if 0 < (underlying_price - row['strikePrice']) / underlying_price < 0.05 else 0,
-                            axis=1
-                        )
-                    # For puts in bullish market, prefer strikes well above current price (deep ITM)
-                    elif direction == "bullish":
-                        df['confidenceScore'] += df.apply(
-                            lambda row: 15 if (row['strikePrice'] - underlying_price) / underlying_price > 0.05 else 0,
-                            axis=1
-                        )
-                
-                # IMPROVED: Prefer options with higher open interest - better liquidity
+                # Prefer options with higher open interest for liquidity
                 if 'openInterest' in df.columns:
+                    # Normalize open interest to 0-10 scale
+                    max_oi = df['openInterest'].max()
+                    if max_oi > 0:
+                        df['oiScore'] = df['openInterest'] / max_oi * 10
+                        df['confidenceScore'] += df['oiScore']
+                
+                # Prefer options with 5-14 days to expiration for swing trading
+                if 'daysToExpiration' in df.columns:
                     df['confidenceScore'] += df.apply(
-                        lambda row: min(15, row['openInterest'] / 100) if pd.notna(row['openInterest']) else 0,
+                        lambda row: 10 if 5 <= row['daysToExpiration'] <= 14 else 
+                                   (5 if 3 <= row['daysToExpiration'] < 5 or 14 < row['daysToExpiration'] <= 21 else 0),
                         axis=1
                     )
                 
-                # IV - prefer options with moderate IV (not too high or low)
+                # Prefer options with delta between 0.3 and 0.7 (absolute value)
+                if 'delta' in df.columns:
+                    df['confidenceScore'] += df.apply(
+                        lambda row: 10 if 0.3 <= abs(row['delta']) <= 0.7 else 
+                                   (5 if 0.2 <= abs(row['delta']) < 0.3 or 0.7 < abs(row['delta']) <= 0.8 else 0),
+                        axis=1
+                    )
+                
+                # Penalize options with very high IV - IMPROVED: Reduced penalty
                 if 'volatility' in df.columns:
-                    try:
-                        df['volatility'] = pd.to_numeric(df['volatility'], errors='coerce')
-                        # IMPROVED: Less severe penalties for IV
-                        # Penalize very high IV (>60%)
-                        high_iv_mask = df['volatility'] > 0.6
-                        if high_iv_mask.any():
-                            df.loc[high_iv_mask, 'confidenceScore'] -= (df.loc[high_iv_mask, 'volatility'] - 0.6) * 30
-                        
-                        # Penalize very low IV (<15%)
-                        low_iv_mask = df['volatility'] < 0.15
-                        if low_iv_mask.any():
-                            df.loc[low_iv_mask, 'confidenceScore'] -= (0.15 - df.loc[low_iv_mask, 'volatility']) * 30
-                        
-                        logger.info(f"Adjusted {df_name} scores based on volatility")
-                    except Exception as e:
-                        logger.error(f"Error adjusting scores based on volatility: {e}")
+                    df['confidenceScore'] -= df.apply(
+                        lambda row: 10 if row['volatility'] > 1.0 else  # Over 100% IV
+                                   (5 if row['volatility'] > 0.7 else 0),  # Over 70% IV
+                        axis=1
+                    )
                 
-                # Liquidity - prefer options with tighter spreads
-                try:
-                    if 'spreadPct' in df.columns:
-                        spread_mask = df['spreadPct'].notna()
-                        if spread_mask.any():
-                            # IMPROVED: Less severe penalties for spread
-                            df.loc[spread_mask, 'confidenceScore'] -= df.loc[spread_mask, 'spreadPct'] * 60
-                        logger.info(f"Adjusted {df_name} scores based on spread percentage")
-                except Exception as e:
-                    logger.error(f"Error adjusting scores based on spread percentage: {e}")
+                # Calculate strike distance from current price
+                df['strikeDist'] = df.apply(
+                    lambda row: abs(row['strikePrice'] - underlying_price) / underlying_price,
+                    axis=1
+                )
                 
-                # Strike distance - prefer options closer to the money
-                try:
-                    if 'strikeDistancePct' in df.columns:
-                        distance_mask = df['strikeDistancePct'].notna()
-                        if distance_mask.any():
-                            # IMPROVED: Less severe penalties for strike distance
-                            df.loc[distance_mask, 'confidenceScore'] -= df.loc[distance_mask, 'strikeDistancePct'] * 30
-                        logger.info(f"Adjusted {df_name} scores based on strike distance")
-                except Exception as e:
-                    logger.error(f"Error adjusting scores based on strike distance: {e}")
+                # Prefer strikes closer to current price - IMPROVED: Reduced penalty
+                df['confidenceScore'] -= df['strikeDist'] * 50  # 10% away = -5 points (was -10)
                 
-                # Days to expiration - prefer options with at least a few days to expiration
-                try:
-                    if 'daysToExpiration' in df.columns:
-                        # IMPROVED: Prefer options with 5-14 days to expiration for swing trading
-                        ideal_dte_mask = (df['daysToExpiration'] >= 5) & (df['daysToExpiration'] <= 14)
-                        if ideal_dte_mask.any():
-                            df.loc[ideal_dte_mask, 'confidenceScore'] += 10
-                            
-                        short_exp_mask = df['daysToExpiration'] < 3
-                        if short_exp_mask.any():
-                            df.loc[short_exp_mask, 'confidenceScore'] -= (3 - df.loc[short_exp_mask, 'daysToExpiration']) * 5
-                            
-                        long_exp_mask = df['daysToExpiration'] > 30
-                        if long_exp_mask.any():
-                            df.loc[long_exp_mask, 'confidenceScore'] -= 10
-                            
-                        logger.info(f"Adjusted {df_name} scores based on days to expiration")
-                except Exception as e:
-                    logger.error(f"Error adjusting scores based on days to expiration: {e}")
+                # Calculate expected profit based on option price and projected move
+                # IMPROVED: More realistic profit calculation
+                if all(col in df.columns for col in ['mark', 'volatility', 'daysToExpiration']):
+                    # Calculate projected move based on volatility and days to expiration
+                    # Using a more conservative estimate than the full statistical move
+                    df['projectedMovePct'] = df.apply(
+                        lambda row: min(
+                            row['volatility'] * np.sqrt(row['daysToExpiration'] / 365) * 0.6,  # 60% of statistical move
+                            MAX_EXPECTED_PROFIT  # Cap at maximum expected profit
+                        ),
+                        axis=1
+                    )
+                    
+                    # Calculate target price based on projected move
+                    if df_name == "calls":
+                        df['targetPrice'] = underlying_price * (1 + df['projectedMovePct'])
+                    else:  # puts
+                        df['targetPrice'] = underlying_price * (1 - df['projectedMovePct'])
+                    
+                    # Calculate expected profit
+                    df['expectedProfit'] = df.apply(
+                        lambda row: (
+                            # For calls: (target price - strike) - premium, if target > strike
+                            max(row['targetPrice'] - row['strikePrice'], 0) - row['mark']
+                        ) / row['mark'] if df_name == "calls" else (
+                            # For puts: (strike - target price) - premium, if target < strike
+                            max(row['strikePrice'] - row['targetPrice'], 0) - row['mark']
+                        ) / row['mark'],
+                        axis=1
+                    )
+                    
+                    # Clip expected profit to realistic range
+                    df['expectedProfit'] = df['expectedProfit'].clip(MIN_EXPECTED_PROFIT, MAX_EXPECTED_PROFIT)
+                    
+                    # Boost confidence for options with higher expected profit
+                    df['confidenceScore'] += df['expectedProfit'] * 50  # 20% profit = +10 points
+                    
+                    # Calculate target exit time in hours (based on days to expiration)
+                    # IMPROVED: More realistic target timeframes
+                    df['targetExitHours'] = df.apply(
+                        lambda row: min(max(row['daysToExpiration'] * 4, 4), 72),  # Between 4 and 72 hours
+                        axis=1
+                    )
+                else:
+                    # Default values if required columns are missing
+                    df['expectedProfit'] = MIN_EXPECTED_PROFIT
+                    df['targetExitHours'] = 24
                 
-                # Cap confidence scores between 0 and 100
+                # Ensure confidence score is within reasonable bounds
                 df['confidenceScore'] = df['confidenceScore'].clip(0, 100)
-                
-                # Log score distribution
-                if not df.empty:
-                    try:
-                        logger.info(f"{df_name} confidence score stats: min={df['confidenceScore'].min():.1f}, max={df['confidenceScore'].max():.1f}, mean={df['confidenceScore'].mean():.1f}")
-                    except Exception as e:
-                        logger.error(f"Error calculating score statistics: {e}")
         
         return {
             "calls": calls_df,
             "puts": puts_df
         }
     
-    def calculate_risk_reward(self, evaluated_options, underlying_price):
+    def generate_recommendations(self, tech_indicators_dict, options_df, underlying_price, symbol="UNKNOWN"):
         """
-        Calculate risk/reward ratios for potential trades.
+        Generate options trading recommendations based on technical indicators and options chain data.
         
         Args:
-            evaluated_options: Dict with evaluated call and put options
-            underlying_price: Current price of the underlying asset
-            
-        Returns:
-            dict: Options with risk/reward metrics added
-        """
-        logger.info("Calculating risk/reward ratios")
-        
-        calls_df = evaluated_options['calls']
-        puts_df = evaluated_options['puts']
-        
-        # Calculate risk/reward for calls
-        if not calls_df.empty:
-            # Risk is the premium paid (use mark or last price)
-            calls_df['risk'] = calls_df['mark'] if 'mark' in calls_df.columns else calls_df['lastPrice']
-            
-            # Calculate potential reward based on delta and a projected move
-            if 'delta' in calls_df.columns:
-                # Convert delta to numeric if it's not already
-                calls_df['delta'] = pd.to_numeric(calls_df['delta'], errors='coerce')
-                
-                # IMPROVED: More realistic profit projection based on delta and volatility
-                # Use a more conservative projected move based on days to expiration
-                calls_df['projectedMovePct'] = calls_df.apply(
-                    lambda row: min(0.02, 0.005 * np.sqrt(row['daysToExpiration'])) 
-                    if pd.notna(row['daysToExpiration']) else 0.01,
-                    axis=1
-                )
-                
-                calls_df['projectedMove'] = underlying_price * calls_df['projectedMovePct']
-                calls_df['projectedProfit'] = calls_df['delta'] * calls_df['projectedMove']
-                
-                # Calculate reward/risk ratio
-                calls_df['rewardRiskRatio'] = calls_df['projectedProfit'] / calls_df['risk']
-                
-                # Calculate expected profit percentage with realistic cap
-                calls_df['expectedProfitPct'] = calls_df['projectedProfit'] / calls_df['risk'] * 100
-                
-                # IMPROVED: Cap expected profit at realistic levels
-                calls_df['expectedProfitPct'] = calls_df['expectedProfitPct'].clip(0, MAX_EXPECTED_PROFIT * 100)
-                
-                # Adjust confidence score based on expected profit
-                calls_df.loc[calls_df['expectedProfitPct'] >= MIN_EXPECTED_PROFIT * 100, 'confidenceScore'] += 10
-                calls_df.loc[calls_df['expectedProfitPct'] < MIN_EXPECTED_PROFIT * 100, 'confidenceScore'] -= 20
-            else:
-                # If delta is missing, use a default value
-                calls_df['delta'] = 0.5
-                projected_move_pct = 0.01  # More conservative 1% move
-                projected_move = underlying_price * projected_move_pct
-                calls_df['projectedProfit'] = calls_df['delta'] * projected_move
-                calls_df['rewardRiskRatio'] = calls_df['projectedProfit'] / calls_df['risk']
-                calls_df['expectedProfitPct'] = (calls_df['projectedProfit'] / calls_df['risk'] * 100).clip(0, MAX_EXPECTED_PROFIT * 100)
-            
-            # Calculate target sell price
-            calls_df['targetSellPrice'] = calls_df['risk'] * (1 + MIN_EXPECTED_PROFIT)
-            
-            # Calculate target timeframe to sell (in hours, based on theta decay)
-            if 'theta' in calls_df.columns:
-                calls_df['theta'] = pd.to_numeric(calls_df['theta'], errors='coerce')
-                # Calculate hours until theta decay would reduce price by MIN_EXPECTED_PROFIT
-                # Theta is daily decay, so divide by 24 for hourly
-                # IMPROVED: More realistic target timeframe calculation
-                calls_df['targetTimeframeHours'] = calls_df.apply(
-                    lambda row: min(72, max(4, abs(row['risk'] * MIN_EXPECTED_PROFIT / (row['theta'] / 24)))) 
-                    if pd.notna(row['theta']) and row['theta'] != 0 else 24,
-                    axis=1
-                )
-            else:
-                # Default target timeframe if theta not available
-                calls_df['targetTimeframeHours'] = 24
-        
-        # Calculate risk/reward for puts
-        if not puts_df.empty:
-            # Risk is the premium paid (use mark or last price)
-            puts_df['risk'] = puts_df['mark'] if 'mark' in puts_df.columns else puts_df['lastPrice']
-            
-            # Calculate potential reward based on delta and a projected move
-            if 'delta' in puts_df.columns:
-                # Convert delta to numeric if it's not already
-                puts_df['delta'] = pd.to_numeric(puts_df['delta'], errors='coerce')
-                
-                # IMPROVED: More realistic profit projection based on delta and volatility
-                # Use a more conservative projected move based on days to expiration
-                puts_df['projectedMovePct'] = puts_df.apply(
-                    lambda row: min(0.02, 0.005 * np.sqrt(row['daysToExpiration'])) 
-                    if pd.notna(row['daysToExpiration']) else 0.01,
-                    axis=1
-                )
-                
-                puts_df['projectedMove'] = underlying_price * puts_df['projectedMovePct']
-                puts_df['projectedProfit'] = abs(puts_df['delta']) * puts_df['projectedMove']
-                
-                # Calculate reward/risk ratio
-                puts_df['rewardRiskRatio'] = puts_df['projectedProfit'] / puts_df['risk']
-                
-                # Calculate expected profit percentage with realistic cap
-                puts_df['expectedProfitPct'] = puts_df['projectedProfit'] / puts_df['risk'] * 100
-                
-                # IMPROVED: Cap expected profit at realistic levels
-                puts_df['expectedProfitPct'] = puts_df['expectedProfitPct'].clip(0, MAX_EXPECTED_PROFIT * 100)
-                
-                # Adjust confidence score based on expected profit
-                puts_df.loc[puts_df['expectedProfitPct'] >= MIN_EXPECTED_PROFIT * 100, 'confidenceScore'] += 10
-                puts_df.loc[puts_df['expectedProfitPct'] < MIN_EXPECTED_PROFIT * 100, 'confidenceScore'] -= 20
-            else:
-                # If delta is missing, use a default value
-                puts_df['delta'] = -0.5
-                projected_move_pct = 0.01  # More conservative 1% move
-                projected_move = underlying_price * projected_move_pct
-                puts_df['projectedProfit'] = abs(puts_df['delta']) * projected_move
-                puts_df['rewardRiskRatio'] = puts_df['projectedProfit'] / puts_df['risk']
-                puts_df['expectedProfitPct'] = (puts_df['projectedProfit'] / puts_df['risk'] * 100).clip(0, MAX_EXPECTED_PROFIT * 100)
-            
-            # Calculate target sell price
-            puts_df['targetSellPrice'] = puts_df['risk'] * (1 + MIN_EXPECTED_PROFIT)
-            
-            # Calculate target timeframe to sell (in hours, based on theta decay)
-            if 'theta' in puts_df.columns:
-                puts_df['theta'] = pd.to_numeric(puts_df['theta'], errors='coerce')
-                # Calculate hours until theta decay would reduce price by MIN_EXPECTED_PROFIT
-                # Theta is daily decay, so divide by 24 for hourly
-                # IMPROVED: More realistic target timeframe calculation
-                puts_df['targetTimeframeHours'] = puts_df.apply(
-                    lambda row: min(72, max(4, abs(row['risk'] * MIN_EXPECTED_PROFIT / (row['theta'] / 24)))) 
-                    if pd.notna(row['theta']) and row['theta'] != 0 else 24,
-                    axis=1
-                )
-            else:
-                # Default target timeframe if theta not available
-                puts_df['targetTimeframeHours'] = 24
-        
-        return {
-            "calls": calls_df,
-            "puts": puts_df
-        }
-    
-    def generate_recommendations(self, options_with_risk_reward):
-        """
-        Generate final recommendations based on scored options.
-        
-        Args:
-            options_with_risk_reward: Dict with options that have risk/reward metrics
-            
-        Returns:
-            dict: Final recommendations for calls and puts
-        """
-        logger.info("Generating final recommendations")
-        
-        calls_df = options_with_risk_reward['calls']
-        puts_df = options_with_risk_reward['puts']
-        
-        # Filter by confidence score
-        if not calls_df.empty:
-            # Log confidence score distribution before filtering
-            logger.info(f"Calls confidence score distribution before filtering: min={calls_df['confidenceScore'].min():.1f}, max={calls_df['confidenceScore'].max():.1f}, mean={calls_df['confidenceScore'].mean():.1f}")
-            # Filter by confidence score
-            calls_df = calls_df[calls_df['confidenceScore'] >= CONFIDENCE_THRESHOLD]
-            logger.info(f"Filtered calls by confidence score >= {CONFIDENCE_THRESHOLD}, remaining: {len(calls_df)}")
-            
-            # If no calls pass the threshold, take the top 3 anyway to ensure recommendations
-            if len(calls_df) == 0:
-                logger.warning("No calls passed confidence threshold, taking top 3 anyway")
-                calls_df = options_with_risk_reward['calls'].sort_values('confidenceScore', ascending=False).head(3)
-        
-        if not puts_df.empty:
-            # Log confidence score distribution before filtering
-            logger.info(f"Puts confidence score distribution before filtering: min={puts_df['confidenceScore'].min():.1f}, max={puts_df['confidenceScore'].max():.1f}, mean={puts_df['confidenceScore'].mean():.1f}")
-            # Filter by confidence score
-            puts_df = puts_df[puts_df['confidenceScore'] >= CONFIDENCE_THRESHOLD]
-            logger.info(f"Filtered puts by confidence score >= {CONFIDENCE_THRESHOLD}, remaining: {len(puts_df)}")
-            
-            # If no puts pass the threshold, take the top 3 anyway to ensure recommendations
-            if len(puts_df) == 0:
-                logger.warning("No puts passed confidence threshold, taking top 3 anyway")
-                puts_df = options_with_risk_reward['puts'].sort_values('confidenceScore', ascending=False).head(3)
-        
-        # Sort by confidence score (descending)
-        if not calls_df.empty:
-            calls_df = calls_df.sort_values('confidenceScore', ascending=False)
-        
-        if not puts_df.empty:
-            puts_df = puts_df.sort_values('confidenceScore', ascending=False)
-        
-        # Get top recommendations
-        top_calls = calls_df.head(MAX_RECOMMENDATIONS) if not calls_df.empty else pd.DataFrame()
-        top_puts = puts_df.head(MAX_RECOMMENDATIONS) if not puts_df.empty else pd.DataFrame()
-        
-        # Format recommendations for display
-        call_recommendations = []
-        if not top_calls.empty:
-            for _, row in top_calls.iterrows():
-                recommendation = {
-                    "symbol": row.get('symbol', 'N/A'),
-                    "type": "CALL",
-                    "strikePrice": row.get('strikePrice', 0),
-                    "expirationDate": row.get('expirationDate', 'N/A'),
-                    "daysToExpiration": row.get('daysToExpiration', 0),
-                    "currentPrice": row.get('mark', row.get('lastPrice', 0)),
-                    "targetSellPrice": row.get('targetSellPrice', 0),
-                    "targetTimeframeHours": row.get('targetTimeframeHours', 24),
-                    "expectedProfitPct": row.get('expectedProfitPct', 0),
-                    "confidenceScore": row.get('confidenceScore', 0),
-                    "delta": row.get('delta', 'N/A'),
-                    "gamma": row.get('gamma', 'N/A'),
-                    "theta": row.get('theta', 'N/A'),
-                    "vega": row.get('vega', 'N/A'),
-                    "iv": row.get('volatility', 'N/A')
-                }
-                call_recommendations.append(recommendation)
-        
-        put_recommendations = []
-        if not top_puts.empty:
-            for _, row in top_puts.iterrows():
-                recommendation = {
-                    "symbol": row.get('symbol', 'N/A'),
-                    "type": "PUT",
-                    "strikePrice": row.get('strikePrice', 0),
-                    "expirationDate": row.get('expirationDate', 'N/A'),
-                    "daysToExpiration": row.get('daysToExpiration', 0),
-                    "currentPrice": row.get('mark', row.get('lastPrice', 0)),
-                    "targetSellPrice": row.get('targetSellPrice', 0),
-                    "targetTimeframeHours": row.get('targetTimeframeHours', 24),
-                    "expectedProfitPct": row.get('expectedProfitPct', 0),
-                    "confidenceScore": row.get('confidenceScore', 0),
-                    "delta": row.get('delta', 'N/A'),
-                    "gamma": row.get('gamma', 'N/A'),
-                    "theta": row.get('theta', 'N/A'),
-                    "vega": row.get('vega', 'N/A'),
-                    "iv": row.get('volatility', 'N/A')
-                }
-                put_recommendations.append(recommendation)
-        
-        return {
-            "calls": call_recommendations,
-            "puts": put_recommendations,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-    
-    def get_recommendations(self, tech_indicators_df, options_df, underlying_price, timeframe="1hour"):
-        """
-        Main method to get options trading recommendations.
-        
-        Args:
-            tech_indicators_df: DataFrame containing technical indicators
+            tech_indicators_dict: Dictionary of DataFrames with technical indicators for each timeframe
             options_df: DataFrame containing options chain data
             underlying_price: Current price of the underlying asset
-            timeframe: Timeframe to analyze (e.g., "1hour", "4hour")
+            symbol: Symbol of the underlying asset
             
         Returns:
-            dict: Trading recommendations
+            dict: Recommendations with market direction analysis and options recommendations
         """
-        logger.info(f"Getting recommendations for timeframe {timeframe}")
-        logger.info(f"Tech indicators DataFrame shape: {tech_indicators_df.shape}")
-        logger.info(f"Options DataFrame shape: {options_df.shape}")
-        logger.info(f"Underlying price: {underlying_price}")
+        logger.info(f"Generating recommendations for {symbol}")
         
-        # Step 1: Analyze market direction
-        logger.info("Step 1: Analyzing market direction")
-        market_direction = self.analyze_market_direction(tech_indicators_df, timeframe)
-        logger.info(f"Market direction analysis result: {market_direction}")
+        # Check if we have technical indicators
+        if not tech_indicators_dict or all(df.empty for df in tech_indicators_dict.values()):
+            logger.warning("No technical indicators provided")
+            return {
+                "symbol": symbol,
+                "price": underlying_price,
+                "market_direction": {
+                    "direction": "neutral",
+                    "bullish_score": 50,
+                    "bearish_score": 50,
+                    "signals": ["No technical indicators available"],
+                    "timeframe_bias": {
+                        "score": 0,
+                        "label": "neutral",
+                        "confidence": 0
+                    }
+                },
+                "recommendations": []
+            }
         
-        # Step 2: Evaluate options chain
-        logger.info("Step 2: Evaluating options chain")
-        evaluated_options = self.evaluate_options_chain(options_df, market_direction, underlying_price)
-        logger.info(f"Calls shape after evaluation: {evaluated_options['calls'].shape if not evaluated_options['calls'].empty else 'Empty DataFrame'}")
-        logger.info(f"Puts shape after evaluation: {evaluated_options['puts'].shape if not evaluated_options['puts'].empty else 'Empty DataFrame'}")
+        # Analyze market direction for each timeframe
+        market_direction_analysis = {}
+        for timeframe, indicators_df in tech_indicators_dict.items():
+            if not indicators_df.empty:
+                market_direction_analysis[timeframe] = self.analyze_market_direction(indicators_df, timeframe)
         
-        # Step 3: Calculate risk/reward ratios
-        logger.info("Step 3: Calculating risk/reward ratios")
-        options_with_risk_reward = self.calculate_risk_reward(evaluated_options, underlying_price)
-        logger.info(f"Calls shape after risk/reward: {options_with_risk_reward['calls'].shape if not options_with_risk_reward['calls'].empty else 'Empty DataFrame'}")
-        logger.info(f"Puts shape after risk/reward: {options_with_risk_reward['puts'].shape if not options_with_risk_reward['puts'].empty else 'Empty DataFrame'}")
+        # If no valid timeframes were analyzed, return empty recommendations
+        if not market_direction_analysis:
+            logger.warning("No valid timeframes for market direction analysis")
+            return {
+                "symbol": symbol,
+                "price": underlying_price,
+                "market_direction": {
+                    "direction": "neutral",
+                    "bullish_score": 50,
+                    "bearish_score": 50,
+                    "signals": ["No valid timeframes for analysis"],
+                    "timeframe_bias": {
+                        "score": 0,
+                        "label": "neutral",
+                        "confidence": 0
+                    }
+                },
+                "recommendations": []
+            }
         
-        # Step 4: Generate final recommendations
-        logger.info("Step 4: Generating final recommendations")
-        recommendations = self.generate_recommendations(options_with_risk_reward)
-        logger.info(f"Generated {len(recommendations['calls'])} call recommendations and {len(recommendations['puts'])} put recommendations")
+        # Prioritize target timeframes if available
+        primary_timeframe = None
+        for tf in TARGET_TIMEFRAMES:
+            if tf in market_direction_analysis:
+                primary_timeframe = tf
+                break
         
-        # Add market direction to recommendations
-        recommendations["market_direction"] = market_direction
+        # If no target timeframe is available, use the first available
+        if primary_timeframe is None:
+            primary_timeframe = list(market_direction_analysis.keys())[0]
         
-        return recommendations
+        # Get primary market direction
+        primary_direction = market_direction_analysis[primary_timeframe]
+        
+        # Evaluate options chain
+        evaluated_options = self.evaluate_options_chain(options_df, primary_direction, underlying_price)
+        
+        # Generate recommendations
+        recommendations = []
+        
+        # Process calls if market is bullish or neutral
+        if primary_direction["direction"] in ["bullish", "neutral"]:
+            calls_df = evaluated_options["calls"]
+            if not calls_df.empty:
+                # Filter by confidence threshold
+                confident_calls = calls_df[calls_df["confidenceScore"] >= CONFIDENCE_THRESHOLD]
+                
+                if not confident_calls.empty:
+                    # Sort by confidence score (descending)
+                    sorted_calls = confident_calls.sort_values(by="confidenceScore", ascending=False)
+                    
+                    # Take top recommendations
+                    top_calls = sorted_calls.head(MAX_RECOMMENDATIONS)
+                    
+                    # Format recommendations
+                    for _, option in top_calls.iterrows():
+                        recommendations.append({
+                            "type": "CALL",
+                            "symbol": option.get("symbol", f"{symbol}_CALL_{option.get('strikePrice', 0)}"),
+                            "strike": option.get("strikePrice", 0),
+                            "expiration": option.get("expirationDate", "Unknown"),
+                            "days_to_expiration": option.get("daysToExpiration", 0),
+                            "current_price": option.get("mark", 0),
+                            "confidence": option.get("confidenceScore", 0),
+                            "expected_profit": option.get("expectedProfit", 0) * 100,  # Convert to percentage
+                            "target_exit_hours": option.get("targetExitHours", 24),
+                            "timeframe_bias": primary_direction.get("timeframe_bias", {
+                                "score": 0,
+                                "label": "neutral",
+                                "confidence": 0
+                            })
+                        })
+        
+        # Process puts if market is bearish or neutral
+        if primary_direction["direction"] in ["bearish", "neutral"]:
+            puts_df = evaluated_options["puts"]
+            if not puts_df.empty:
+                # Filter by confidence threshold
+                confident_puts = puts_df[puts_df["confidenceScore"] >= CONFIDENCE_THRESHOLD]
+                
+                if not confident_puts.empty:
+                    # Sort by confidence score (descending)
+                    sorted_puts = confident_puts.sort_values(by="confidenceScore", ascending=False)
+                    
+                    # Take top recommendations
+                    top_puts = sorted_puts.head(MAX_RECOMMENDATIONS)
+                    
+                    # Format recommendations
+                    for _, option in top_puts.iterrows():
+                        recommendations.append({
+                            "type": "PUT",
+                            "symbol": option.get("symbol", f"{symbol}_PUT_{option.get('strikePrice', 0)}"),
+                            "strike": option.get("strikePrice", 0),
+                            "expiration": option.get("expirationDate", "Unknown"),
+                            "days_to_expiration": option.get("daysToExpiration", 0),
+                            "current_price": option.get("mark", 0),
+                            "confidence": option.get("confidenceScore", 0),
+                            "expected_profit": option.get("expectedProfit", 0) * 100,  # Convert to percentage
+                            "target_exit_hours": option.get("targetExitHours", 24),
+                            "timeframe_bias": primary_direction.get("timeframe_bias", {
+                                "score": 0,
+                                "label": "neutral",
+                                "confidence": 0
+                            })
+                        })
+        
+        # Sort final recommendations by confidence (descending)
+        recommendations.sort(key=lambda x: x["confidence"], reverse=True)
+        
+        # Limit to maximum recommendations
+        recommendations = recommendations[:MAX_RECOMMENDATIONS]
+        
+        # Compile final result
+        result = {
+            "symbol": symbol,
+            "price": underlying_price,
+            "market_direction": primary_direction,
+            "timeframe_analysis": market_direction_analysis,
+            "recommendations": recommendations
+        }
+        
+        logger.info(f"Generated {len(recommendations)} recommendations for {symbol}")
+        return result

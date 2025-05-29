@@ -11,10 +11,13 @@
 - Refined filtering logic to be less aggressive
 - Fixed profit calculation to produce more realistic values
 - Improved market direction analysis with better signal detection
+- Implemented timeframe bias indicator showing dominant trend direction for each timeframe
+- Integrated timeframe bias with recommendation engine for enhanced signal detection
+- Added bias confidence scoring to improve recommendation quality
 
 ### Current Work in Progress
-- Testing enhanced recommendation engine
-- Validating recommendation quality and confidence scores
+- Testing enhanced recommendation engine with timeframe bias integration
+- Validating recommendation quality and confidence scores with the new indicator
 
 ### Known Issues/Challenges
 - Previous recommendation tables showed very low confidence scores (10.0)
@@ -23,6 +26,7 @@
 
 ### Next Steps
 - Validate the improved recommendation engine with real-world data
-- Consider additional UI improvements for recommendation display
+- Test timeframe bias indicator across different market conditions
+- Consider additional UI improvements to display timeframe bias information
 - Add Safari export button fix
 - Implement additional technical indicators if needed
