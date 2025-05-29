@@ -17,6 +17,7 @@ from dashboard_utils.options_chain_utils import split_options_by_type
 from dashboard_utils.recommendation_tab import register_recommendation_callbacks, create_recommendation_tab
 from dashboard_utils.streaming_manager import StreamingManager
 from dashboard_utils.streaming_field_mapper import StreamingFieldMapper
+from dashboard_utils.streaming_debug import create_debug_monitor  # Import the new debug monitor
 from dashboard_utils.contract_utils import normalize_contract_key
 from dashboard_utils.download_component import create_download_component, register_download_callback, register_download_click_callback
 from dashboard_utils.export_buttons import create_export_button, register_export_callbacks
@@ -31,6 +32,19 @@ from dashboard_utils.excel_export import (
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 app_logger = logging.getLogger('dashboard_app')
 app_logger.setLevel(logging.DEBUG)  # Set to DEBUG for more verbose logging
+
+# Create logs directory if it doesn't exist
+log_dir = os.path.join(os.path.dirname(__file__), "logs")
+os.makedirs(log_dir, exist_ok=True)
+
+# Add file handler for app logs
+app_log_file = os.path.join(log_dir, f"dashboard_app_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+file_handler = logging.FileHandler(app_log_file)
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+file_handler.setFormatter(formatter)
+app_logger.addHandler(file_handler)
+
+app_logger.info(f"Dashboard app logger initialized. Logging to: {app_log_file}")
 
 # Initialize Dash app
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
@@ -71,6 +85,10 @@ def get_account_id():
 
 # Initialize StreamingManager
 streaming_manager = StreamingManager(get_schwab_client, get_account_id)
+
+# Initialize the debug monitor
+debug_monitor = create_debug_monitor(streaming_manager)
+app_logger.info("Streaming debug monitor initialized and started")
 
 # Define app layout
 app.layout = html.Div([
@@ -384,8 +402,9 @@ def refresh_data(n_clicks, symbol):
         return minute_data_store, tech_indicators_store, options_data, symbol, dropdown_options, default_expiration, f"Data refreshed for {symbol}", None, last_valid_options
     
     except Exception as e:
-        app_logger.error(f"Error refreshing data: {e}", exc_info=True)
-        return None, None, None, None, [], None, f"Error: {str(e)}", {
+        error_msg = f"Error refreshing data: {str(e)}"
+        app_logger.error(error_msg, exc_info=True)
+        return None, None, None, None, [], None, error_msg, {
             "source": "Data Refresh",
             "message": str(e),
             "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -500,104 +519,117 @@ def toggle_debug_container(active_tab):
     if active_tab == "tab-options-chain":
         return {'marginTop': '30px', 'padding': '10px', 'border': '1px solid #ddd', 'display': 'block'}
     else:
-        return {'marginTop': '30px', 'padding': '10px', 'border': '1px solid #ddd', 'display': 'none'}
+        return {'display': 'none'}
 
-# Streaming Update Callback
+# Streaming Debug Info Callback
 @app.callback(
-    [
-        Output("streaming-options-store", "data"),
-        Output("streaming-debug-info", "children")
-    ],
-    Input("streaming-update-interval", "n_intervals"),
-    State("options-chain-store", "data"),
+    Output("streaming-debug-info", "children"),
+    [Input("streaming-update-interval", "n_intervals")],
     prevent_initial_call=True
 )
-def update_streaming_data(n_intervals, options_data):
-    """Updates the streaming options data."""
-    app_logger.debug(f"Streaming update callback triggered: interval={n_intervals}")
-    
-    if not options_data:
-        return None, "No options data available"
-    
+def update_streaming_debug_info(n_intervals):
+    """Updates the streaming debug information."""
     try:
-        # Get the latest streaming data
-        streaming_data = streaming_manager.get_latest_data()
+        # Get debug info from the monitor
+        debug_info = debug_monitor.log_debug_info()
         
-        # Create debug information
-        debug_info = []
-        debug_info.append(f"Streaming Update Triggered: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        debug_info.append(f"Interval Count: {n_intervals}")
+        # Format the debug info for display
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        if not streaming_data:
-            debug_info.append("No streaming data available")
-            return None, "\n".join(debug_info)
+        debug_text = [
+            f"Streaming Update Triggered: {current_time}",
+            f"Interval Count: {n_intervals}",
+        ]
         
-        # Add streaming data info to debug
-        debug_info.append(f"Streaming Data Available: {len(streaming_data)} contracts")
+        # Add streaming status
+        streaming_status = debug_info.get("streaming_status", "Unknown")
+        debug_text.append(f"Streaming Status: {streaming_status}")
         
-        # Sample a few contracts for debugging
-        sample_keys = list(streaming_data.keys())[:3]
-        for key in sample_keys:
-            data = streaming_data[key]
-            debug_info.append(f"\nContract: {key}")
-            for field, value in data.items():
-                if field in ["bidPrice", "askPrice", "lastPrice", "delta", "gamma", "theta", "vega"]:
-                    debug_info.append(f"  {field}: {value}")
+        # Add data count
+        data_count = debug_info.get("current_data_count", 0)
+        debug_text.append(f"Contracts with Data: {data_count}")
         
-        # Force a timestamp change to ensure the callback is triggered
-        # This is critical for ensuring the UI updates even when the data structure hasn't changed
-        current_timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
+        # Add last update time
+        last_update_time = debug_info.get("last_data_update_time", "Never")
+        if last_update_time != "Never":
+            # Convert ISO format to readable format
+            try:
+                dt = datetime.datetime.fromisoformat(last_update_time)
+                last_update_time = dt.strftime("%Y-%m-%d %H:%M:%S")
+            except:
+                pass
+        debug_text.append(f"Last Data Update: {last_update_time}")
         
-        # Return the streaming data and debug info
-        return {
-            "streaming_data": streaming_data,
-            "timestamp": current_timestamp
-        }, "\n".join(debug_info)
+        # Add time since last update
+        seconds_since_update = debug_info.get("seconds_since_last_update")
+        if seconds_since_update is not None:
+            debug_text.append(f"Seconds Since Last Update: {seconds_since_update:.1f}")
+        
+        # Add update count
+        update_count = debug_info.get("data_update_count", 0)
+        debug_text.append(f"Total Updates Received: {update_count}")
+        
+        # Add error messages
+        error_messages = debug_info.get("error_messages", [])
+        if error_messages:
+            debug_text.append("\nError Messages:")
+            for error in error_messages[-3:]:  # Show only the last 3 errors
+                debug_text.append(f"- {error}")
+        
+        # Add data samples
+        data_samples = debug_info.get("data_samples", [])
+        if data_samples:
+            debug_text.append("\nRecent Data Samples:")
+            for i, sample in enumerate(data_samples[-2:]):  # Show only the last 2 samples
+                debug_text.append(f"\nSample {i+1}:")
+                for key, data in sample.items():
+                    debug_text.append(f"  {key}: Bid={data.get('bidPrice')}, Ask={data.get('askPrice')}, Last={data.get('lastPrice')}")
+        
+        # If no data is available, show a clear message
+        if data_count == 0 and update_count == 0:
+            debug_text.append("\nNo streaming data available")
+        
+        return "\n".join(debug_text)
     
     except Exception as e:
-        error_msg = f"Error in update_streaming_data: {str(e)}"
-        app_logger.error(error_msg, exc_info=True)
-        return None, f"Error: {error_msg}"
+        app_logger.error(f"Error updating streaming debug info: {e}", exc_info=True)
+        return f"Error updating streaming debug info: {str(e)}"
 
-# Options Chain Tables Callback with Streaming Support
+# Options Tables Callback
 @app.callback(
     [
         Output("calls-table", "data"),
-        Output("puts-table", "data")
+        Output("calls-table", "columns"),
+        Output("puts-table", "data"),
+        Output("puts-table", "columns")
     ],
     [
-        Input("options-chain-store", "data"),
-        Input("streaming-options-store", "data"),
         Input("expiration-date-dropdown", "value"),
-        Input("option-type-radio", "value")
+        Input("option-type-radio", "value"),
+        Input("streaming-update-interval", "n_intervals")
     ],
     [
-        State("last-valid-options-store", "data")  # Added for state preservation
+        State("options-chain-store", "data"),
+        State("streaming-options-store", "data"),
+        State("last-valid-options-store", "data")
     ],
     prevent_initial_call=True
 )
-def update_options_tables(options_data, streaming_data, expiration_date, option_type, last_valid_options):
-    """Updates the options chain tables with the fetched data and streaming updates."""
-    app_logger.info(f"Update options tables callback triggered: expiration={expiration_date}, option_type={option_type}")
+def update_options_tables(expiration_date, option_type, n_intervals, options_data, streaming_data, last_valid_options):
+    """Updates the options tables with the fetched data and streaming updates."""
+    app_logger.info(f"Update options tables callback triggered. Expiration: {expiration_date}, Type: {option_type}, Interval: {n_intervals}")
     
-    # Log streaming data timestamp to verify callback triggering
-    if streaming_data and streaming_data.get("timestamp"):
-        app_logger.info(f"Streaming data timestamp: {streaming_data['timestamp']}")
+    if not options_data or not options_data.get("options"):
+        if last_valid_options and last_valid_options.get("options"):
+            app_logger.info("Using last valid options data")
+            options_data = last_valid_options
+        else:
+            app_logger.warning("No options data available")
+            return [], [], [], []
     
     try:
-        # First, check if we have valid options data
-        if not options_data or not options_data.get("options"):
-            # If no current options data, try to use last valid options data
-            if last_valid_options and last_valid_options.get("options"):
-                app_logger.warning("Using last valid options data as fallback")
-                options_data = last_valid_options
-            else:
-                app_logger.warning("No options data available")
-                return [], []
-        
-        # Create a copy of the options data to avoid modifying the original
-        options_df = pd.DataFrame(options_data["options"]).copy()
-        app_logger.debug(f"Original options DataFrame shape: {options_df.shape}")
+        # Convert options data to DataFrame
+        options_df = pd.DataFrame(options_data["options"])
         
         # Enhanced debugging: Log the first few rows of the DataFrame to see what columns and data we have
         app_logger.debug(f"Options DataFrame first 3 rows: {options_df.head(3).to_dict('records')}")
@@ -717,12 +749,64 @@ def update_options_tables(options_data, streaming_data, expiration_date, option_
         )
         
         app_logger.info(f"Split options: {len(calls_data)} calls and {len(puts_data)} puts")
-        return calls_data, puts_data
+        
+        # Create columns for the tables
+        if calls_data:
+            calls_columns = [{"name": col, "id": col} for col in calls_data[0].keys()]
+        else:
+            calls_columns = []
+        
+        if puts_data:
+            puts_columns = [{"name": col, "id": col} for col in puts_data[0].keys()]
+        else:
+            puts_columns = []
+        
+        return calls_data, calls_columns, puts_data, puts_columns
     
     except Exception as e:
         error_msg = f"Error in update_options_tables: {str(e)}"
         app_logger.error(error_msg, exc_info=True)
-        return [], []
+        return [], [], [], []
+
+# Streaming Update Callback
+@app.callback(
+    Output("streaming-options-store", "data"),
+    Input("streaming-update-interval", "n_intervals"),
+    prevent_initial_call=True
+)
+def update_streaming_data(n_intervals):
+    """Updates the streaming data store with the latest streaming data."""
+    app_logger.debug(f"Streaming update callback triggered. Interval: {n_intervals}")
+    
+    try:
+        # Get the latest streaming data from the streaming manager
+        with streaming_manager._lock:
+            latest_data = streaming_manager.latest_data_store.copy()
+        
+        # Create a dictionary for the streaming data store
+        streaming_data = {
+            "streaming_data": latest_data,
+            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "update_count": n_intervals
+        }
+        
+        # Log the update
+        data_count = len(latest_data)
+        app_logger.debug(f"Streaming update: {data_count} contracts available")
+        
+        # Log a sample of the data for debugging
+        if data_count > 0:
+            sample_keys = list(latest_data.keys())[:3]
+            for key in sample_keys:
+                data = latest_data[key]
+                app_logger.debug(f"Sample data for {key}: Last={data.get('lastPrice')}, Bid={data.get('bidPrice')}, Ask={data.get('askPrice')}")
+        
+        return streaming_data
+    
+    except Exception as e:
+        error_msg = f"Error updating streaming data: {str(e)}"
+        app_logger.error(error_msg, exc_info=True)
+        return {"streaming_data": {}, "error": error_msg}
 
 # Error Display Callback
 @app.callback(
@@ -764,6 +848,7 @@ register_export_callbacks(app)
 def shutdown_streaming(exception=None):
     """Stops streaming when the app shuts down."""
     streaming_manager.stop_streaming()
+    debug_monitor.stop_monitoring()
     app_logger.info("Streaming stopped on app shutdown")
 
 if __name__ == "__main__":

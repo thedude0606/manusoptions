@@ -16,12 +16,17 @@
 - [x] Fix options chain data table not updating with streaming data
 - [x] Add enhanced debugging to streaming data updates for contract key matching
 - [x] Fix AttributeError in recommendation generation when selected_symbol is a string
+- [x] Add comprehensive streaming debug monitor
+- [x] Enhance logging for streaming data updates
+- [x] Add dedicated streaming debug panel with real-time statistics
 - [ ] Test enhanced recommendation engine with real-world data
 - [ ] Test timeframe bias indicator across different market conditions
 - [ ] Add UI components to display timeframe bias information
 - [ ] Fix Safari export button compatibility issue
 - [ ] Add additional error handling for data fetching
 - [ ] Improve UI responsiveness on mobile devices
+- [ ] Enhance streaming data integration with recommendation engine
+- [ ] Improve contract key normalization to increase match rate
 
 ## Documentation
 - [x] Update PROGRESS.md with current status
@@ -29,8 +34,10 @@
 - [x] Update DECISIONS.md with technical rationale
 - [ ] Create user guide for recommendation engine features
 - [ ] Document timeframe bias indicator usage and interpretation
+- [ ] Document streaming debug monitor usage and interpretation
 
 ## Dependencies
 - UI improvements depend on core functionality fixes
 - Additional features depend on validation of current enhancements
 - Timeframe bias UI display depends on validation of indicator accuracy
+- Recommendation updates depend on reliable streaming data flow
