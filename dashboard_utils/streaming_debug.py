@@ -12,6 +12,8 @@ import os
 import datetime
 import time
 import threading
+import sys
+import traceback
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -33,6 +35,9 @@ console_handler = logging.StreamHandler()
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
+# Add immediate console print for debugging
+print(f"STREAMING_DEBUG: Module initialized, log file will be: {debug_log_file}", file=sys.stderr)
+
 class StreamingDebugMonitor:
     """
     Monitors streaming data updates and provides detailed debugging information.
@@ -45,6 +50,7 @@ class StreamingDebugMonitor:
         Args:
             streaming_manager: The StreamingManager instance to monitor
         """
+        print(f"STREAMING_DEBUG: StreamingDebugMonitor.__init__ called at {datetime.datetime.now()}", file=sys.stderr)
         self.streaming_manager = streaming_manager
         self.is_monitoring = False
         self.monitor_thread = None
@@ -60,13 +66,16 @@ class StreamingDebugMonitor:
             "data_samples": []
         }
         logger.info(f"StreamingDebugMonitor initialized. Debug logs will be written to: {debug_log_file}")
+        print(f"STREAMING_DEBUG: StreamingDebugMonitor initialized", file=sys.stderr)
     
     def start_monitoring(self):
         """
         Start monitoring streaming data updates.
         """
+        print(f"STREAMING_DEBUG: start_monitoring called at {datetime.datetime.now()}", file=sys.stderr)
         if self.is_monitoring:
             logger.warning("Monitoring is already active")
+            print(f"STREAMING_DEBUG: Monitoring is already active", file=sys.stderr)
             return
         
         self.is_monitoring = True
@@ -82,24 +91,29 @@ class StreamingDebugMonitor:
         self.monitor_thread.start()
         
         logger.info("Streaming debug monitoring started")
+        print(f"STREAMING_DEBUG: Streaming debug monitoring started", file=sys.stderr)
     
     def stop_monitoring(self):
         """
         Stop monitoring streaming data updates.
         """
+        print(f"STREAMING_DEBUG: stop_monitoring called at {datetime.datetime.now()}", file=sys.stderr)
         if not self.is_monitoring:
             logger.warning("Monitoring is not active")
+            print(f"STREAMING_DEBUG: Monitoring is not active", file=sys.stderr)
             return
         
         self.is_monitoring = False
         self.debug_info["streaming_status"] = "Monitoring stopped"
         logger.info("Streaming debug monitoring stopped")
+        print(f"STREAMING_DEBUG: Streaming debug monitoring stopped", file=sys.stderr)
     
     def _monitor_worker(self):
         """
         Worker thread for monitoring streaming data updates.
         """
         logger.info("Monitor worker thread started")
+        print(f"STREAMING_DEBUG: Monitor worker thread started at {datetime.datetime.now()}", file=sys.stderr)
         
         while self.is_monitoring:
             try:
@@ -107,6 +121,10 @@ class StreamingDebugMonitor:
                 if hasattr(self.streaming_manager, "is_running"):
                     is_running = getattr(self.streaming_manager, "is_running")
                     self.debug_info["streaming_status"] = f"Streaming {'active' if is_running else 'inactive'}"
+                    if is_running:
+                        print(f"STREAMING_DEBUG: Streaming is active", file=sys.stderr)
+                    else:
+                        print(f"STREAMING_DEBUG: Streaming is inactive", file=sys.stderr)
                 
                 # Check for data updates
                 if hasattr(self.streaming_manager, "latest_data_store"):
@@ -122,6 +140,7 @@ class StreamingDebugMonitor:
                         # Log the update
                         new_items = current_data_count - self.last_data_count
                         logger.info(f"Data update detected: {new_items} new items, total: {current_data_count}")
+                        print(f"STREAMING_DEBUG: Data update detected: {new_items} new items, total: {current_data_count}", file=sys.stderr)
                         
                         # Sample some data for debugging
                         if data_store:
@@ -143,6 +162,7 @@ class StreamingDebugMonitor:
                                     self.debug_info["data_samples"] = self.debug_info["data_samples"][-10:]
                                 
                                 logger.info(f"Sample data: {json.dumps(sample_data)}")
+                                print(f"STREAMING_DEBUG: Sample data: {json.dumps(sample_data)}", file=sys.stderr)
                     
                     self.last_data_count = current_data_count
                 
@@ -152,16 +172,20 @@ class StreamingDebugMonitor:
                     if error_message and error_message not in self.debug_info["error_messages"]:
                         self.debug_info["error_messages"].append(error_message)
                         logger.error(f"Streaming error: {error_message}")
+                        print(f"STREAMING_DEBUG: Streaming error: {error_message}", file=sys.stderr)
                 
                 # Sleep for the update interval
                 time.sleep(self.update_interval)
             
             except Exception as e:
                 logger.error(f"Error in monitor worker: {e}", exc_info=True)
+                print(f"STREAMING_DEBUG: Error in monitor worker: {e}", file=sys.stderr)
+                traceback.print_exc(file=sys.stderr)
                 self.debug_info["error_messages"].append(f"Monitor error: {str(e)}")
                 time.sleep(5)  # Sleep longer on error
         
         logger.info("Monitor worker thread stopped")
+        print(f"STREAMING_DEBUG: Monitor worker thread stopped", file=sys.stderr)
     
     def get_debug_info(self):
         """
@@ -188,6 +212,7 @@ class StreamingDebugMonitor:
         """
         debug_info = self.get_debug_info()
         logger.info(f"Current debug info: {json.dumps(debug_info)}")
+        print(f"STREAMING_DEBUG: Current debug info: {json.dumps(debug_info)[:200]}...", file=sys.stderr)
         return debug_info
 
 def create_debug_monitor(streaming_manager):
@@ -200,6 +225,7 @@ def create_debug_monitor(streaming_manager):
     Returns:
         StreamingDebugMonitor: The created and started monitor
     """
+    print(f"STREAMING_DEBUG: create_debug_monitor called at {datetime.datetime.now()}", file=sys.stderr)
     monitor = StreamingDebugMonitor(streaming_manager)
     monitor.start_monitoring()
     return monitor

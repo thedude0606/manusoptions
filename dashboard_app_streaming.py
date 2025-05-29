@@ -11,6 +11,8 @@ import logging
 import schwabdev
 import json
 import os
+import sys
+import traceback
 from config import APP_KEY, APP_SECRET, CALLBACK_URL, TOKEN_FILE_PATH
 from dashboard_utils.data_fetchers import get_minute_data, get_technical_indicators, get_options_chain_data, get_option_contract_keys
 from dashboard_utils.options_chain_utils import split_options_by_type
@@ -27,6 +29,9 @@ from dashboard_utils.excel_export import (
     export_options_chain_to_excel,
     export_recommendations_to_excel
 )
+
+# Add immediate console print for debugging
+print(f"DASHBOARD_APP: Starting initialization at {datetime.datetime.now()}", file=sys.stderr)
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -45,6 +50,7 @@ file_handler.setFormatter(formatter)
 app_logger.addHandler(file_handler)
 
 app_logger.info(f"Dashboard app logger initialized. Logging to: {app_log_file}")
+print(f"DASHBOARD_APP: Logger initialized, logging to: {app_log_file}", file=sys.stderr)
 
 # Initialize Dash app
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
@@ -52,43 +58,58 @@ app.title = "Manus Options Dashboard"
 
 # Initialize Schwab client getter function
 def get_schwab_client():
+    print(f"DASHBOARD_APP: get_schwab_client called at {datetime.datetime.now()}", file=sys.stderr)
     try:
         client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file=TOKEN_FILE_PATH, capture_callback=False)
+        print(f"DASHBOARD_APP: Successfully created Schwab client", file=sys.stderr)
         return client
     except Exception as e:
         app_logger.error(f"Error initializing Schwab client: {e}", exc_info=True)
+        print(f"DASHBOARD_APP: Error initializing Schwab client: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         return None
 
 # Initialize account ID getter function
 def get_account_id():
+    print(f"DASHBOARD_APP: get_account_id called at {datetime.datetime.now()}", file=sys.stderr)
     try:
         client = get_schwab_client()
         if not client:
+            print(f"DASHBOARD_APP: Failed to get Schwab client in get_account_id", file=sys.stderr)
             return None
         
         response = client.accounts()
         if not response.ok:
             app_logger.error(f"Error fetching accounts: {response.status_code} - {response.text}")
+            print(f"DASHBOARD_APP: Error fetching accounts: {response.status_code} - {response.text}", file=sys.stderr)
             return None
         
         accounts = response.json()
         if not accounts:
             app_logger.error("No accounts found")
+            print(f"DASHBOARD_APP: No accounts found", file=sys.stderr)
             return None
         
         # Use the first account ID
         account_id = accounts[0].get("accountId")
+        print(f"DASHBOARD_APP: Successfully got account ID: {account_id[:4]}...", file=sys.stderr)
         return account_id
     except Exception as e:
         app_logger.error(f"Error getting account ID: {e}", exc_info=True)
+        print(f"DASHBOARD_APP: Error getting account ID: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         return None
 
 # Initialize StreamingManager
+print(f"DASHBOARD_APP: Creating StreamingManager at {datetime.datetime.now()}", file=sys.stderr)
 streaming_manager = StreamingManager(get_schwab_client, get_account_id)
+print(f"DASHBOARD_APP: StreamingManager created", file=sys.stderr)
 
 # Initialize the debug monitor
+print(f"DASHBOARD_APP: Creating debug monitor at {datetime.datetime.now()}", file=sys.stderr)
 debug_monitor = create_debug_monitor(streaming_manager)
 app_logger.info("Streaming debug monitor initialized and started")
+print(f"DASHBOARD_APP: Debug monitor created and started", file=sys.stderr)
 
 # Define app layout
 app.layout = html.Div([
@@ -318,6 +339,7 @@ app.layout = html.Div([
 )
 def refresh_data(n_clicks, symbol):
     """Refreshes all data for the given symbol."""
+    print(f"DASHBOARD_APP: refresh_data callback triggered with n_clicks={n_clicks}, symbol={symbol}", file=sys.stderr)
     if not n_clicks or not symbol:
         return None, None, None, None, [], None, "", None, None
     
@@ -326,13 +348,17 @@ def refresh_data(n_clicks, symbol):
     
     try:
         # Initialize Schwab client with consistent token file path
+        print(f"DASHBOARD_APP: Creating Schwab client in refresh_data", file=sys.stderr)
         client = schwabdev.Client(APP_KEY, APP_SECRET, CALLBACK_URL, tokens_file=TOKEN_FILE_PATH, capture_callback=False)
+        print(f"DASHBOARD_APP: Schwab client created successfully", file=sys.stderr)
         
         # Fetch minute data
+        print(f"DASHBOARD_APP: Fetching minute data for {symbol}", file=sys.stderr)
         minute_data, error = get_minute_data(client, symbol)
         
         if error:
             app_logger.error(f"Error fetching minute data: {error}")
+            print(f"DASHBOARD_APP: Error fetching minute data: {error}", file=sys.stderr)
             return None, None, None, None, [], None, f"Error: {error}", {
                 "source": "Minute Data",
                 "message": error,
@@ -340,10 +366,12 @@ def refresh_data(n_clicks, symbol):
             }, None
         
         # Calculate technical indicators
+        print(f"DASHBOARD_APP: Calculating technical indicators for {symbol}", file=sys.stderr)
         tech_indicators, error = get_technical_indicators(client, symbol)
         
         if error:
             app_logger.error(f"Error calculating technical indicators: {error}")
+            print(f"DASHBOARD_APP: Error calculating technical indicators: {error}", file=sys.stderr)
             return {"data": minute_data}, None, None, None, [], None, f"Error: {error}", {
                 "source": "Technical Indicators",
                 "message": error,
@@ -351,10 +379,12 @@ def refresh_data(n_clicks, symbol):
             }, None
         
         # Fetch options chain
+        print(f"DASHBOARD_APP: Fetching options chain for {symbol}", file=sys.stderr)
         options_df, expiration_dates, underlying_price, error = get_options_chain_data(client, symbol)
         
         if error:
             app_logger.error(f"Error fetching options chain: {error}")
+            print(f"DASHBOARD_APP: Error fetching options chain: {error}", file=sys.stderr)
             return {"data": minute_data}, {"data": tech_indicators}, None, None, [], None, f"Error: {error}", {
                 "source": "Options Chain",
                 "message": error,
@@ -399,11 +429,14 @@ def refresh_data(n_clicks, symbol):
         # Create a copy for the last valid options store
         last_valid_options = options_data.copy()
         
+        print(f"DASHBOARD_APP: Data refresh complete for {symbol}", file=sys.stderr)
         return minute_data_store, tech_indicators_store, options_data, symbol, dropdown_options, default_expiration, f"Data refreshed for {symbol}", None, last_valid_options
     
     except Exception as e:
         error_msg = f"Error refreshing data: {str(e)}"
         app_logger.error(error_msg, exc_info=True)
+        print(f"DASHBOARD_APP: {error_msg}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         return None, None, None, None, [], None, error_msg, {
             "source": "Data Refresh",
             "message": str(e),
@@ -478,34 +511,52 @@ def update_tech_indicators_table(tech_indicators_store):
 )
 def toggle_streaming(toggle_value, options_data):
     """Toggles streaming based on the toggle value."""
+    print(f"DASHBOARD_APP: toggle_streaming callback triggered with toggle_value={toggle_value}", file=sys.stderr)
     app_logger.info(f"Streaming toggle set to: {toggle_value}")
     
     if not options_data or not options_data.get("options"):
+        print(f"DASHBOARD_APP: No options data available for streaming", file=sys.stderr)
         return "Streaming: No options data available", True
     
     try:
         if toggle_value == "ON":
             # Get option contract keys
+            print(f"DASHBOARD_APP: Converting options data to DataFrame for streaming", file=sys.stderr)
             options_df = pd.DataFrame(options_data["options"])
+            print(f"DASHBOARD_APP: Getting option contract keys for streaming", file=sys.stderr)
             option_keys = get_option_contract_keys(options_df)
             app_logger.info(f"Starting streaming for {len(option_keys)} option contracts")
+            print(f"DASHBOARD_APP: Starting streaming for {len(option_keys)} option contracts", file=sys.stderr)
             
             # Start streaming
+            print(f"DASHBOARD_APP: Calling streaming_manager.start_streaming", file=sys.stderr)
             success = streaming_manager.start_streaming(option_keys)
+            print(f"DASHBOARD_APP: streaming_manager.start_streaming returned {success}", file=sys.stderr)
+            
+            # Make sure debug monitor is running
+            print(f"DASHBOARD_APP: Ensuring debug monitor is running", file=sys.stderr)
+            if not debug_monitor.is_monitoring:
+                print(f"DASHBOARD_APP: Debug monitor was not running, starting it", file=sys.stderr)
+                debug_monitor.start_monitoring()
             
             if success:
+                print(f"DASHBOARD_APP: Streaming started successfully", file=sys.stderr)
                 return "Streaming: Active", False
             else:
+                print(f"DASHBOARD_APP: Failed to start streaming", file=sys.stderr)
                 return "Streaming: Failed to start", True
         else:
             # Stop streaming
             app_logger.info("Stopping streaming")
+            print(f"DASHBOARD_APP: Stopping streaming", file=sys.stderr)
             streaming_manager.stop_streaming()
             return "Streaming: Inactive", True
     
     except Exception as e:
         error_msg = f"Error toggling streaming: {str(e)}"
         app_logger.error(error_msg, exc_info=True)
+        print(f"DASHBOARD_APP: {error_msg}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         return f"Streaming: Error - {str(e)}", True
 
 # Add callback to show/hide debug container based on active tab
@@ -529,8 +580,10 @@ def toggle_debug_container(active_tab):
 )
 def update_streaming_debug_info(n_intervals):
     """Updates the streaming debug information."""
+    print(f"DASHBOARD_APP: update_streaming_debug_info callback triggered with n_intervals={n_intervals}", file=sys.stderr)
     try:
         # Get debug info from the monitor
+        print(f"DASHBOARD_APP: Getting debug info from monitor", file=sys.stderr)
         debug_info = debug_monitor.log_debug_info()
         
         # Format the debug info for display
@@ -550,8 +603,8 @@ def update_streaming_debug_info(n_intervals):
         debug_text.append(f"Contracts with Data: {data_count}")
         
         # Add last update time
-        last_update_time = debug_info.get("last_data_update_time", "Never")
-        if last_update_time != "Never":
+        last_update_time = debug_info.get("last_data_update_time", "None")
+        if last_update_time != "None" and last_update_time is not None:
             # Convert ISO format to readable format
             try:
                 dt = datetime.datetime.fromisoformat(last_update_time)
@@ -589,10 +642,26 @@ def update_streaming_debug_info(n_intervals):
         if data_count == 0 and update_count == 0:
             debug_text.append("\nNo streaming data available")
         
+        # Check streaming manager status directly
+        try:
+            is_running = streaming_manager.is_running
+            debug_text.append(f"\nStreaming Manager Status:")
+            debug_text.append(f"- is_running: {is_running}")
+            debug_text.append(f"- status_message: {streaming_manager.status_message}")
+            if streaming_manager.error_message:
+                debug_text.append(f"- error_message: {streaming_manager.error_message}")
+            debug_text.append(f"- subscriptions_count: {len(streaming_manager.current_subscriptions)}")
+            debug_text.append(f"- data_count: {len(streaming_manager.latest_data_store)}")
+        except Exception as e:
+            debug_text.append(f"\nError getting streaming manager status: {str(e)}")
+        
+        print(f"DASHBOARD_APP: Debug info prepared, returning to UI", file=sys.stderr)
         return "\n".join(debug_text)
     
     except Exception as e:
         app_logger.error(f"Error updating streaming debug info: {e}", exc_info=True)
+        print(f"DASHBOARD_APP: Error updating streaming debug info: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         return f"Error updating streaming debug info: {str(e)}"
 
 # Options Tables Callback
@@ -617,18 +686,22 @@ def update_streaming_debug_info(n_intervals):
 )
 def update_options_tables(expiration_date, option_type, n_intervals, options_data, streaming_data, last_valid_options):
     """Updates the options tables with the fetched data and streaming updates."""
+    print(f"DASHBOARD_APP: update_options_tables callback triggered with n_intervals={n_intervals}", file=sys.stderr)
     app_logger.info(f"Update options tables callback triggered. Expiration: {expiration_date}, Type: {option_type}, Interval: {n_intervals}")
     
     if not options_data or not options_data.get("options"):
         if last_valid_options and last_valid_options.get("options"):
             app_logger.info("Using last valid options data")
+            print(f"DASHBOARD_APP: Using last valid options data", file=sys.stderr)
             options_data = last_valid_options
         else:
             app_logger.warning("No options data available")
+            print(f"DASHBOARD_APP: No options data available", file=sys.stderr)
             return [], [], [], []
     
     try:
         # Convert options data to DataFrame
+        print(f"DASHBOARD_APP: Converting options data to DataFrame", file=sys.stderr)
         options_df = pd.DataFrame(options_data["options"])
         
         # Enhanced debugging: Log the first few rows of the DataFrame to see what columns and data we have
@@ -638,15 +711,18 @@ def update_options_tables(expiration_date, option_type, n_intervals, options_dat
         # Enhanced debugging: Log the symbol column format for the first few rows
         if 'symbol' in options_df.columns:
             app_logger.debug(f"Symbol column sample: {options_df['symbol'].head(5).tolist()}")
+            print(f"DASHBOARD_APP: Symbol column sample: {options_df['symbol'].head(5).tolist()}", file=sys.stderr)
         
         # Apply streaming updates if available
         if streaming_data and streaming_data.get("streaming_data"):
             streaming_updates = streaming_data["streaming_data"]
             app_logger.info(f"Applying streaming updates for {len(streaming_updates)} contracts")
+            print(f"DASHBOARD_APP: Applying streaming updates for {len(streaming_updates)} contracts", file=sys.stderr)
             
             # Enhanced debugging: Log a sample of the streaming update keys
             sample_update_keys = list(streaming_updates.keys())[:5]
             app_logger.debug(f"Streaming update keys sample: {sample_update_keys}")
+            print(f"DASHBOARD_APP: Streaming update keys sample: {sample_update_keys}", file=sys.stderr)
             
             field_mapper = StreamingFieldMapper()
             update_count = 0
@@ -721,11 +797,13 @@ def update_options_tables(expiration_date, option_type, n_intervals, options_dat
             
             # Enhanced debugging: Log match statistics and key format information
             app_logger.info(f"Streaming update statistics: {match_count}/{len(streaming_updates)} contracts matched, {update_count} field updates applied")
+            print(f"DASHBOARD_APP: Streaming update statistics: {match_count}/{len(streaming_updates)} contracts matched, {update_count} field updates applied", file=sys.stderr)
             app_logger.debug(f"Key format details for first 5 keys: {json.dumps({k: v for i, (k, v) in enumerate(key_formats.items()) if i < 5})}")
             
             # If we have very few matches, log more details about the DataFrame and streaming keys
             if match_count < len(streaming_updates) * 0.1 and len(streaming_updates) > 0:
                 app_logger.warning(f"Very low match rate: {match_count}/{len(streaming_updates)} ({match_count/len(streaming_updates)*100:.1f}%)")
+                print(f"DASHBOARD_APP: Very low match rate: {match_count}/{len(streaming_updates)} ({match_count/len(streaming_updates)*100:.1f}%)", file=sys.stderr)
                 app_logger.debug("DataFrame symbol column sample:")
                 if 'symbol' in options_df.columns:
                     for i, symbol in enumerate(options_df['symbol'].head(10)):
@@ -736,11 +814,13 @@ def update_options_tables(expiration_date, option_type, n_intervals, options_dat
                     app_logger.debug(f"  Streaming key {i}: {key}")
         else:
             app_logger.debug("No streaming updates available")
+            print(f"DASHBOARD_APP: No streaming updates available", file=sys.stderr)
         
         # Log the shape of the DataFrame for debugging
         app_logger.debug(f"Updated options DataFrame shape: {options_df.shape}")
         
         # Use the utility function to split options by type
+        print(f"DASHBOARD_APP: Splitting options by type", file=sys.stderr)
         calls_data, puts_data = split_options_by_type(
             options_df, 
             expiration_date=expiration_date,
@@ -749,6 +829,7 @@ def update_options_tables(expiration_date, option_type, n_intervals, options_dat
         )
         
         app_logger.info(f"Split options: {len(calls_data)} calls and {len(puts_data)} puts")
+        print(f"DASHBOARD_APP: Split options: {len(calls_data)} calls and {len(puts_data)} puts", file=sys.stderr)
         
         # Create columns for the tables
         if calls_data:
@@ -766,6 +847,8 @@ def update_options_tables(expiration_date, option_type, n_intervals, options_dat
     except Exception as e:
         error_msg = f"Error in update_options_tables: {str(e)}"
         app_logger.error(error_msg, exc_info=True)
+        print(f"DASHBOARD_APP: {error_msg}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         return [], [], [], []
 
 # Streaming Update Callback
@@ -776,10 +859,12 @@ def update_options_tables(expiration_date, option_type, n_intervals, options_dat
 )
 def update_streaming_data(n_intervals):
     """Updates the streaming data store with the latest streaming data."""
+    print(f"DASHBOARD_APP: update_streaming_data callback triggered with n_intervals={n_intervals}", file=sys.stderr)
     app_logger.debug(f"Streaming update callback triggered. Interval: {n_intervals}")
     
     try:
         # Get the latest streaming data from the streaming manager
+        print(f"DASHBOARD_APP: Getting latest data from streaming manager", file=sys.stderr)
         with streaming_manager._lock:
             latest_data = streaming_manager.latest_data_store.copy()
         
@@ -793,6 +878,7 @@ def update_streaming_data(n_intervals):
         # Log the update
         data_count = len(latest_data)
         app_logger.debug(f"Streaming update: {data_count} contracts available")
+        print(f"DASHBOARD_APP: Streaming update: {data_count} contracts available", file=sys.stderr)
         
         # Log a sample of the data for debugging
         if data_count > 0:
@@ -800,12 +886,15 @@ def update_streaming_data(n_intervals):
             for key in sample_keys:
                 data = latest_data[key]
                 app_logger.debug(f"Sample data for {key}: Last={data.get('lastPrice')}, Bid={data.get('bidPrice')}, Ask={data.get('askPrice')}")
+                print(f"DASHBOARD_APP: Sample data for {key}: Last={data.get('lastPrice')}, Bid={data.get('bidPrice')}, Ask={data.get('askPrice')}", file=sys.stderr)
         
         return streaming_data
     
     except Exception as e:
         error_msg = f"Error updating streaming data: {str(e)}"
         app_logger.error(error_msg, exc_info=True)
+        print(f"DASHBOARD_APP: {error_msg}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         return {"streaming_data": {}, "error": error_msg}
 
 # Error Display Callback
@@ -847,10 +936,13 @@ register_export_callbacks(app)
 @app.server.teardown_appcontext
 def shutdown_streaming(exception=None):
     """Stops streaming when the app shuts down."""
+    print(f"DASHBOARD_APP: shutdown_streaming called at {datetime.datetime.now()}", file=sys.stderr)
     streaming_manager.stop_streaming()
     debug_monitor.stop_monitoring()
     app_logger.info("Streaming stopped on app shutdown")
+    print(f"DASHBOARD_APP: Streaming and debug monitor stopped on app shutdown", file=sys.stderr)
 
 if __name__ == "__main__":
     # Use app.run instead of app.run_server for Dash 3.x compatibility
+    print(f"DASHBOARD_APP: Starting app server at {datetime.datetime.now()}", file=sys.stderr)
     app.run(debug=True, host='0.0.0.0', port=8050)
