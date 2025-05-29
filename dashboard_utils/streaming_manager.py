@@ -7,6 +7,7 @@ import os
 import datetime
 import traceback
 import sys
+from queue import Queue, Empty
 
 # Import utility functions for contract key formatting
 from dashboard_utils.contract_utils import normalize_contract_key, format_contract_key_for_streaming
@@ -102,6 +103,16 @@ class StreamingManager:
         self.status_message = "Idle"
         self._lock = threading.RLock() # Changed to RLock for reentrancy safety in complex interactions
         self.message_counter = 0
+        self.data_count = 0
+        self.last_data_update = None
+        self.reconnect_attempts = 0
+        self.max_reconnect_attempts = 5
+        self.reconnect_delay = 5  # seconds
+        self.message_queue = Queue()
+        self.heartbeat_thread = None
+        self.last_heartbeat = None
+        self.heartbeat_interval = 30  # seconds
+        self.subscriptions_count = 0
         
         # Create a separate log file specifically for raw stream messages
         self.raw_stream_log_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs", 
@@ -136,6 +147,191 @@ class StreamingManager:
             traceback.print_exc(file=sys.stderr)
             return None
 
+    def _handle_stream_message(self, message):
+        """
+        Process incoming stream messages and update the data store.
+        
+        Args:
+            message: The raw message from the stream
+        """
+        try:
+            # Log the raw message to the dedicated raw stream log file
+            self.raw_stream_logger.debug(f"RAW MESSAGE: {message}")
+            
+            # Increment message counter
+            with self._lock:
+                self.message_counter += 1
+                
+            # Check if this is a heartbeat message
+            if isinstance(message, dict) and message.get("service") == "ADMIN" and message.get("command") == "HEARTBEAT":
+                with self._lock:
+                    self.last_heartbeat = datetime.datetime.now()
+                    logger.debug(f"Received heartbeat message: {message}")
+                    print(f"STREAMING_MANAGER: Received heartbeat message", file=sys.stderr)
+                return
+                
+            # Check if this is a response to our subscription
+            if isinstance(message, dict) and message.get("response") and message.get("service") == "LEVELONE_OPTIONS":
+                with self._lock:
+                    response_code = message.get("response", {}).get("code")
+                    if response_code == 0:  # Success
+                        self.status_message = "Stream: Subscription successful"
+                        self.subscriptions_count = len(self.current_subscriptions)
+                        logger.info(f"Subscription successful for {self.subscriptions_count} contracts")
+                        print(f"STREAMING_MANAGER: Subscription successful for {self.subscriptions_count} contracts", file=sys.stderr)
+                    else:
+                        error_msg = message.get("response", {}).get("msg", "Unknown error")
+                        self.error_message = f"Subscription error: {error_msg}"
+                        self.status_message = f"Stream: Error - {self.error_message}"
+                        logger.error(f"Subscription error: {message}")
+                        print(f"STREAMING_MANAGER: Subscription error: {error_msg}", file=sys.stderr)
+                return
+                
+            # Process data messages
+            if isinstance(message, dict) and message.get("data"):
+                data_list = message.get("data", [])
+                if not data_list:
+                    return
+                    
+                with self._lock:
+                    for data_item in data_list:
+                        # Extract the contract key and content
+                        content = data_item.get("content", {})
+                        if not content:
+                            continue
+                            
+                        # Process each content item
+                        for key, fields in content.items():
+                            # Normalize the key for consistent matching
+                            normalized_key = normalize_contract_key(key)
+                            
+                            # Create or update the data entry
+                            if normalized_key not in self.latest_data_store:
+                                self.latest_data_store[normalized_key] = {}
+                                
+                            # Update fields
+                            for field_id, value in fields.items():
+                                field_name = self.SCHWAB_FIELD_MAP.get(field_id)
+                                if field_name:
+                                    self.latest_data_store[normalized_key][field_name] = value
+                    
+                    # Update data count and timestamp
+                    self.data_count = len(self.latest_data_store)
+                    self.last_data_update = datetime.datetime.now()
+                    
+                    # Update status message
+                    self.status_message = f"Stream: Receiving data ({self.data_count} contracts)"
+                    
+                    # Log data update
+                    if self.message_counter % 10 == 0:  # Log every 10 messages to avoid excessive logging
+                        logger.info(f"Updated data store with {self.data_count} contracts. Last update: {self.last_data_update}")
+                        print(f"STREAMING_MANAGER: Updated data store with {self.data_count} contracts", file=sys.stderr)
+                        
+        except Exception as e:
+            logger.error(f"Error processing stream message: {e}", exc_info=True)
+            print(f"STREAMING_MANAGER: Error processing stream message: {e}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+            with self._lock:
+                self.error_message = f"Stream message processing error: {e}"
+
+    def _message_processor(self):
+        """
+        Process messages from the queue to avoid blocking the stream handler.
+        """
+        logger.info("Message processor thread started")
+        print(f"STREAMING_MANAGER: Message processor thread started", file=sys.stderr)
+        
+        while self.is_running:
+            try:
+                # Get a message from the queue with a timeout
+                try:
+                    message = self.message_queue.get(timeout=1.0)
+                    self._handle_stream_message(message)
+                    self.message_queue.task_done()
+                except Empty:
+                    # No message in queue, just continue
+                    pass
+                    
+            except Exception as e:
+                logger.error(f"Error in message processor: {e}", exc_info=True)
+                print(f"STREAMING_MANAGER: Error in message processor: {e}", file=sys.stderr)
+                time.sleep(1)  # Sleep briefly on error
+                
+        logger.info("Message processor thread stopped")
+        print(f"STREAMING_MANAGER: Message processor thread stopped", file=sys.stderr)
+
+    def _heartbeat_monitor(self):
+        """
+        Monitor heartbeats and reconnect if necessary.
+        """
+        logger.info("Heartbeat monitor thread started")
+        print(f"STREAMING_MANAGER: Heartbeat monitor thread started", file=sys.stderr)
+        
+        while self.is_running:
+            try:
+                with self._lock:
+                    if self.last_heartbeat:
+                        time_since_heartbeat = (datetime.datetime.now() - self.last_heartbeat).total_seconds()
+                        if time_since_heartbeat > self.heartbeat_interval * 2:
+                            logger.warning(f"No heartbeat received for {time_since_heartbeat} seconds. Reconnecting...")
+                            print(f"STREAMING_MANAGER: No heartbeat received for {time_since_heartbeat} seconds. Reconnecting...", file=sys.stderr)
+                            self._reconnect()
+                    
+                    # Also check if we've received any data
+                    if self.last_data_update:
+                        time_since_data = (datetime.datetime.now() - self.last_data_update).total_seconds()
+                        if time_since_data > 60 and self.subscriptions_count > 0:  # If no data for 1 minute and we have subscriptions
+                            logger.warning(f"No data received for {time_since_data} seconds. Reconnecting...")
+                            print(f"STREAMING_MANAGER: No data received for {time_since_data} seconds. Reconnecting...", file=sys.stderr)
+                            self._reconnect()
+                
+                time.sleep(10)  # Check every 10 seconds
+                
+            except Exception as e:
+                logger.error(f"Error in heartbeat monitor: {e}", exc_info=True)
+                print(f"STREAMING_MANAGER: Error in heartbeat monitor: {e}", file=sys.stderr)
+                time.sleep(10)  # Sleep longer on error
+                
+        logger.info("Heartbeat monitor thread stopped")
+        print(f"STREAMING_MANAGER: Heartbeat monitor thread stopped", file=sys.stderr)
+
+    def _reconnect(self):
+        """
+        Attempt to reconnect the stream.
+        """
+        with self._lock:
+            if self.reconnect_attempts >= self.max_reconnect_attempts:
+                logger.error(f"Maximum reconnect attempts ({self.max_reconnect_attempts}) reached. Giving up.")
+                print(f"STREAMING_MANAGER: Maximum reconnect attempts reached. Giving up.", file=sys.stderr)
+                self.error_message = f"Maximum reconnect attempts ({self.max_reconnect_attempts}) reached"
+                self.status_message = f"Stream: Error - {self.error_message}"
+                self.is_running = False
+                return False
+                
+            self.reconnect_attempts += 1
+            logger.info(f"Attempting to reconnect (attempt {self.reconnect_attempts}/{self.max_reconnect_attempts})")
+            print(f"STREAMING_MANAGER: Attempting to reconnect (attempt {self.reconnect_attempts}/{self.max_reconnect_attempts})", file=sys.stderr)
+            self.status_message = f"Stream: Reconnecting (attempt {self.reconnect_attempts}/{self.max_reconnect_attempts})..."
+            
+            # Save current subscriptions
+            current_subs = list(self.current_subscriptions)
+            
+            # Stop the current stream
+            self._stop_stream_internal()
+            
+            # Wait before reconnecting
+            time.sleep(self.reconnect_delay)
+            
+            # Restart with the same subscriptions
+            if current_subs:
+                return self.start_stream(current_subs)
+            else:
+                logger.warning("No subscriptions to reconnect with")
+                print(f"STREAMING_MANAGER: No subscriptions to reconnect with", file=sys.stderr)
+                self.status_message = "Stream: No subscriptions to reconnect with"
+                self.is_running = False
+                return False
+
     def _stream_worker(self, option_keys_to_subscribe_tuple):
         print(f"STREAMING_MANAGER: _stream_worker started at {datetime.datetime.now()} with {len(option_keys_to_subscribe_tuple)} keys", file=sys.stderr)
         option_keys_to_subscribe = set(option_keys_to_subscribe_tuple)
@@ -149,6 +345,7 @@ class StreamingManager:
         with self._lock:
             self.status_message = "Stream: Initializing worker..."
             self.error_message = None # Clear previous errors
+            self.reconnect_attempts = 0  # Reset reconnect attempts
 
         schwab_api_client = self._get_schwab_client()
         if not schwab_api_client:
@@ -181,19 +378,38 @@ class StreamingManager:
                     self.is_running = False
                 return
 
-            # Define a custom handler that logs raw messages before processing
+            # Define a custom handler that queues messages for processing
             def custom_stream_handler(raw_message):
                 try:
                     # Log the raw message to the dedicated raw stream log file
                     self.raw_stream_logger.debug(f"RAW MESSAGE: {raw_message}")
                     print(f"STREAMING_MANAGER: Received raw message: {str(raw_message)[:100]}...", file=sys.stderr)
                     
-                    # Process the message with our regular handler
-                    self._handle_stream_message(raw_message)
+                    # Queue the message for processing
+                    self.message_queue.put(raw_message)
                 except Exception as e:
                     logger.error(f"Error in custom_stream_handler: {e}", exc_info=True)
                     print(f"STREAMING_MANAGER: Error in custom_stream_handler: {e}", file=sys.stderr)
                     traceback.print_exc(file=sys.stderr)
+            
+            # Start the message processor thread
+            message_processor_thread = threading.Thread(
+                target=self._message_processor,
+                name="MessageProcessor"
+            )
+            message_processor_thread.daemon = True
+            message_processor_thread.start()
+            
+            # Start the heartbeat monitor thread
+            heartbeat_thread = threading.Thread(
+                target=self._heartbeat_monitor,
+                name="HeartbeatMonitor"
+            )
+            heartbeat_thread.daemon = True
+            heartbeat_thread.start()
+            
+            with self._lock:
+                self.heartbeat_thread = heartbeat_thread
             
             logger.info("_stream_worker: Starting schwabdev's stream listener with custom handler...")
             print(f"STREAMING_MANAGER: Starting schwabdev's stream listener with custom handler...", file=sys.stderr)
@@ -235,6 +451,7 @@ class StreamingManager:
 
             with self._lock:
                 self.current_subscriptions = set(formatted_keys)
+                self.subscriptions_count = len(self.current_subscriptions)
                 self.status_message = f"Stream: Subscriptions sent for {len(self.current_subscriptions)} contracts. Monitoring..."
             
             logger.info("_stream_worker: Subscriptions sent. Now entering main monitoring loop.")
@@ -293,306 +510,134 @@ class StreamingManager:
                 elif self.status_message == "Stream: Stopping...":
                     self.status_message = "Stream: Stopped."
                 elif self.status_message not in ["Stream: Stopped.", "Stream: No symbols to subscribe."]:
-                    self.status_message = "Stream: Stopped unexpectedly."
-            
-            active_schwab_stream_client = None
-            with self._lock:
-                active_schwab_stream_client = self.stream_client
+                    self.status_message = "Stream: Stopped due to unknown error."
 
-            if active_schwab_stream_client and hasattr(active_schwab_stream_client, "stop") and active_schwab_stream_client.active:
-                try:
-                    logger.info("_stream_worker's finally block: Attempting to stop schwabdev stream client.")
-                    print(f"STREAMING_MANAGER: Attempting to stop schwabdev stream client", file=sys.stderr)
-                    active_schwab_stream_client.stop()
-                    logger.info("_stream_worker's finally block: schwabdev stream client stop() called.")
-                    print(f"STREAMING_MANAGER: schwabdev stream client stop() called", file=sys.stderr)
-                except Exception as e_stop:
-                    logger.error(f"_stream_worker's finally block: Error stopping schwabdev stream client: {e_stop}", exc_info=True)
-                    print(f"STREAMING_MANAGER: Error stopping schwabdev stream client: {e_stop}", file=sys.stderr)
-                    traceback.print_exc(file=sys.stderr)
-            else:
-                logger.info("_stream_worker's finally block: Schwabdev stream client not active/stoppable or already None.")
-                print(f"STREAMING_MANAGER: Schwabdev stream client not active/stoppable or already None", file=sys.stderr)
-            
-            with self._lock:
-                self.stream_client = None
-            logger.info("_stream_worker finished.")
-            print(f"STREAMING_MANAGER: _stream_worker finished", file=sys.stderr)
-
-    def _handle_stream_message(self, raw_message):
-        self.message_counter += 1
-        current_message_id = self.message_counter
-        
-        # Always log the full raw message to the dedicated raw stream log
-        self.raw_stream_logger.debug(f"[MsgID:{current_message_id}] RECEIVED: {raw_message}")
-        
-        log_msg_content = str(raw_message)
-        if len(log_msg_content) > 1000:
-            log_msg_content = log_msg_content[:1000] + "... (truncated)"
-        logger.debug(f"[MsgID:{current_message_id}] _handle_stream_message received raw_message (type: {type(raw_message)}). Content: {log_msg_content}")
-        
-        try:
-            message_dict = None
-            if isinstance(raw_message, str):
-                try:
-                    message_dict = json.loads(raw_message)
-                    # Log the parsed JSON for debugging
-                    logger.debug(f"[MsgID:{current_message_id}] Parsed JSON: {json.dumps(message_dict)[:1000]}...")
-                except json.JSONDecodeError as jde:
-                    logger.error(f"[MsgID:{current_message_id}] Failed to decode JSON: {jde} - Raw (first 200): {raw_message[:200]}", exc_info=True)
-                    print(f"STREAMING_MANAGER: Failed to decode JSON: {jde} - Raw (first 200): {raw_message[:200]}", file=sys.stderr)
-                    return
-            elif isinstance(raw_message, dict):
-                message_dict = raw_message
-                logger.debug(f"[MsgID:{current_message_id}] Received dict message: {json.dumps(message_dict)[:1000]}...")
-            else:
-                logger.warning(f"[MsgID:{current_message_id}] Unexpected message type: {type(raw_message)}. Raw: {raw_message}")
-                print(f"STREAMING_MANAGER: Unexpected message type: {type(raw_message)}", file=sys.stderr)
-                return
-            
-            # Log the full message for debugging
-            self.raw_stream_logger.debug(f"[MsgID:{current_message_id}] PARSED: {json.dumps(message_dict)}")
-
-            if "data" in message_dict:
-                data_items = message_dict.get("data", [])
-                logger.info(f"[MsgID:{current_message_id}] Identified \"data\" message with {len(data_items)} items.")
-                print(f"STREAMING_MANAGER: Identified \"data\" message with {len(data_items)} items", file=sys.stderr)
-                updated_keys_in_batch = []
-                for item_index, item in enumerate(data_items):
-                    if not isinstance(item, dict):
-                        logger.warning(f"[MsgID:{current_message_id}] Skipping non-dict data item #{item_index}: {item}")
-                        continue
-                    
-                    # Extract service and content
-                    service = item.get("service")
-                    content_list = item.get("content", [])
-                    
-                    if service == "LEVELONE_OPTIONS" and content_list:
-                        logger.info(f"[MsgID:{current_message_id}] Processing LEVELONE_OPTIONS data with {len(content_list)} content items.")
-                        print(f"STREAMING_MANAGER: Processing LEVELONE_OPTIONS data with {len(content_list)} content items", file=sys.stderr)
-                        
-                        for content_item in content_list:
-                            if not isinstance(content_item, dict):
-                                logger.warning(f"[MsgID:{current_message_id}] Skipping non-dict content item: {content_item}")
-                                continue
-                            
-                            # Get the contract key
-                            contract_key = content_item.get("key")
-                            if not contract_key:
-                                logger.warning(f"[MsgID:{current_message_id}] Content item missing key: {content_item}")
-                                continue
-                            
-                            # Normalize the contract key for consistent matching
-                            normalized_key = normalize_contract_key(contract_key)
-                            logger.debug(f"[MsgID:{current_message_id}] Processing contract: {contract_key} (normalized: {normalized_key})")
-                            
-                            # Process fields
-                            with self._lock:
-                                if normalized_key not in self.latest_data_store:
-                                    self.latest_data_store[normalized_key] = {}
-                                
-                                # Process each field in the content item
-                                for field_id, value in content_item.items():
-                                    if field_id == "key":
-                                        continue  # Skip the key field
-                                    
-                                    # Map field ID to field name using the field map
-                                    # Handle both string and numeric field IDs
-                                    if field_id in self.SCHWAB_FIELD_MAP:
-                                        field_name = self.SCHWAB_FIELD_MAP[field_id]
-                                    else:
-                                        try:
-                                            numeric_field_id = int(field_id)
-                                            if numeric_field_id in self.SCHWAB_FIELD_MAP:
-                                                field_name = self.SCHWAB_FIELD_MAP[numeric_field_id]
-                                            else:
-                                                logger.warning(f"[MsgID:{current_message_id}] Unknown field ID: {field_id}")
-                                                continue
-                                        except (ValueError, TypeError):
-                                            logger.warning(f"[MsgID:{current_message_id}] Non-numeric field ID: {field_id}")
-                                            continue
-                                    
-                                    # Convert value to appropriate type
-                                    typed_value = value
-                                    if isinstance(value, str):
-                                        try:
-                                            if "." in value or "e" in value.lower():
-                                                typed_value = float(value)
-                                            elif value.lstrip("-").isdigit():
-                                                typed_value = int(value)
-                                        except ValueError:
-                                            # Keep as string if conversion fails
-                                            pass
-                                    
-                                    # Special logging for price fields
-                                    if field_name in ["bidPrice", "askPrice", "lastPrice"]:
-                                        old_value = self.latest_data_store[normalized_key].get(field_name)
-                                        logger.info(f"[MsgID:{current_message_id}] PRICE UPDATE: {normalized_key}.{field_name}: {old_value} -> {typed_value}")
-                                        print(f"STREAMING_MANAGER: PRICE UPDATE: {normalized_key}.{field_name}: {old_value} -> {typed_value}", file=sys.stderr)
-                                    
-                                    # Update the data store
-                                    self.latest_data_store[normalized_key][field_name] = typed_value
-                                    
-                                    # Add to updated keys list if not already there
-                                    if normalized_key not in updated_keys_in_batch:
-                                        updated_keys_in_batch.append(normalized_key)
-                
-                if updated_keys_in_batch:
-                    logger.info(f"[MsgID:{current_message_id}] Updated {len(updated_keys_in_batch)} contracts in this batch.")
-                    print(f"STREAMING_MANAGER: Updated {len(updated_keys_in_batch)} contracts in this batch", file=sys.stderr)
-                    # Log a sample of the updated contracts
-                    for key in updated_keys_in_batch[:3]:
-                        with self._lock:
-                            if key in self.latest_data_store:
-                                data = self.latest_data_store[key]
-                                price_info = {
-                                    "bidPrice": data.get("bidPrice", "N/A"),
-                                    "askPrice": data.get("askPrice", "N/A"),
-                                    "lastPrice": data.get("lastPrice", "N/A")
-                                }
-                                logger.info(f"[MsgID:{current_message_id}] Updated contract {key} price data: {price_info}")
-                                print(f"STREAMING_MANAGER: Updated contract {key} price data: {price_info}", file=sys.stderr)
-            
-            elif "notify" in message_dict:
-                # Handle notification messages
-                notify_items = message_dict.get("notify", [])
-                logger.info(f"[MsgID:{current_message_id}] Received notification with {len(notify_items)} items.")
-                print(f"STREAMING_MANAGER: Received notification with {len(notify_items)} items", file=sys.stderr)
-                for notify_item in notify_items:
-                    if isinstance(notify_item, dict):
-                        heartbeat = notify_item.get("heartbeat")
-                        if heartbeat:
-                            logger.debug(f"[MsgID:{current_message_id}] Received heartbeat: {heartbeat}")
-                        else:
-                            logger.info(f"[MsgID:{current_message_id}] Received notification: {notify_item}")
-                            print(f"STREAMING_MANAGER: Received notification: {notify_item}", file=sys.stderr)
-            
-            elif "response" in message_dict:
-                # Handle response messages
-                response_items = message_dict.get("response", [])
-                logger.info(f"[MsgID:{current_message_id}] Received response with {len(response_items)} items.")
-                print(f"STREAMING_MANAGER: Received response with {len(response_items)} items", file=sys.stderr)
-                for response_item in response_items:
-                    if isinstance(response_item, dict):
-                        service = response_item.get("service")
-                        command = response_item.get("command")
-                        content = response_item.get("content")
-                        logger.info(f"[MsgID:{current_message_id}] Response for {service}/{command}: {content}")
-                        print(f"STREAMING_MANAGER: Response for {service}/{command}: {content}", file=sys.stderr)
-            
-            else:
-                # Handle other message types
-                logger.warning(f"[MsgID:{current_message_id}] Unhandled message type: {message_dict.keys()}")
-                print(f"STREAMING_MANAGER: Unhandled message type: {message_dict.keys()}", file=sys.stderr)
-        
-        except Exception as e:
-            logger.error(f"[MsgID:{current_message_id}] Error processing message: {e}", exc_info=True)
-            print(f"STREAMING_MANAGER: Error processing message: {e}", file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
-
-    def start_streaming(self, option_keys):
+    def _stop_stream_internal(self):
         """
-        Start streaming for the given option keys.
+        Internal method to stop the stream without locking.
+        """
+        logger.info("_stop_stream_internal: Stopping stream...")
+        print(f"STREAMING_MANAGER: _stop_stream_internal: Stopping stream...", file=sys.stderr)
+        
+        # Set status first to avoid race conditions
+        self.status_message = "Stream: Stopping..."
+        self.is_running = False
+        
+        # Stop the stream client if it exists
+        if self.stream_client:
+            try:
+                logger.info("_stop_stream_internal: Calling stream_client.stop()...")
+                print(f"STREAMING_MANAGER: Calling stream_client.stop()...", file=sys.stderr)
+                self.stream_client.stop()
+                logger.info("_stop_stream_internal: stream_client.stop() called successfully.")
+                print(f"STREAMING_MANAGER: stream_client.stop() called successfully", file=sys.stderr)
+            except Exception as e:
+                logger.error(f"Error stopping stream client: {e}", exc_info=True)
+                print(f"STREAMING_MANAGER: Error stopping stream client: {e}", file=sys.stderr)
+                traceback.print_exc(file=sys.stderr)
+        
+        # Clear data and reset state
+        self.stream_client = None
+        self.current_subscriptions = set()
+        self.subscriptions_count = 0
+        self.status_message = "Stream: Stopped."
+        
+        logger.info("_stop_stream_internal: Stream stopped.")
+        print(f"STREAMING_MANAGER: Stream stopped", file=sys.stderr)
+
+    def start_stream(self, option_keys):
+        """
+        Start streaming data for the given option keys.
         
         Args:
             option_keys: List or set of option contract keys to stream
-        
+            
         Returns:
-            bool: True if streaming started successfully, False otherwise
+            bool: True if stream started successfully, False otherwise
         """
-        print(f"STREAMING_MANAGER: start_streaming called with {len(option_keys)} option keys at {datetime.datetime.now()}", file=sys.stderr)
-        logger.info(f"start_streaming called with {len(option_keys)} option keys")
+        print(f"STREAMING_MANAGER: start_stream called with {len(option_keys)} keys at {datetime.datetime.now()}", file=sys.stderr)
+        logger.info(f"start_stream: Called with {len(option_keys)} keys")
         
         with self._lock:
+            # If already running, stop first
             if self.is_running:
-                logger.warning("start_streaming called but streaming is already running. Stopping first.")
-                print(f"STREAMING_MANAGER: Streaming is already running. Stopping first", file=sys.stderr)
-                self.stop_streaming()
+                logger.info("start_stream: Stream is already running. Stopping first.")
+                print(f"STREAMING_MANAGER: Stream is already running. Stopping first", file=sys.stderr)
+                self._stop_stream_internal()
             
-            self.status_message = "Stream: Starting..."
-            self.error_message = None
+            # Reset state
             self.is_running = True
-            self.latest_data_store = {}  # Clear any previous data
-        
-        try:
-            # Convert option_keys to a tuple to ensure it's hashable for thread args
-            option_keys_tuple = tuple(option_keys)
+            self.error_message = None
+            self.status_message = "Stream: Starting..."
+            self.message_counter = 0
+            self.data_count = 0
+            self.last_data_update = None
+            self.last_heartbeat = datetime.datetime.now()  # Initialize with current time
             
-            # Start the streaming thread
+            # Start the stream thread
             self.stream_thread = threading.Thread(
                 target=self._stream_worker,
-                args=(option_keys_tuple,),
+                args=(tuple(option_keys),),  # Convert to tuple for thread safety
                 name="StreamWorker"
             )
-            self.stream_thread.daemon = True  # Make thread a daemon so it exits when main thread exits
+            self.stream_thread.daemon = True
             self.stream_thread.start()
             
-            logger.info(f"Stream thread started with {len(option_keys_tuple)} option keys")
-            print(f"STREAMING_MANAGER: Stream thread started with {len(option_keys_tuple)} option keys", file=sys.stderr)
+            logger.info(f"start_stream: Stream thread started for {len(option_keys)} keys")
+            print(f"STREAMING_MANAGER: Stream thread started for {len(option_keys)} keys", file=sys.stderr)
             return True
-        
-        except Exception as e:
-            logger.error(f"Error starting streaming: {e}", exc_info=True)
-            print(f"STREAMING_MANAGER: Error starting streaming: {e}", file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
-            with self._lock:
-                self.error_message = f"Error starting streaming: {e}"
-                self.status_message = f"Stream: Error - {self.error_message}"
-                self.is_running = False
-            return False
 
-    def stop_streaming(self):
-        """Stop streaming."""
-        print(f"STREAMING_MANAGER: stop_streaming called at {datetime.datetime.now()}", file=sys.stderr)
-        logger.info("stop_streaming called")
+    def stop_stream(self):
+        """
+        Stop the current stream.
+        
+        Returns:
+            bool: True if stream was stopped, False if no stream was running
+        """
+        print(f"STREAMING_MANAGER: stop_stream called at {datetime.datetime.now()}", file=sys.stderr)
+        logger.info("stop_stream: Called")
         
         with self._lock:
             if not self.is_running:
-                logger.info("stop_streaming called but streaming is not running")
-                print(f"STREAMING_MANAGER: Streaming is not running", file=sys.stderr)
-                return
-            
-            self.status_message = "Stream: Stopping..."
-            self.is_running = False
-        
-        # Wait for the stream thread to exit
-        if self.stream_thread and self.stream_thread.is_alive():
-            logger.info("Waiting for stream thread to exit...")
-            print(f"STREAMING_MANAGER: Waiting for stream thread to exit...", file=sys.stderr)
-            self.stream_thread.join(timeout=5)
-            if self.stream_thread.is_alive():
-                logger.warning("Stream thread did not exit within timeout")
-                print(f"STREAMING_MANAGER: Stream thread did not exit within timeout", file=sys.stderr)
-        
-        with self._lock:
-            self.status_message = "Stream: Stopped."
-            self.stream_thread = None
-        
-        logger.info("Streaming stopped")
-        print(f"STREAMING_MANAGER: Streaming stopped", file=sys.stderr)
+                logger.info("stop_stream: Stream is not running.")
+                print(f"STREAMING_MANAGER: Stream is not running", file=sys.stderr)
+                return False
+                
+            self._stop_stream_internal()
+            return True
 
-    def get_streaming_data(self):
+    def get_latest_data(self):
         """
-        Get the latest streaming data.
+        Get the latest data from the stream.
         
         Returns:
-            dict: The latest streaming data
+            dict: The latest data store
         """
         with self._lock:
+            # Return a copy to avoid thread safety issues
             return self.latest_data_store.copy()
 
     def get_status(self):
         """
-        Get the current status of the streaming manager.
+        Get the current status of the stream.
         
         Returns:
-            dict: The current status
+            dict: Status information
         """
         with self._lock:
-            return {
+            status = {
                 "is_running": self.is_running,
                 "status_message": self.status_message,
                 "error_message": self.error_message,
                 "subscriptions_count": len(self.current_subscriptions),
-                "data_count": len(self.latest_data_store)
+                "data_count": len(self.latest_data_store),
+                "message_counter": self.message_counter
             }
+            
+            if self.last_data_update:
+                status["last_data_update"] = self.last_data_update.isoformat()
+                
+            if self.last_heartbeat:
+                status["last_heartbeat"] = self.last_heartbeat.isoformat()
+                
+            return status

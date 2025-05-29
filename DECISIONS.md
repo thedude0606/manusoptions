@@ -37,6 +37,19 @@
 - Enhanced streaming update interval callback to ensure consistent data flow and recommendation updates
 - Implemented thread-safe data access with proper locking mechanisms to prevent race conditions
 
+## Streaming Manager Improvements (May 29, 2025)
+- Implemented message queue system to decouple message reception from processing, preventing blocking in stream handler
+- Added dedicated message processor thread to handle incoming messages without blocking the stream
+- Implemented heartbeat monitoring system to detect connection issues and trigger automatic reconnection
+- Added automatic reconnection logic with configurable retry limits and backoff delays
+- Enhanced error handling with detailed error messages and proper state management during failures
+- Improved contract key normalization to ensure consistent matching between REST API and streaming data
+- Added comprehensive status tracking with detailed metrics (message count, data count, last update time)
+- Implemented proper thread synchronization with RLock to prevent race conditions in multi-threaded environment
+- Added data flow monitoring to detect and recover from situations where subscriptions exist but no data is received
+- Enhanced logging with detailed timestamps and context information for better troubleshooting
+- Implemented proper cleanup of resources when stopping the stream to prevent resource leaks
+
 ## Timeframe Bias Indicator
 - Implemented a comprehensive timeframe bias indicator to show dominant trend direction across timeframes
 - Used a multi-factor approach combining moving averages, momentum indicators, and price action analysis
