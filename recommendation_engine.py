@@ -550,6 +550,31 @@ class RecommendationEngine:
         """
         logger.info(f"Generating recommendations for {symbol}")
         
+        # FIX: Handle case where tech_indicators_dict is not a dictionary
+        if not isinstance(tech_indicators_dict, dict):
+            logger.warning(f"tech_indicators_dict is not a dictionary, it's a {type(tech_indicators_dict).__name__}")
+            # If it's a DataFrame or ndarray, wrap it in a dictionary with the timeframe as key
+            if isinstance(tech_indicators_dict, (pd.DataFrame, np.ndarray)):
+                tech_indicators_dict = {symbol if isinstance(symbol, str) else "default": tech_indicators_dict}
+            else:
+                logger.error(f"Unsupported type for tech_indicators_dict: {type(tech_indicators_dict)}")
+                return {
+                    "symbol": symbol,
+                    "price": underlying_price,
+                    "market_direction": {
+                        "direction": "neutral",
+                        "bullish_score": 50,
+                        "bearish_score": 50,
+                        "signals": ["Invalid technical indicators format"],
+                        "timeframe_bias": {
+                            "score": 0,
+                            "label": "neutral",
+                            "confidence": 0
+                        }
+                    },
+                    "recommendations": []
+                }
+        
         # Check if we have technical indicators - FIX: Handle both DataFrames and numpy arrays
         if tech_indicators_dict is None or len(tech_indicators_dict) == 0 or all(
             (isinstance(df, pd.DataFrame) and df.empty) or 

@@ -15,6 +15,7 @@
 - Integrated timeframe bias with recommendation engine for enhanced signal detection
 - Added bias confidence scoring to improve recommendation quality
 - Fixed TypeError in recommendation engine when handling numpy arrays in tech_indicators_dict
+- Fixed TypeError when tech_indicators_dict is not a dictionary by adding robust type checking
 
 ### Current Work in Progress
 - Testing enhanced recommendation engine with timeframe bias integration

@@ -19,6 +19,7 @@
 - Improved projected move calculation based on days to expiration and volatility
 - Enhanced target timeframe calculation with more realistic bounds (4-72 hours)
 - Fixed type handling in recommendation engine to properly handle both pandas DataFrames and numpy arrays in technical indicators dictionary
+- Added robust type checking for tech_indicators_dict to ensure proper handling of non-dictionary inputs
 
 ## Error Handlingas Indicator
 - Implemented a comprehensive timeframe bias indicator to show dominant trend direction across timeframes
