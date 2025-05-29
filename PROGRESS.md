@@ -29,6 +29,7 @@
 - Enhanced error handling with detailed error messages and proper state management
 - Improved contract key normalization for consistent matching between REST API and streaming data
 - Added comprehensive status tracking with detailed metrics for streaming data
+- Identified issues with recommendation engine's symbol-specific data handling
 
 ### Current Work in Progress
 - Testing enhanced streaming manager with improved connection stability and error handling
@@ -36,6 +37,7 @@
 - Monitoring streaming data updates to ensure consistent data flow
 - Validating streaming debug monitor effectiveness in diagnosing update issues
 - Fixing method name mismatch in streaming functionality
+- Addressing recommendation engine symbol-specific data handling issues
 
 ### Known Issues/Challenges
 - Previous recommendation tables showed very low confidence scores (10.0)
@@ -44,8 +46,15 @@
 - Contract key format differences between REST API and streaming data causing matching issues
 - Streaming data may not be triggering recommendation updates as expected
 - Application failing to load due to error in shutdown_streaming function during app context teardown
+- **Recommendation engine shows same recommendations regardless of symbol input due to default data generation when symbol-specific data is missing or invalid**
+- Data flow issues between components may be causing loss of symbol context
+- Default/minimal example data generation in recommendation engine creates non-symbol-specific recommendations
 
 ### Next Steps
+- Fix recommendation engine symbol-specific data handling
+- Add symbol validation throughout the data pipeline
+- Enhance error handling for missing symbol-specific data
+- Add data quality metrics for recommendation reliability
 - Validate the improved streaming manager with real-world data
 - Test automatic reconnection logic across different network conditions
 - Consider additional UI improvements to display streaming status information

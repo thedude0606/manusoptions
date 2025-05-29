@@ -25,6 +25,10 @@
 - [x] Improve contract key normalization for streaming data
 - [x] Fix application loading error in shutdown_streaming function
 - [x] Fix method name mismatch in streaming functionality (start_streaming → start_stream)
+- [ ] Fix recommendation engine symbol-specific data handling
+- [ ] Add symbol validation throughout data pipeline
+- [ ] Enhance error handling for missing symbol-specific data
+- [ ] Add data quality metrics for recommendation reliability
 - [ ] Test enhanced streaming manager with real-world data
 - [ ] Validate automatic reconnection logic across different conditions
 - [ ] Test timeframe bias indicator across different market conditions
@@ -40,6 +44,7 @@
 - [x] Update TODO.md with prioritized tasks
 - [x] Update DECISIONS.md with technical rationale
 - [x] Document streaming manager improvements and rationale
+- [x] Document recommendation engine issues and fixes
 - [ ] Create user guide for recommendation engine features
 - [ ] Document timeframe bias indicator usage and interpretation
 - [ ] Document streaming debug monitor usage and interpretation
@@ -51,3 +56,4 @@
 - Timeframe bias UI display depends on validation of indicator accuracy
 - Recommendation updates depend on reliable streaming data flow
 - Automated testing depends on stable streaming implementation
+- Symbol-specific recommendations depend on fixing data flow issues
