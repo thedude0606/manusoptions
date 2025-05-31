@@ -280,7 +280,57 @@ class RecommendationEngine:
                     logger.warning(f"Adding default column '{col}' with value {default_value}")
                     options_df[col] = default_value
     
-    def evaluate_options_chain(self, options_df, market_direction, underlying_price):
+    def _validate_options_data_for_symbol(self, options_df, symbol):
+        """
+        Validate that options data is for the specified symbol.
+        
+        Args:
+            options_df: DataFrame containing options chain data
+            symbol: Symbol of the underlying asset
+            
+        Returns:
+            tuple: (is_valid, message) where is_valid is a boolean and message is a string
+        """
+        if options_df.empty:
+            return False, "Options DataFrame is empty"
+        
+        # Check if 'underlying' column exists and matches the symbol
+        if 'underlying' in options_df.columns:
+            unique_underlyings = options_df['underlying'].unique()
+            if len(unique_underlyings) == 0:
+                return False, "No underlying values found in options data"
+            
+            # Check if any underlying matches the symbol (case insensitive)
+            symbol_matches = [u for u in unique_underlyings if str(u).upper() == symbol.upper()]
+            if not symbol_matches:
+                logger.warning(f"Options data underlying ({unique_underlyings}) does not match requested symbol ({symbol})")
+                return False, f"Options data is for {unique_underlyings} but requested symbol is {symbol}"
+        
+        # Check if 'symbol' column exists and contains the symbol
+        elif 'symbol' in options_df.columns:
+            # Extract base symbols from option symbols (usually the part before the underscore or date)
+            option_symbols = options_df['symbol'].astype(str)
+            
+            # Try different patterns to extract underlying symbol
+            contains_symbol = False
+            for opt_sym in option_symbols:
+                # Check if the option symbol contains the underlying symbol
+                if symbol.upper() in opt_sym.upper():
+                    contains_symbol = True
+                    break
+            
+            if not contains_symbol:
+                logger.warning(f"No option symbols contain the requested symbol {symbol}")
+                return False, f"Option symbols do not contain the requested symbol {symbol}"
+        
+        # If we can't validate the symbol, log a warning but continue
+        else:
+            logger.warning(f"Cannot validate options data for symbol {symbol} - missing 'underlying' and 'symbol' columns")
+            return True, f"Cannot validate options data for symbol {symbol} - missing columns"
+        
+        return True, f"Options data validated for symbol {symbol}"
+    
+    def evaluate_options_chain(self, options_df, market_direction, underlying_price, symbol="UNKNOWN"):
         """
         Evaluate options chain data to find optimal contracts based on market direction.
         
@@ -288,17 +338,26 @@ class RecommendationEngine:
             options_df: DataFrame containing options chain data
             market_direction: Dict with market direction analysis
             underlying_price: Current price of the underlying asset
+            symbol: Symbol of the underlying asset
             
         Returns:
             dict: Evaluated options with scores for calls and puts
         """
-        logger.info("Evaluating options chain data")
+        logger.info(f"Evaluating options chain data for symbol {symbol}")
+        
+        # Validate options data for the specified symbol
+        is_valid, validation_message = self._validate_options_data_for_symbol(options_df, symbol)
+        logger.info(f"Options data validation: {validation_message}")
         
         if options_df.empty:
             logger.warning("Empty options chain DataFrame provided")
             return {
                 "calls": pd.DataFrame(),
-                "puts": pd.DataFrame()
+                "puts": pd.DataFrame(),
+                "validation": {
+                    "is_valid": False,
+                    "message": "Empty options chain DataFrame provided"
+                }
             }
         
         # Ensure required columns exist with fallbacks
@@ -324,83 +383,63 @@ class RecommendationEngine:
                 logger.error("Cannot determine option types without putCall or symbol columns")
                 return {
                     "calls": pd.DataFrame(),
-                    "puts": pd.DataFrame()
+                    "puts": pd.DataFrame(),
+                    "validation": {
+                        "is_valid": False,
+                        "message": "Cannot determine option types without putCall or symbol columns"
+                    }
                 }
         
-        # If either dataframe is empty after splitting, create a minimal example to ensure recommendations
+        # If either dataframe is empty after splitting, return empty results instead of creating default data
         if calls_df.empty:
-            logger.warning("No call options found, creating a minimal example")
-            calls_df = pd.DataFrame({
-                'symbol': ['EXAMPLE_CALL'],
-                'putCall': ['CALL'],
-                'strikePrice': [underlying_price * 1.05],
-                'expirationDate': [(datetime.now() + timedelta(days=7)).strftime('%Y-%m-%d')],
-                'daysToExpiration': [7],
-                'mark': [underlying_price * 0.05],
-                'lastPrice': [underlying_price * 0.05],
-                'bidPrice': [underlying_price * 0.04],
-                'askPrice': [underlying_price * 0.06],
-                'delta': [0.5],
-                'gamma': [0.05],
-                'theta': [-0.02],
-                'vega': [0.1],
-                'volatility': [0.3],
-                'openInterest': [100]
-            })
+            logger.warning(f"No call options found for symbol {symbol}")
         
         if puts_df.empty:
-            logger.warning("No put options found, creating a minimal example")
-            puts_df = pd.DataFrame({
-                'symbol': ['EXAMPLE_PUT'],
-                'putCall': ['PUT'],
-                'strikePrice': [underlying_price * 0.95],
-                'expirationDate': [(datetime.now() + timedelta(days=7)).strftime('%Y-%m-%d')],
-                'daysToExpiration': [7],
-                'mark': [underlying_price * 0.05],
-                'lastPrice': [underlying_price * 0.05],
-                'bidPrice': [underlying_price * 0.04],
-                'askPrice': [underlying_price * 0.06],
-                'delta': [-0.5],
-                'gamma': [0.05],
-                'theta': [-0.02],
-                'vega': [0.1],
-                'volatility': [0.3],
-                'openInterest': [100]
-            })
+            logger.warning(f"No put options found for symbol {symbol}")
         
-        # Initialize confidence scores based on market direction
-        direction = market_direction.get("direction", "neutral")
+        # Initialize confidence scores
+        for df in [calls_df, puts_df]:
+            if not df.empty:
+                df["confidenceScore"] = 60  # Start with a base score of 60 (slightly bullish)
         
-        # Set initial confidence scores - IMPROVED: Higher base confidence
-        calls_df["confidenceScore"] = 60.0
-        puts_df["confidenceScore"] = 60.0
+        # Adjust confidence based on market direction
+        if market_direction["direction"] == "bullish":
+            if not calls_df.empty:
+                calls_df["confidenceScore"] += 25  # Boost calls for bullish market
+                logger.info("Applied bullish market direction boost to calls")
+            if not puts_df.empty:
+                puts_df["confidenceScore"] -= 15  # Penalize puts for bullish market
+                logger.info("Applied bullish market direction penalty to puts")
+        elif market_direction["direction"] == "bearish":
+            if not puts_df.empty:
+                puts_df["confidenceScore"] += 25  # Boost puts for bearish market
+                logger.info("Applied bearish market direction boost to puts")
+            if not calls_df.empty:
+                calls_df["confidenceScore"] -= 15  # Penalize calls for bearish market
+                logger.info("Applied bearish market direction penalty to calls")
         
-        # Adjust confidence based on market direction - IMPROVED: More significant impact
-        if direction == "bullish":
-            calls_df["confidenceScore"] += 25
-            puts_df["confidenceScore"] -= 15
-        elif direction == "bearish":
-            calls_df["confidenceScore"] -= 15
-            puts_df["confidenceScore"] += 25
-        
-        # Adjust confidence based on timeframe bias if available
-        timeframe_bias = market_direction.get("timeframe_bias", {})
-        bias_score = timeframe_bias.get("score", 0)
-        bias_confidence = timeframe_bias.get("confidence", 0)
-        
-        if bias_score != 0 and bias_confidence > 0:
-            # Scale the adjustment based on bias confidence
-            adjustment_factor = bias_confidence / 100
+        # Apply timeframe bias adjustments if available
+        if "timeframe_bias" in market_direction and "score" in market_direction["timeframe_bias"]:
+            bias_score = market_direction["timeframe_bias"]["score"]
+            bias_confidence = market_direction["timeframe_bias"].get("confidence", 50) / 100
             
-            # Apply adjustments
+            # Scale adjustment based on bias confidence
+            adjustment_factor = abs(bias_score) / 100 * bias_confidence
+            
             if bias_score > 0:  # Bullish bias
-                calls_df["confidenceScore"] += 10 * adjustment_factor
-                puts_df["confidenceScore"] -= 5 * adjustment_factor
-                logger.info(f"Applied bullish timeframe bias adjustment: +{10 * adjustment_factor:.2f} for calls, -{5 * adjustment_factor:.2f} for puts")
+                if not calls_df.empty:
+                    calls_df["confidenceScore"] += 10 * adjustment_factor
+                    logger.info(f"Applied bullish timeframe bias adjustment: +{10 * adjustment_factor:.2f} for calls")
+                if not puts_df.empty:
+                    puts_df["confidenceScore"] -= 5 * adjustment_factor
+                    logger.info(f"Applied bullish timeframe bias adjustment: -{5 * adjustment_factor:.2f} for puts")
             elif bias_score < 0:  # Bearish bias
-                calls_df["confidenceScore"] -= 5 * adjustment_factor
-                puts_df["confidenceScore"] += 10 * adjustment_factor
-                logger.info(f"Applied bearish timeframe bias adjustment: -{5 * adjustment_factor:.2f} for calls, +{10 * adjustment_factor:.2f} for puts")
+                if not calls_df.empty:
+                    calls_df["confidenceScore"] -= 5 * adjustment_factor
+                    logger.info(f"Applied bearish timeframe bias adjustment: -{5 * adjustment_factor:.2f} for calls")
+                if not puts_df.empty:
+                    puts_df["confidenceScore"] += 10 * adjustment_factor
+                    logger.info(f"Applied bearish timeframe bias adjustment: +{10 * adjustment_factor:.2f} for puts")
         
         # Calculate additional metrics for scoring
         for df_name, df in [("calls", calls_df), ("puts", puts_df)]:
@@ -516,7 +555,11 @@ class RecommendationEngine:
         
         return {
             "calls": calls_df,
-            "puts": puts_df
+            "puts": puts_df,
+            "validation": {
+                "is_valid": is_valid,
+                "message": validation_message
+            }
         }
     
     def get_recommendations(self, tech_indicators_dict, options_df, underlying_price, symbol="UNKNOWN"):
@@ -535,6 +578,97 @@ class RecommendationEngine:
         logger.info(f"get_recommendations called for {symbol} - forwarding to generate_recommendations")
         return self.generate_recommendations(tech_indicators_dict, options_df, underlying_price, symbol)
     
+    def _validate_technical_indicators(self, tech_indicators_dict, symbol):
+        """
+        Validate that technical indicators data is for the specified symbol.
+        
+        Args:
+            tech_indicators_dict: Dictionary of DataFrames with technical indicators for each timeframe
+            symbol: Symbol of the underlying asset
+            
+        Returns:
+            tuple: (is_valid, message, data_quality) where is_valid is a boolean, message is a string,
+                  and data_quality is a dict with quality metrics
+        """
+        if not tech_indicators_dict:
+            return False, "Technical indicators dictionary is empty", {"score": 0, "metrics": {}}
+        
+        # Initialize data quality metrics
+        data_quality = {
+            "score": 100,  # Start with perfect score and deduct for issues
+            "metrics": {
+                "timeframes_available": [],
+                "timeframes_missing": [],
+                "indicators_per_timeframe": {},
+                "rows_per_timeframe": {},
+                "symbol_match": False
+            }
+        }
+        
+        # Check if any timeframes are available
+        available_timeframes = []
+        missing_timeframes = []
+        
+        for tf in TARGET_TIMEFRAMES:
+            if tf in tech_indicators_dict:
+                available_timeframes.append(tf)
+            else:
+                missing_timeframes.append(tf)
+                data_quality["score"] -= 10  # Deduct for each missing target timeframe
+        
+        data_quality["metrics"]["timeframes_available"] = available_timeframes
+        data_quality["metrics"]["timeframes_missing"] = missing_timeframes
+        
+        # If no target timeframes are available, check if any timeframes are available
+        if not available_timeframes:
+            if not tech_indicators_dict:
+                return False, "No timeframes available in technical indicators", data_quality
+            available_timeframes = list(tech_indicators_dict.keys())
+            data_quality["metrics"]["timeframes_available"] = available_timeframes
+        
+        # Check data for each available timeframe
+        symbol_match_found = False
+        
+        for tf in available_timeframes:
+            indicators_df = tech_indicators_dict[tf]
+            
+            # Skip empty DataFrames
+            if not isinstance(indicators_df, pd.DataFrame) or indicators_df.empty:
+                data_quality["metrics"]["indicators_per_timeframe"][tf] = 0
+                data_quality["metrics"]["rows_per_timeframe"][tf] = 0
+                data_quality["score"] -= 15  # Deduct for empty DataFrame
+                continue
+            
+            # Count available indicators and rows
+            data_quality["metrics"]["indicators_per_timeframe"][tf] = len(indicators_df.columns)
+            data_quality["metrics"]["rows_per_timeframe"][tf] = len(indicators_df)
+            
+            # Check if symbol column exists and matches
+            if 'symbol' in indicators_df.columns:
+                unique_symbols = indicators_df['symbol'].unique()
+                if symbol.upper() in [str(s).upper() for s in unique_symbols]:
+                    symbol_match_found = True
+                    data_quality["metrics"]["symbol_match"] = True
+            
+            # Check for minimum required indicators
+            required_indicators = ['rsi', 'macd', 'bb_middle']
+            missing_indicators = [ind for ind in required_indicators if not any(col.startswith(ind) for col in indicators_df.columns)]
+            
+            if missing_indicators:
+                data_quality["score"] -= 5 * len(missing_indicators)  # Deduct for each missing indicator type
+        
+        # If symbol column doesn't exist or doesn't match, we can't validate the symbol
+        # but we'll continue with a warning
+        if not symbol_match_found:
+            logger.warning(f"Cannot validate technical indicators for symbol {symbol} - symbol column missing or mismatch")
+            data_quality["score"] -= 20  # Significant deduction for symbol mismatch
+        
+        # Final validation result
+        is_valid = data_quality["score"] >= 50  # Consider valid if score is at least 50
+        message = f"Technical indicators validated for symbol {symbol}" if is_valid else f"Technical indicators validation failed for {symbol}"
+        
+        return is_valid, message, data_quality
+    
     def generate_recommendations(self, tech_indicators_dict, options_df, underlying_price, symbol="UNKNOWN"):
         """
         Generate options trading recommendations based on technical indicators and options chain data.
@@ -549,6 +683,18 @@ class RecommendationEngine:
             dict: Recommendations with market direction analysis and options recommendations
         """
         logger.info(f"Generating recommendations for {symbol}")
+        
+        # Initialize data quality metrics
+        data_quality = {
+            "technical_indicators": {"score": 0, "metrics": {}},
+            "options_chain": {"score": 0, "metrics": {}},
+            "overall_score": 0
+        }
+        
+        # Validate technical indicators for the specified symbol
+        tech_indicators_valid, tech_indicators_message, tech_indicators_quality = self._validate_technical_indicators(tech_indicators_dict, symbol)
+        logger.info(f"Technical indicators validation: {tech_indicators_message}")
+        data_quality["technical_indicators"] = tech_indicators_quality
         
         # FIX: Handle case where tech_indicators_dict is not a dictionary
         if not isinstance(tech_indicators_dict, dict):
@@ -572,7 +718,12 @@ class RecommendationEngine:
                             "confidence": 0
                         }
                     },
-                    "recommendations": []
+                    "recommendations": [],
+                    "data_quality": {
+                        "technical_indicators": {"score": 0, "metrics": {"error": "Invalid format"}},
+                        "options_chain": {"score": 0, "metrics": {}},
+                        "overall_score": 0
+                    }
                 }
         
         # Check if we have technical indicators - FIX: Handle both DataFrames and numpy arrays
@@ -596,7 +747,12 @@ class RecommendationEngine:
                         "confidence": 0
                     }
                 },
-                "recommendations": []
+                "recommendations": [],
+                "data_quality": {
+                    "technical_indicators": {"score": 0, "metrics": {"error": "No data available"}},
+                    "options_chain": {"score": 0, "metrics": {}},
+                    "overall_score": 0
+                }
             }
         
         # Analyze market direction for each timeframe
@@ -622,7 +778,8 @@ class RecommendationEngine:
                         "confidence": 0
                     }
                 },
-                "recommendations": []
+                "recommendations": [],
+                "data_quality": data_quality
             }
         
         # Prioritize target timeframes if available
@@ -639,8 +796,46 @@ class RecommendationEngine:
         # Get primary market direction
         primary_direction = market_direction_analysis[primary_timeframe]
         
+        # Validate options chain data for the specified symbol
+        options_valid, options_message = self._validate_options_data_for_symbol(options_df, symbol)
+        logger.info(f"Options chain validation: {options_message}")
+        
+        # Calculate options chain data quality metrics
+        options_quality = {
+            "score": 100 if options_valid else 50,  # Start with score based on validation
+            "metrics": {
+                "rows": len(options_df) if isinstance(options_df, pd.DataFrame) else 0,
+                "calls": 0,
+                "puts": 0,
+                "symbol_match": options_valid
+            }
+        }
+        
+        # Count calls and puts if available
+        if isinstance(options_df, pd.DataFrame) and not options_df.empty:
+            if 'putCall' in options_df.columns:
+                options_quality["metrics"]["calls"] = len(options_df[options_df['putCall'] == 'CALL'])
+                options_quality["metrics"]["puts"] = len(options_df[options_df['putCall'] == 'PUT'])
+            
+            # Deduct points for missing data
+            if options_quality["metrics"]["calls"] == 0:
+                options_quality["score"] -= 25
+                logger.warning(f"No call options found for {symbol}")
+            
+            if options_quality["metrics"]["puts"] == 0:
+                options_quality["score"] -= 25
+                logger.warning(f"No put options found for {symbol}")
+        else:
+            options_quality["score"] = 0
+            logger.warning(f"Empty or invalid options chain data for {symbol}")
+        
+        data_quality["options_chain"] = options_quality
+        
+        # Calculate overall data quality score
+        data_quality["overall_score"] = (data_quality["technical_indicators"]["score"] + data_quality["options_chain"]["score"]) / 2
+        
         # Evaluate options chain
-        evaluated_options = self.evaluate_options_chain(options_df, primary_direction, underlying_price)
+        evaluated_options = self.evaluate_options_chain(options_df, primary_direction, underlying_price, symbol)
         
         # Generate recommendations
         recommendations = []
@@ -723,7 +918,8 @@ class RecommendationEngine:
             "price": underlying_price,
             "market_direction": primary_direction,
             "timeframe_analysis": market_direction_analysis,
-            "recommendations": recommendations
+            "recommendations": recommendations,
+            "data_quality": data_quality
         }
         
         logger.info(f"Generated {len(recommendations)} recommendations for {symbol}")
