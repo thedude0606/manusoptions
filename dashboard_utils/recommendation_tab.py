@@ -14,6 +14,7 @@ import logging
 from datetime import datetime
 import json
 from dashboard_utils.data_quality_display import create_data_quality_display
+from dashboard_utils.confidence_scoring import ConfidenceScorer
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -69,7 +70,30 @@ def create_recommendation_tab():
                 html.Div(id="market-signals", className="market-signals")
             ], className="panel market-panel"),
             
-            # Data Quality Panel (New)
+            # Confidence Score Panel (New)
+            html.Div([
+                html.H3("Confidence Metrics", className="panel-header"),
+                html.Div([
+                    html.Div([
+                        html.Label("Overall Confidence:"),
+                        html.Div(id="overall-confidence", className="confidence-value")
+                    ], className="confidence-item"),
+                    html.Div([
+                        html.Label("Technical Score:"),
+                        html.Div(id="technical-confidence", className="confidence-value")
+                    ], className="confidence-item"),
+                    html.Div([
+                        html.Label("Options Score:"),
+                        html.Div(id="options-confidence", className="confidence-value")
+                    ], className="confidence-item"),
+                    html.Div([
+                        html.Label("Market Score:"),
+                        html.Div(id="market-confidence", className="confidence-value")
+                    ], className="confidence-item")
+                ], className="confidence-metrics")
+            ], className="panel confidence-panel"),
+            
+            # Data Quality Panel
             create_data_quality_display(),
             
             # Call Recommendations Panel
@@ -271,6 +295,7 @@ def register_recommendation_callbacks(app):
     def update_recommendations(n_clicks, tech_indicators_data, options_chain_data, timeframe, n_intervals, selected_symbol):
         """Update recommendations based on technical indicators and options chain data."""
         from recommendation_engine import RecommendationEngine
+        from dashboard_utils.confidence_scoring import ConfidenceScorer
         
         # Initialize debug information
         debug_info = []
@@ -303,272 +328,294 @@ def register_recommendation_callbacks(app):
                 debug_info.append(f"ERROR: {error_msg}")
                 logger.warning(error_msg)
                 
-                # Return error to status only, with no update to error-store
+                # Return error to status only, with no update to error store
                 return None, error_msg, "\n".join(debug_info), dash.no_update
-        
-        # For non-button triggers, silently return if data is missing
-        if not button_clicked and (not tech_indicators_data or not options_chain_data or not selected_symbol):
-            debug_info.append("Non-button trigger with missing data, silently returning")
-            logger.info("Non-button trigger with missing data, silently returning")
-            return dash.no_update, dash.no_update, "\n".join(debug_info), dash.no_update
+        else:
+            # If not triggered by button click, don't update
+            return dash.no_update, dash.no_update, dash.no_update, dash.no_update
         
         try:
-            # Get the symbol and underlying price
-            # Handle both dictionary and string types for selected_symbol
-            if isinstance(selected_symbol, dict):
-                symbol = selected_symbol.get("symbol", "")
-                debug_info.append(f"Selected symbol is a dictionary, extracted symbol: {symbol}")
-            else:
-                symbol = selected_symbol
-                debug_info.append(f"Selected symbol is a string: {symbol}")
+            # Extract symbol from selected_symbol_store
+            symbol = selected_symbol.get("symbol", "").upper()
+            debug_info.append(f"Symbol: {symbol}")
             
-            underlying_price = options_chain_data.get("underlyingPrice", 0)
-            debug_info.append(f"Symbol: {symbol}, Underlying price: {underlying_price}")
-            logger.info(f"Processing recommendations for symbol: {symbol}, underlying price: {underlying_price}")
-            
-            if not symbol or not underlying_price:
-                error_msg = f"Missing symbol or price data. Please refresh data."
-                debug_info.append(f"ERROR: {error_msg}")
-                logger.warning(f"{error_msg} symbol={symbol}, underlying_price={underlying_price}")
+            # Filter technical indicators for the selected timeframe
+            if tech_indicators_data:
+                tech_indicators_df = pd.DataFrame(tech_indicators_data)
+                debug_info.append(f"Technical indicators data shape: {tech_indicators_df.shape}")
                 
-                # Return error to status only, with no update to error-store
-                return None, error_msg, "\n".join(debug_info), dash.no_update
-            
-            # Get technical indicators for the selected timeframe
-            tech_indicators_df = pd.DataFrame()
-            if tech_indicators_data and "timeframe_data" in tech_indicators_data:
-                timeframe_data = tech_indicators_data.get("timeframe_data", {})
-                debug_info.append(f"Available timeframes: {list(timeframe_data.keys())}")
-                logger.info(f"Available timeframes in tech_indicators_data: {list(timeframe_data.keys())}")
-                if timeframe in timeframe_data:
-                    tech_indicators_df = pd.DataFrame(timeframe_data[timeframe])
-                    debug_info.append(f"Loaded technical indicators for {timeframe}, shape: {tech_indicators_df.shape}")
-                    debug_info.append(f"Technical indicators columns: {tech_indicators_df.columns.tolist()}")
-                    logger.info(f"Loaded technical indicators for {timeframe}, shape: {tech_indicators_df.shape}")
-                    logger.info(f"Technical indicators columns: {tech_indicators_df.columns.tolist()}")
-                else:
-                    debug_info.append(f"WARNING: Timeframe {timeframe} not found in available timeframes")
-                    logger.warning(f"Timeframe {timeframe} not found in available timeframes")
+                # Filter by timeframe
+                tech_indicators_df = tech_indicators_df[tech_indicators_df['timeframe'] == timeframe]
+                debug_info.append(f"Filtered technical indicators for timeframe {timeframe}, shape: {tech_indicators_df.shape}")
+                
+                # Sort by timestamp (most recent first)
+                if 'timestamp' in tech_indicators_df.columns:
+                    tech_indicators_df['timestamp'] = pd.to_datetime(tech_indicators_df['timestamp'])
+                    tech_indicators_df = tech_indicators_df.sort_values('timestamp', ascending=False)
+                    debug_info.append(f"Sorted technical indicators by timestamp")
             else:
-                debug_info.append("WARNING: No timeframe_data found in tech_indicators_data")
-                logger.warning("No timeframe_data found in tech_indicators_data")
+                tech_indicators_df = pd.DataFrame()
+                debug_info.append(f"No technical indicators data available")
             
-            # Create technical indicators dictionary with all available timeframes
-            tech_indicators_dict = {}
-            if tech_indicators_data and "timeframe_data" in tech_indicators_data:
-                for tf, data in tech_indicators_data.get("timeframe_data", {}).items():
-                    tech_indicators_dict[tf] = pd.DataFrame(data)
-                    debug_info.append(f"Added {tf} to tech_indicators_dict, shape: {tech_indicators_dict[tf].shape}")
-            
-            # Get options chain data
-            options_df = pd.DataFrame()
+            # Convert options chain data to DataFrame
             if options_chain_data and "options" in options_chain_data:
                 options_df = pd.DataFrame(options_chain_data["options"])
-                debug_info.append(f"Loaded options chain data, shape: {options_df.shape}")
-                debug_info.append(f"Options chain columns: {options_df.columns.tolist()}")
-                logger.info(f"Loaded options chain data, shape: {options_df.shape}")
-                logger.info(f"Options chain columns: {options_df.columns.tolist()}")
+                debug_info.append(f"Options chain data shape: {options_df.shape}")
             else:
-                debug_info.append("WARNING: No options data found in options_chain_data")
-                logger.warning("No options data found in options_chain_data")
+                options_df = pd.DataFrame()
+                debug_info.append(f"No options chain data available")
+            
+            # Initialize the recommendation engine
+            engine = RecommendationEngine()
+            debug_info.append(f"Initialized RecommendationEngine")
+            
+            # Initialize the confidence scorer
+            confidence_scorer = ConfidenceScorer()
+            debug_info.append(f"Initialized ConfidenceScorer")
+            
+            # Analyze market direction
+            market_analysis = engine.analyze_market_direction(tech_indicators_df, timeframe=timeframe)
+            debug_info.append(f"Market direction analysis: {market_analysis['direction']} (Bullish: {market_analysis['bullish_score']}, Bearish: {market_analysis['bearish_score']})")
+            debug_info.append(f"Market signals: {', '.join(market_analysis['signals'][:5])}...")
+            
+            # Get underlying price
+            underlying_price = options_chain_data.get("underlyingPrice", 0)
+            debug_info.append(f"Underlying price: {underlying_price}")
+            
+            # Evaluate options chain
+            options_evaluation = engine.evaluate_options_chain(options_df, market_analysis, underlying_price, symbol)
+            debug_info.append(f"Options evaluation complete. Found {len(options_evaluation.get('call_contracts', []))} call contracts and {len(options_evaluation.get('put_contracts', []))} put contracts")
+            
+            # Calculate confidence scores
+            confidence_result = confidence_scorer.calculate_confidence(
+                technical_indicators=tech_indicators_df.to_dict('records') if not tech_indicators_df.empty else {},
+                options_data=options_df,
+                market_data={"direction": market_analysis["direction"]}
+            )
+            debug_info.append(f"Confidence calculation complete. Overall confidence: {confidence_result['overall_confidence']}")
             
             # Generate recommendations
-            engine = RecommendationEngine()
-            debug_info.append("Calling recommendation engine generate_recommendations method")
-            recommendations = engine.generate_recommendations(tech_indicators_dict, options_df, underlying_price, symbol)
+            recommendations = {
+                "timestamp": datetime.now().isoformat(),
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "market_direction": market_analysis,
+                "confidence_scores": confidence_result,
+                "call_recommendations": options_evaluation.get("call_contracts", []),
+                "put_recommendations": options_evaluation.get("put_contracts", [])
+            }
             
-            # Extract data quality information
-            data_quality = recommendations.get("data_quality", {})
-            tech_quality = data_quality.get("technical_indicators", {}).get("score", 0)
-            options_quality = data_quality.get("options_chain", {}).get("score", 0)
-            overall_quality = data_quality.get("overall_score", 0)
+            # Add detailed explanation for each recommendation
+            for rec_type in ["call_recommendations", "put_recommendations"]:
+                for i, rec in enumerate(recommendations[rec_type]):
+                    # Add confidence score from confidence_result
+                    rec["confidenceScore"] = confidence_result["overall_confidence"]
+                    
+                    # Add explanation based on signals
+                    signals = market_analysis["signals"][:3]  # Take top 3 signals
+                    rec["explanation"] = f"Based on {', '.join(signals)}"
+                    
+                    # Add profit target based on confidence
+                    profit_target = confidence_result["profit_target_pct"]
+                    rec["expectedProfitPct"] = profit_target
+                    
+                    # Calculate target price
+                    current_price = rec.get("currentPrice", rec.get("lastPrice", 0))
+                    if rec_type == "call_recommendations":
+                        rec["targetSellPrice"] = round(current_price * (1 + profit_target/100), 2)
+                    else:
+                        rec["targetSellPrice"] = round(current_price * (1 - profit_target/100), 2)
+                    
+                    # Add target timeframe in hours
+                    rec["targetTimeframeHours"] = confidence_result["max_hold_time_minutes"] / 60
             
-            debug_info.append(f"Data quality scores - Tech: {tech_quality}, Options: {options_quality}, Overall: {overall_quality}")
+            debug_info.append(f"Generated {len(recommendations['call_recommendations'])} call recommendations and {len(recommendations['put_recommendations'])} put recommendations")
             
-            # Check if we have valid recommendations
-            recommendation_list = recommendations.get("recommendations", [])
-            debug_info.append(f"Generated {len(recommendation_list)} recommendations")
+            # Return the recommendations data
+            status_message = f"Generated recommendations for {symbol} ({timeframe})"
+            logger.info(status_message)
             
-            # Determine status message based on data quality and recommendations
-            if len(recommendation_list) == 0:
-                if overall_quality < 40:
-                    status_msg = f"No recommendations available - Poor data quality ({overall_quality:.0f}/100)"
-                else:
-                    status_msg = "No recommendations available for current market conditions"
-            else:
-                if overall_quality < 40:
-                    status_msg = f"Low confidence recommendations - Poor data quality ({overall_quality:.0f}/100)"
-                elif overall_quality < 60:
-                    status_msg = f"Recommendations available - Fair data quality ({overall_quality:.0f}/100)"
-                else:
-                    status_msg = f"Recommendations available - Good data quality ({overall_quality:.0f}/100)"
-            
-            debug_info.append(f"Status message: {status_msg}")
-            
-            # Return the recommendations data, status message, and debug info
-            return recommendations, status_msg, "\n".join(debug_info), dash.no_update
+            return recommendations, status_message, "\n".join(debug_info), None
             
         except Exception as e:
-            import traceback
-            error_details = traceback.format_exc()
             error_msg = f"Error generating recommendations: {str(e)}"
             debug_info.append(f"ERROR: {error_msg}")
-            debug_info.append(error_details)
-            logger.error(f"Error in update_recommendations: {str(e)}")
-            logger.error(error_details)
-            
-            # Return error to both status and error-store
-            return None, error_msg, "\n".join(debug_info), {"error": error_msg, "details": error_details}
+            logger.error(error_msg, exc_info=True)
+            return None, error_msg, "\n".join(debug_info), {"error": error_msg}
     
-    # Second callback: Update market direction display
+    # Second callback: Update recommendation display
     @app.callback(
         [
             Output("market-direction-indicator", "children"),
-            Output("market-direction-indicator", "className"),
+            Output("market-direction-indicator", "style"),
             Output("market-direction-text", "children"),
             Output("bullish-score", "children"),
             Output("bearish-score", "children"),
-            Output("market-signals", "children")
+            Output("market-signals", "children"),
+            Output("call-recommendations-table", "data"),
+            Output("put-recommendations-table", "data"),
+            Output("recommendations-last-updated", "children"),
+            Output("overall-confidence", "children"),
+            Output("technical-confidence", "children"),
+            Output("options-confidence", "children"),
+            Output("market-confidence", "children")
         ],
         [Input("recommendations-store", "data")],
         prevent_initial_call=True
     )
-    def update_market_direction(recommendations_data):
-        """Update market direction display based on recommendations data."""
-        if not recommendations_data or "market_direction" not in recommendations_data:
-            # Default values when no data is available
+    def update_recommendation_display(recommendations_data):
+        """Update the recommendation display with the latest data."""
+        if not recommendations_data:
             return (
-                "?", "direction-indicator neutral", "No Data",
-                "N/A", "N/A", "No market signals available"
+                "?", {}, "No Data", "N/A", "N/A", "No signals available",
+                [], [], "Not updated yet", "N/A", "N/A", "N/A", "N/A"
             )
         
         try:
             # Extract market direction data
-            market_direction = recommendations_data["market_direction"]
+            market_direction = recommendations_data.get("market_direction", {})
             direction = market_direction.get("direction", "neutral")
-            bullish_score = market_direction.get("bullish_score", 50)
-            bearish_score = market_direction.get("bearish_score", 50)
+            bullish_score = market_direction.get("bullish_score", 0)
+            bearish_score = market_direction.get("bearish_score", 0)
             signals = market_direction.get("signals", [])
             
-            # Determine direction indicator and class
+            # Extract confidence scores
+            confidence_scores = recommendations_data.get("confidence_scores", {})
+            overall_confidence = confidence_scores.get("overall_confidence", 0)
+            technical_score = confidence_scores.get("technical_score", 0)
+            options_score = confidence_scores.get("options_score", 0)
+            market_score = confidence_scores.get("market_score", 0)
+            
+            # Set direction indicator
             if direction == "bullish":
-                indicator = "▲"
-                indicator_class = "direction-indicator bullish"
+                direction_indicator = "▲"
+                direction_style = {"color": "green", "fontSize": "24px"}
                 direction_text = "Bullish"
             elif direction == "bearish":
-                indicator = "▼"
-                indicator_class = "direction-indicator bearish"
+                direction_indicator = "▼"
+                direction_style = {"color": "red", "fontSize": "24px"}
                 direction_text = "Bearish"
             else:
-                indicator = "◆"
-                indicator_class = "direction-indicator neutral"
+                direction_indicator = "◆"
+                direction_style = {"color": "gray", "fontSize": "24px"}
                 direction_text = "Neutral"
             
-            # Format signals as a list
-            signals_html = html.Ul([html.Li(signal) for signal in signals]) if signals else "No signals available"
+            # Format signals as bullet points
+            signals_html = [html.Li(signal) for signal in signals[:5]]  # Show top 5 signals
+            if len(signals) > 5:
+                signals_html.append(html.Li(f"... and {len(signals) - 5} more"))
+            
+            # Get recommendations
+            call_recommendations = recommendations_data.get("call_recommendations", [])
+            put_recommendations = recommendations_data.get("put_recommendations", [])
+            
+            # Format timestamp
+            timestamp = recommendations_data.get("timestamp")
+            if timestamp:
+                try:
+                    dt = datetime.fromisoformat(timestamp)
+                    formatted_timestamp = f"Last updated: {dt.strftime('%Y-%m-%d %H:%M:%S')}"
+                except:
+                    formatted_timestamp = f"Last updated: {timestamp}"
+            else:
+                formatted_timestamp = "Last updated: Unknown"
+            
+            # Format confidence scores with color coding
+            def format_confidence(score):
+                if score >= 80:
+                    color = "green"
+                elif score >= 60:
+                    color = "darkgreen"
+                elif score >= 40:
+                    color = "orange"
+                else:
+                    color = "red"
+                return html.Span(f"{score:.1f}", style={"color": color, "fontWeight": "bold"})
             
             return (
-                indicator, indicator_class, direction_text,
-                f"{bullish_score:.0f}", f"{bearish_score:.0f}", signals_html
+                direction_indicator, direction_style, direction_text,
+                f"{bullish_score:.1f}", f"{bearish_score:.1f}",
+                html.Ul(signals_html),
+                call_recommendations, put_recommendations, formatted_timestamp,
+                format_confidence(overall_confidence),
+                format_confidence(technical_score),
+                format_confidence(options_score),
+                format_confidence(market_score)
             )
-        
+            
         except Exception as e:
-            logger.error(f"Error updating market direction: {e}")
+            logger.error(f"Error updating recommendation display: {e}", exc_info=True)
             return (
-                "!", "direction-indicator error", f"Error: {str(e)}",
-                "Error", "Error", f"Error: {str(e)}"
+                "!", {"color": "red"}, "Error", "N/A", "N/A", f"Error: {str(e)}",
+                [], [], "Error updating display", "N/A", "N/A", "N/A", "N/A"
             )
     
-    # Third callback: Update call recommendations table
+    # Third callback: Update contract details when a recommendation is clicked
     @app.callback(
-        Output("call-recommendations-table", "data"),
-        [Input("recommendations-store", "data")],
+        [
+            Output("detail-symbol", "children"),
+            Output("detail-type", "children"),
+            Output("detail-strike", "children"),
+            Output("detail-expiration", "children"),
+            Output("detail-delta", "children"),
+            Output("detail-gamma", "children"),
+            Output("detail-theta", "children"),
+            Output("detail-vega", "children"),
+            Output("detail-iv", "children")
+        ],
+        [
+            Input("call-recommendations-table", "active_cell"),
+            Input("put-recommendations-table", "active_cell")
+        ],
+        [
+            State("call-recommendations-table", "data"),
+            State("put-recommendations-table", "data")
+        ],
         prevent_initial_call=True
     )
-    def update_call_recommendations(recommendations_data):
-        """Update call recommendations table based on recommendations data."""
-        if not recommendations_data or "recommendations" not in recommendations_data:
-            return []
+    def update_contract_details(call_active_cell, put_active_cell, call_data, put_data):
+        """Update the contract details when a recommendation is clicked."""
+        ctx = dash.callback_context
+        trigger = ctx.triggered[0]['prop_id'] if ctx.triggered else ""
+        
+        # Default values
+        default_values = ["N/A"] * 9
+        
+        if not trigger:
+            return default_values
         
         try:
-            # Extract recommendations
-            recommendations = recommendations_data["recommendations"]
+            if "call-recommendations-table" in trigger and call_active_cell:
+                row = call_active_cell['row']
+                if row < len(call_data):
+                    contract = call_data[row]
+                    contract_type = "CALL"
+                else:
+                    return default_values
+            elif "put-recommendations-table" in trigger and put_active_cell:
+                row = put_active_cell['row']
+                if row < len(put_data):
+                    contract = put_data[row]
+                    contract_type = "PUT"
+                else:
+                    return default_values
+            else:
+                return default_values
             
-            # Filter for call recommendations
-            call_recommendations = [r for r in recommendations if r.get("type") == "CALL"]
+            # Extract contract details
+            symbol = contract.get("symbol", "N/A")
+            strike = f"${contract.get('strikePrice', 0):.2f}"
+            expiration = contract.get("expirationDate", "N/A")
             
-            # Format for data table
-            table_data = []
-            for rec in call_recommendations:
-                table_data.append({
-                    "symbol": rec.get("symbol", ""),
-                    "strikePrice": rec.get("strike", 0),
-                    "expirationDate": rec.get("expiration", ""),
-                    "daysToExpiration": rec.get("days_to_expiration", 0),
-                    "currentPrice": rec.get("current_price", 0),
-                    "targetSellPrice": rec.get("current_price", 0) * (1 + rec.get("expected_profit", 0) / 100),
-                    "targetTimeframeHours": rec.get("target_exit_hours", 24),
-                    "expectedProfitPct": rec.get("expected_profit", 0),
-                    "confidenceScore": rec.get("confidence", 0)
-                })
+            # Format Greeks
+            delta = f"{contract.get('delta', 0):.4f}"
+            gamma = f"{contract.get('gamma', 0):.4f}"
+            theta = f"{contract.get('theta', 0):.4f}"
+            vega = f"{contract.get('vega', 0):.4f}"
+            iv = f"{contract.get('volatility', 0) * 100:.2f}%"
             
-            return table_data
-        
+            return symbol, contract_type, strike, expiration, delta, gamma, theta, vega, iv
+            
         except Exception as e:
-            logger.error(f"Error updating call recommendations: {e}")
-            return []
-    
-    # Fourth callback: Update put recommendations table
-    @app.callback(
-        Output("put-recommendations-table", "data"),
-        [Input("recommendations-store", "data")],
-        prevent_initial_call=True
-    )
-    def update_put_recommendations(recommendations_data):
-        """Update put recommendations table based on recommendations data."""
-        if not recommendations_data or "recommendations" not in recommendations_data:
-            return []
-        
-        try:
-            # Extract recommendations
-            recommendations = recommendations_data["recommendations"]
-            
-            # Filter for put recommendations
-            put_recommendations = [r for r in recommendations if r.get("type") == "PUT"]
-            
-            # Format for data table
-            table_data = []
-            for rec in put_recommendations:
-                table_data.append({
-                    "symbol": rec.get("symbol", ""),
-                    "strikePrice": rec.get("strike", 0),
-                    "expirationDate": rec.get("expiration", ""),
-                    "daysToExpiration": rec.get("days_to_expiration", 0),
-                    "currentPrice": rec.get("current_price", 0),
-                    "targetSellPrice": rec.get("current_price", 0) * (1 + rec.get("expected_profit", 0) / 100),
-                    "targetTimeframeHours": rec.get("target_exit_hours", 24),
-                    "expectedProfitPct": rec.get("expected_profit", 0),
-                    "confidenceScore": rec.get("confidence", 0)
-                })
-            
-            return table_data
-        
-        except Exception as e:
-            logger.error(f"Error updating put recommendations: {e}")
-            return []
-    
-    # Fifth callback: Update last updated timestamp
-    @app.callback(
-        Output("recommendations-last-updated", "children"),
-        [Input("recommendations-store", "data")],
-        prevent_initial_call=True
-    )
-    def update_last_updated(recommendations_data):
-        """Update last updated timestamp based on recommendations data."""
-        if recommendations_data:
-            return f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        return "Not yet updated"
-    
-    # Register data quality callbacks
-    from dashboard_utils.data_quality_display import register_data_quality_callbacks
-    register_data_quality_callbacks(app)
+            logger.error(f"Error updating contract details: {e}", exc_info=True)
+            return default_values

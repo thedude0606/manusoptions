@@ -6,6 +6,8 @@ import logging
 import pandas as pd
 import numpy as np
 from technical_analysis import calculate_multi_timeframe_indicators
+from dashboard_utils.technical_indicators import get_registered_indicators
+from dashboard_utils.technical_indicators.indicator_base import IndicatorBase
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -67,6 +69,9 @@ def get_minute_data(client, symbol):
         cols = ['timestamp'] + [col for col in df.columns if col != 'timestamp']
         df = df[cols]
         
+        # Add symbol column for context preservation
+        df['symbol'] = symbol
+        
         # Convert to records for JSON serialization
         minute_data = df.to_dict('records')
         
@@ -80,7 +85,7 @@ def get_minute_data(client, symbol):
 
 def get_technical_indicators(client, symbol):
     """
-    Calculate technical indicators for a symbol.
+    Calculate technical indicators for a symbol using the modular indicator system.
     
     Args:
         client: Schwab API client
@@ -107,8 +112,43 @@ def get_technical_indicators(client, symbol):
         df = pd.DataFrame(minute_data)
         df.set_index('timestamp', inplace=True)
         
+        # Get registered indicators
+        registered_indicators = get_registered_indicators()
+        logger.info(f"Found {len(registered_indicators)} registered indicators")
+        
         # Calculate technical indicators for all timeframes
         multi_tf_indicators = calculate_multi_timeframe_indicators(df, symbol=symbol)
+        
+        # Apply modular indicators to each timeframe
+        for timeframe, tf_df in multi_tf_indicators.items():
+            logger.info(f"Applying modular indicators to {timeframe} timeframe")
+            
+            # Apply each registered indicator
+            for indicator_id, indicator_class in registered_indicators.items():
+                try:
+                    # Create indicator instance with default parameters
+                    indicator = indicator_class()
+                    
+                    # Set symbol context
+                    indicator.set_symbol(symbol)
+                    
+                    # Calculate indicator values
+                    tf_df = indicator.calculate(tf_df)
+                    
+                    # Get signal from indicator
+                    signal = indicator.get_signal(tf_df)
+                    
+                    # Add signal information to DataFrame
+                    signal_prefix = f"{indicator_id}_"
+                    for key, value in signal.items():
+                        tf_df[f"{signal_prefix}{key}"] = value
+                    
+                    logger.info(f"Successfully calculated {indicator_id} for {timeframe}")
+                except Exception as e:
+                    logger.error(f"Error calculating {indicator_id} for {timeframe}: {e}", exc_info=True)
+            
+            # Update the timeframe DataFrame in the multi_tf_indicators dictionary
+            multi_tf_indicators[timeframe] = tf_df
         
         # Flatten the multi-timeframe results into a single table with a timeframe column
         all_indicators = []
@@ -119,6 +159,10 @@ def get_technical_indicators(client, symbol):
             
             # Add timeframe column
             tf_df_reset['timeframe'] = timeframe
+            
+            # Add symbol column for context preservation if not already present
+            if 'symbol' not in tf_df_reset.columns:
+                tf_df_reset['symbol'] = symbol
             
             # Convert to records
             records = tf_df_reset.to_dict('records')
@@ -186,6 +230,9 @@ def get_options_chain_data(client, symbol):
                     contract["expirationDate"] = exp_date
                     contract["strikePrice"] = float(strike_price)
                     
+                    # Add symbol context for preservation
+                    contract["underlying"] = symbol
+                    
                     # Check for alternative field names that might contain price data
                     if "lastPrice" not in contract and "last" in contract:
                         contract["lastPrice"] = contract["last"]
@@ -222,6 +269,9 @@ def get_options_chain_data(client, symbol):
                     contract["putCall"] = "PUT"
                     contract["expirationDate"] = exp_date
                     contract["strikePrice"] = float(strike_price)
+                    
+                    # Add symbol context for preservation
+                    contract["underlying"] = symbol
                     
                     # Check for alternative field names that might contain price data
                     if "lastPrice" not in contract and "last" in contract:

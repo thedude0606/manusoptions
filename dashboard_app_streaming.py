@@ -1,5 +1,6 @@
 """
-Updates the dashboard_app_streaming.py file to add enhanced debugging for streaming updates.
+Updates the dashboard_app_streaming.py file to integrate the modular technical indicator system
+and confidence scoring components.
 """
 
 import dash
@@ -14,12 +15,12 @@ import os
 import sys
 import traceback
 from config import APP_KEY, APP_SECRET, CALLBACK_URL, TOKEN_FILE_PATH
-from dashboard_utils.data_fetchers import get_minute_data, get_technical_indicators, get_options_chain_data, get_option_contract_keys
+from dashboard_utils.data_fetchers_updated import get_minute_data, get_technical_indicators, get_options_chain_data, get_option_contract_keys
 from dashboard_utils.options_chain_utils import split_options_by_type
-from dashboard_utils.recommendation_tab import register_recommendation_callbacks, create_recommendation_tab
+from dashboard_utils.recommendation_tab_updated import register_recommendation_callbacks, create_recommendation_tab
 from dashboard_utils.streaming_manager import StreamingManager
 from dashboard_utils.streaming_field_mapper import StreamingFieldMapper
-from dashboard_utils.streaming_debug import create_debug_monitor  # Import the new debug monitor
+from dashboard_utils.streaming_debug import create_debug_monitor
 from dashboard_utils.contract_utils import normalize_contract_key
 from dashboard_utils.download_component import create_download_component, register_download_callback, register_download_click_callback
 from dashboard_utils.export_buttons import create_export_button, register_export_callbacks
@@ -29,6 +30,8 @@ from dashboard_utils.excel_export import (
     export_options_chain_to_excel,
     export_recommendations_to_excel
 )
+from dashboard_utils.technical_indicators import get_registered_indicators
+from dashboard_utils.confidence_scoring import ConfidenceScorer
 
 # Add immediate console print for debugging
 print(f"DASHBOARD_APP: Starting initialization at {datetime.datetime.now()}", file=sys.stderr)
@@ -111,6 +114,11 @@ debug_monitor = create_debug_monitor(streaming_manager)
 app_logger.info("Streaming debug monitor initialized and started")
 print(f"DASHBOARD_APP: Debug monitor created and started", file=sys.stderr)
 
+# Log available indicators from the registry
+registered_indicators = get_registered_indicators()
+app_logger.info(f"Registered indicators: {list(registered_indicators.keys())}")
+print(f"DASHBOARD_APP: Found {len(registered_indicators)} registered indicators", file=sys.stderr)
+
 # Define app layout
 app.layout = html.Div([
     # Header
@@ -160,6 +168,24 @@ app.layout = html.Div([
         # Technical Indicators Tab
         dcc.Tab(label="Technical Indicators", value="tab-tech-indicators", children=[
             html.Div([
+                # Timeframe selector for Technical Indicators
+                html.Div([
+                    html.Label("Timeframe:"),
+                    dcc.Dropdown(
+                        id="tech-indicators-timeframe-dropdown",
+                        options=[
+                            {'label': '1 Minute', 'value': '1min'},
+                            {'label': '5 Minutes', 'value': '5min'},
+                            {'label': '15 Minutes', 'value': '15min'},
+                            {'label': '1 Hour', 'value': '1hour'},
+                            {'label': '4 Hours', 'value': '4hour'},
+                            {'label': 'Daily', 'value': '1day'}
+                        ],
+                        value='1hour',
+                        clearable=False
+                    )
+                ], style={'width': '200px', 'margin': '10px 0px'}),
+                
                 # Export button for Technical Indicators
                 create_export_button("tech-indicators", "Export Technical Indicators to Excel"),
                 
@@ -284,8 +310,7 @@ app.layout = html.Div([
                                       'border': 'none', 'borderRadius': '4px', 'cursor': 'pointer'})
                 ], style={'margin': '10px 0px'}),
                 
-                # Use the full recommendation tab layout from the utility module
-                # This includes the recommendation-timeframe-dropdown that was missing
+                # Use the updated recommendation tab layout from the utility module
                 create_recommendation_tab(),
                 
                 # Export button for Recommendations
@@ -304,8 +329,8 @@ app.layout = html.Div([
     dcc.Store(id="selected-symbol-store"),
     dcc.Store(id="error-store"),
     dcc.Store(id="streaming-options-store"),
-    dcc.Store(id="last-valid-options-store"),  # New store to preserve last valid options data
-    dcc.Store(id="recommendations-store"),  # Added explicit recommendations store
+    dcc.Store(id="last-valid-options-store"),  # Store to preserve last valid options data
+    dcc.Store(id="recommendations-store"),  # Explicit recommendations store
     dcc.Interval(id="update-interval", interval=60000, n_intervals=0),
     dcc.Interval(id="streaming-update-interval", interval=1000, n_intervals=0, disabled=False),
     
@@ -359,11 +384,7 @@ def refresh_data(n_clicks, symbol):
         if error:
             app_logger.error(f"Error fetching minute data: {error}")
             print(f"DASHBOARD_APP: Error fetching minute data: {error}", file=sys.stderr)
-            return None, None, None, None, [], None, f"Error: {error}", {
-                "source": "Minute Data",
-                "message": error,
-                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }, None
+            return None, None, None, {"symbol": symbol}, [], None, f"Error: {error}", {"error": error}, None
         
         # Calculate technical indicators
         print(f"DASHBOARD_APP: Calculating technical indicators for {symbol}", file=sys.stderr)
@@ -372,11 +393,7 @@ def refresh_data(n_clicks, symbol):
         if error:
             app_logger.error(f"Error calculating technical indicators: {error}")
             print(f"DASHBOARD_APP: Error calculating technical indicators: {error}", file=sys.stderr)
-            return {"data": minute_data}, None, None, None, [], None, f"Error: {error}", {
-                "source": "Technical Indicators",
-                "message": error,
-                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }, None
+            return minute_data, None, None, {"symbol": symbol}, [], None, f"Error: {error}", {"error": error}, None
         
         # Fetch options chain
         print(f"DASHBOARD_APP: Fetching options chain for {symbol}", file=sys.stderr)
@@ -385,124 +402,136 @@ def refresh_data(n_clicks, symbol):
         if error:
             app_logger.error(f"Error fetching options chain: {error}")
             print(f"DASHBOARD_APP: Error fetching options chain: {error}", file=sys.stderr)
-            return {"data": minute_data}, {"data": tech_indicators}, None, None, [], None, f"Error: {error}", {
-                "source": "Options Chain",
-                "message": error,
-                "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }, None
+            return minute_data, tech_indicators, None, {"symbol": symbol}, [], None, f"Error: {error}", {"error": error}, None
         
-        # Prepare dropdown options
-        dropdown_options = [{"label": date, "value": date} for date in expiration_dates]
+        # Convert options DataFrame to records for JSON serialization
+        options_data = {
+            "options": options_df.to_dict('records'),
+            "underlyingPrice": underlying_price,
+            "symbol": symbol
+        }
+        
+        # Create dropdown options for expiration dates
+        expiration_options = [{'label': date, 'value': date} for date in expiration_dates]
+        
+        # Set default expiration date (first one)
         default_expiration = expiration_dates[0] if expiration_dates else None
         
-        # Prepare data for the stores
-        minute_data_store = {
-            "data": minute_data,
-            "symbol": symbol,
-            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
+        app_logger.info(f"Successfully refreshed data for {symbol}")
+        print(f"DASHBOARD_APP: Successfully refreshed data for {symbol}", file=sys.stderr)
         
-        # Prepare technical indicators store with timeframe data structure
-        timeframe_data = {}
-        if tech_indicators:
-            # Group indicators by timeframe
-            df = pd.DataFrame(tech_indicators)
-            if 'timeframe' in df.columns:
-                for timeframe in df['timeframe'].unique():
-                    timeframe_data[timeframe] = df[df['timeframe'] == timeframe].to_dict('records')
-            
-        tech_indicators_store = {
-            "data": tech_indicators,
-            "timeframe_data": timeframe_data,
-            "symbol": symbol,
-            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        
-        options_data = {
-            "symbol": symbol,
-            "options": options_df.to_dict("records"),
-            "expiration_dates": expiration_dates,
-            "underlyingPrice": underlying_price,
-            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        
-        # Create a copy for the last valid options store
-        last_valid_options = options_data.copy()
-        
-        print(f"DASHBOARD_APP: Data refresh complete for {symbol}", file=sys.stderr)
-        return minute_data_store, tech_indicators_store, options_data, symbol, dropdown_options, default_expiration, f"Data refreshed for {symbol}", None, last_valid_options
+        return minute_data, tech_indicators, options_data, {"symbol": symbol}, expiration_options, default_expiration, f"Data refreshed for {symbol}", None, options_data
     
     except Exception as e:
-        error_msg = f"Error refreshing data: {str(e)}"
+        error_msg = f"Exception in refresh_data: {str(e)}"
         app_logger.error(error_msg, exc_info=True)
         print(f"DASHBOARD_APP: {error_msg}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
-        return None, None, None, None, [], None, error_msg, {
-            "source": "Data Refresh",
-            "message": str(e),
-            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }, None
+        return None, None, None, {"symbol": symbol}, [], None, f"Error: {str(e)}", {"error": str(e)}, None
 
 # Minute Data Table Callback
 @app.callback(
-    Output("minute-data-table", "data"),
-    Output("minute-data-table", "columns"),
-    Input("minute-data-store", "data"),
+    [
+        Output("minute-data-table", "data"),
+        Output("minute-data-table", "columns")
+    ],
+    [Input("minute-data-store", "data")],
     prevent_initial_call=True
 )
-def update_minute_data_table(minute_data_store):
+def update_minute_data_table(minute_data):
     """Updates the minute data table with the fetched data."""
-    app_logger.info("Update minute data table callback triggered")
+    print(f"DASHBOARD_APP: update_minute_data_table callback triggered", file=sys.stderr)
     
-    if not minute_data_store or not minute_data_store.get("data"):
-        app_logger.warning("No minute data available")
+    if not minute_data:
         return [], []
     
     try:
-        # Get the minute data
-        minute_data = minute_data_store["data"]
+        # Convert to DataFrame for easier manipulation
+        df = pd.DataFrame(minute_data)
         
-        # Create DataFrame columns
-        columns = [{"name": col, "id": col} for col in minute_data[0].keys()]
+        # Format timestamp column
+        if 'timestamp' in df.columns:
+            df['timestamp'] = pd.to_datetime(df['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
         
-        return minute_data, columns
+        # Sort by timestamp (most recent first)
+        if 'timestamp' in df.columns:
+            df = df.sort_values('timestamp', ascending=False)
+        
+        # Convert back to records for table display
+        data = df.to_dict('records')
+        
+        # Create columns configuration
+        columns = [{"name": col, "id": col} for col in df.columns]
+        
+        app_logger.info(f"Updated minute data table with {len(data)} rows")
+        print(f"DASHBOARD_APP: Updated minute data table with {len(data)} rows", file=sys.stderr)
+        
+        return data, columns
     
     except Exception as e:
         app_logger.error(f"Error updating minute data table: {e}", exc_info=True)
+        print(f"DASHBOARD_APP: Error updating minute data table: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         return [], []
 
 # Technical Indicators Table Callback
 @app.callback(
-    Output("tech-indicators-table", "data"),
-    Output("tech-indicators-table", "columns"),
-    Input("tech-indicators-store", "data"),
+    [
+        Output("tech-indicators-table", "data"),
+        Output("tech-indicators-table", "columns")
+    ],
+    [
+        Input("tech-indicators-store", "data"),
+        Input("tech-indicators-timeframe-dropdown", "value")
+    ],
     prevent_initial_call=True
 )
-def update_tech_indicators_table(tech_indicators_store):
+def update_tech_indicators_table(tech_indicators_data, timeframe):
     """Updates the technical indicators table with the fetched data."""
-    app_logger.info("Update technical indicators table callback triggered")
+    print(f"DASHBOARD_APP: update_tech_indicators_table callback triggered with timeframe={timeframe}", file=sys.stderr)
     
-    if not tech_indicators_store or not tech_indicators_store.get("data"):
-        app_logger.warning("No technical indicators data available")
+    if not tech_indicators_data:
         return [], []
     
     try:
-        # Get the technical indicators data
-        tech_indicators = tech_indicators_store["data"]
+        # Convert to DataFrame for easier manipulation
+        df = pd.DataFrame(tech_indicators_data)
         
-        # Create DataFrame columns
-        columns = [{"name": col, "id": col} for col in tech_indicators[0].keys()]
+        # Filter by timeframe if specified
+        if timeframe and 'timeframe' in df.columns:
+            df = df[df['timeframe'] == timeframe]
         
-        return tech_indicators, columns
+        # Format timestamp column
+        if 'timestamp' in df.columns:
+            df['timestamp'] = pd.to_datetime(df['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Sort by timestamp (most recent first)
+        if 'timestamp' in df.columns:
+            df = df.sort_values('timestamp', ascending=False)
+        
+        # Convert back to records for table display
+        data = df.to_dict('records')
+        
+        # Create columns configuration
+        columns = [{"name": col, "id": col} for col in df.columns]
+        
+        app_logger.info(f"Updated technical indicators table with {len(data)} rows for timeframe {timeframe}")
+        print(f"DASHBOARD_APP: Updated technical indicators table with {len(data)} rows for timeframe {timeframe}", file=sys.stderr)
+        
+        return data, columns
     
     except Exception as e:
         app_logger.error(f"Error updating technical indicators table: {e}", exc_info=True)
+        print(f"DASHBOARD_APP: Error updating technical indicators table: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         return [], []
 
 # Streaming Toggle Callback
 @app.callback(
-    Output("streaming-status", "children"),
-    Output("streaming-update-interval", "disabled"),
+    [
+        Output("streaming-status", "children"),
+        Output("streaming-update-interval", "disabled")
+    ],
     [
         Input("streaming-toggle", "value"),
         Input("options-chain-store", "data")
@@ -704,49 +733,18 @@ def update_options_tables(expiration_date, option_type, n_intervals, options_dat
         print(f"DASHBOARD_APP: Converting options data to DataFrame", file=sys.stderr)
         options_df = pd.DataFrame(options_data["options"])
         
-        # Enhanced debugging: Log the first few rows of the DataFrame to see what columns and data we have
-        app_logger.debug(f"Options DataFrame first 3 rows: {options_df.head(3).to_dict('records')}")
-        app_logger.debug(f"Options DataFrame columns: {list(options_df.columns)}")
-        
-        # Enhanced debugging: Log the symbol column format for the first few rows
-        if 'symbol' in options_df.columns:
-            app_logger.debug(f"Symbol column sample: {options_df['symbol'].head(5).tolist()}")
-            print(f"DASHBOARD_APP: Symbol column sample: {options_df['symbol'].head(5).tolist()}", file=sys.stderr)
-        
         # Apply streaming updates if available
         if streaming_data and streaming_data.get("streaming_data"):
             streaming_updates = streaming_data["streaming_data"]
             app_logger.info(f"Applying streaming updates for {len(streaming_updates)} contracts")
             print(f"DASHBOARD_APP: Applying streaming updates for {len(streaming_updates)} contracts", file=sys.stderr)
             
-            # Enhanced debugging: Log a sample of the streaming update keys
-            sample_update_keys = list(streaming_updates.keys())[:5]
-            app_logger.debug(f"Streaming update keys sample: {sample_update_keys}")
-            print(f"DASHBOARD_APP: Streaming update keys sample: {sample_update_keys}", file=sys.stderr)
-            
             field_mapper = StreamingFieldMapper()
-            update_count = 0
-            match_count = 0
-            
-            # Create a dictionary to store all the different formats of each contract key for debugging
-            key_formats = {}
             
             # Update each contract with streaming data
             for contract_key, update_data in streaming_updates.items():
-                # Store original key for debugging
-                original_key = contract_key
-                
                 # Normalize the contract key to match the format in the options DataFrame
                 normalized_key = normalize_contract_key(contract_key)
-                
-                # Store all formats for debugging
-                key_formats[original_key] = {
-                    'original': original_key,
-                    'normalized': normalized_key,
-                    'no_underscore': normalized_key.replace("_", "") if normalized_key else None
-                }
-                
-                app_logger.debug(f"Processing streaming update for contract: {normalized_key} (original: {original_key})")
                 
                 # Find the corresponding row in the DataFrame
                 mask = options_df["symbol"] == normalized_key
@@ -756,223 +754,111 @@ def update_options_tables(expiration_date, option_type, n_intervals, options_dat
                     # Try without underscore
                     alt_key = normalized_key.replace("_", "") if normalized_key else ""
                     mask = options_df["symbol"] == alt_key
-                    if mask.any():
-                        app_logger.debug(f"Found match using alternative key format: {alt_key}")
-                        key_formats[original_key]['matched_format'] = 'no_underscore'
-                    else:
+                    if not mask.any():
                         # Try direct match with original key
                         mask = options_df["symbol"] == contract_key
-                        if mask.any():
-                            app_logger.debug(f"Found match using original key: {contract_key}")
-                            key_formats[original_key]['matched_format'] = 'original'
-                        else:
-                            # Enhanced debugging: Try to find what's in the DataFrame that might match
-                            if 'symbol' in options_df.columns:
-                                # Get the first part of the symbol (e.g., "AAPL" from "AAPL_250530C180")
-                                if normalized_key and '_' in normalized_key:
-                                    symbol_prefix = normalized_key.split('_')[0]
-                                    similar_symbols = options_df[options_df['symbol'].str.contains(symbol_prefix, na=False)]
-                                    if not similar_symbols.empty:
-                                        app_logger.debug(f"Similar symbols in DataFrame for {symbol_prefix}: {similar_symbols['symbol'].head(3).tolist()}")
-                                        key_formats[original_key]['similar_in_df'] = similar_symbols['symbol'].head(3).tolist()
-                            
-                            app_logger.warning(f"No matching row found for {normalized_key} (original: {contract_key})")
-                            continue
                 
                 if mask.any():
-                    match_count += 1
-                    app_logger.debug(f"Found matching row for {normalized_key}")
-                    
                     # Get the mapped fields from the streaming data
                     mapped_fields = field_mapper.map_streaming_fields(update_data)
-                    app_logger.debug(f"Mapped fields for {normalized_key}: {mapped_fields}")
                     
                     # Update the DataFrame with the streaming data
                     for field, value in mapped_fields.items():
                         if field in options_df.columns:
                             # Use .loc to avoid SettingWithCopyWarning
                             options_df.loc[mask, field] = value
-                            app_logger.debug(f"Updated {normalized_key}.{field} = {value}")
-                            update_count += 1
-            
-            # Enhanced debugging: Log match statistics and key format information
-            app_logger.info(f"Streaming update statistics: {match_count}/{len(streaming_updates)} contracts matched, {update_count} field updates applied")
-            print(f"DASHBOARD_APP: Streaming update statistics: {match_count}/{len(streaming_updates)} contracts matched, {update_count} field updates applied", file=sys.stderr)
-            app_logger.debug(f"Key format details for first 5 keys: {json.dumps({k: v for i, (k, v) in enumerate(key_formats.items()) if i < 5})}")
-            
-            # If we have very few matches, log more details about the DataFrame and streaming keys
-            if match_count < len(streaming_updates) * 0.1 and len(streaming_updates) > 0:
-                app_logger.warning(f"Very low match rate: {match_count}/{len(streaming_updates)} ({match_count/len(streaming_updates)*100:.1f}%)")
-                print(f"DASHBOARD_APP: Very low match rate: {match_count}/{len(streaming_updates)} ({match_count/len(streaming_updates)*100:.1f}%)", file=sys.stderr)
-                app_logger.debug("DataFrame symbol column sample:")
-                if 'symbol' in options_df.columns:
-                    for i, symbol in enumerate(options_df['symbol'].head(10)):
-                        app_logger.debug(f"  DataFrame symbol {i}: {symbol}")
-                
-                app_logger.debug("Streaming keys sample:")
-                for i, key in enumerate(list(streaming_updates.keys())[:10]):
-                    app_logger.debug(f"  Streaming key {i}: {key}")
-        else:
-            app_logger.debug("No streaming updates available")
-            print(f"DASHBOARD_APP: No streaming updates available", file=sys.stderr)
         
-        # Log the shape of the DataFrame for debugging
-        app_logger.debug(f"Updated options DataFrame shape: {options_df.shape}")
+        # Filter by expiration date
+        if expiration_date:
+            options_df = options_df[options_df["expirationDate"] == expiration_date]
         
-        # Use the utility function to split options by type
-        print(f"DASHBOARD_APP: Splitting options by type", file=sys.stderr)
-        calls_data, puts_data = split_options_by_type(
-            options_df, 
-            expiration_date=expiration_date,
-            option_type=option_type,
-            last_valid_options=last_valid_options
-        )
+        # Split options by type
+        calls_df, puts_df = split_options_by_type(options_df)
         
-        app_logger.info(f"Split options: {len(calls_data)} calls and {len(puts_data)} puts")
-        print(f"DASHBOARD_APP: Split options: {len(calls_data)} calls and {len(puts_data)} puts", file=sys.stderr)
+        # Apply option type filter
+        if option_type == "CALL":
+            puts_df = pd.DataFrame()  # Empty DataFrame for puts
+        elif option_type == "PUT":
+            calls_df = pd.DataFrame()  # Empty DataFrame for calls
         
-        # Create columns for the tables
-        if calls_data:
-            calls_columns = [{"name": col, "id": col} for col in calls_data[0].keys()]
-        else:
-            calls_columns = []
+        # Sort by strike price
+        if not calls_df.empty and "strikePrice" in calls_df.columns:
+            calls_df = calls_df.sort_values("strikePrice")
         
-        if puts_data:
-            puts_columns = [{"name": col, "id": col} for col in puts_data[0].keys()]
-        else:
-            puts_columns = []
+        if not puts_df.empty and "strikePrice" in puts_df.columns:
+            puts_df = puts_df.sort_values("strikePrice")
+        
+        # Convert to records for table display
+        calls_data = calls_df.to_dict('records') if not calls_df.empty else []
+        puts_data = puts_df.to_dict('records') if not puts_df.empty else []
+        
+        # Create columns configuration
+        calls_columns = [{"name": col, "id": col} for col in calls_df.columns] if not calls_df.empty else []
+        puts_columns = [{"name": col, "id": col} for col in puts_df.columns] if not puts_df.empty else []
+        
+        app_logger.info(f"Updated options tables with {len(calls_data)} calls and {len(puts_data)} puts")
+        print(f"DASHBOARD_APP: Updated options tables with {len(calls_data)} calls and {len(puts_data)} puts", file=sys.stderr)
         
         return calls_data, calls_columns, puts_data, puts_columns
     
     except Exception as e:
-        error_msg = f"Error in update_options_tables: {str(e)}"
-        app_logger.error(error_msg, exc_info=True)
-        print(f"DASHBOARD_APP: {error_msg}", file=sys.stderr)
+        app_logger.error(f"Error updating options tables: {e}", exc_info=True)
+        print(f"DASHBOARD_APP: Error updating options tables: {e}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
         return [], [], [], []
 
-# Streaming Update Callback
+# Streaming Options Store Callback
 @app.callback(
     Output("streaming-options-store", "data"),
-    Input("streaming-update-interval", "n_intervals"),
+    [Input("streaming-update-interval", "n_intervals")],
     prevent_initial_call=True
 )
-def update_streaming_data(n_intervals):
-    """Updates the streaming data store with the latest streaming data."""
-    print(f"DASHBOARD_APP: update_streaming_data callback triggered with n_intervals={n_intervals}", file=sys.stderr)
-    app_logger.debug(f"Streaming update callback triggered. Interval: {n_intervals}")
+def update_streaming_options_store(n_intervals):
+    """Updates the streaming options store with the latest data."""
+    print(f"DASHBOARD_APP: update_streaming_options_store callback triggered with n_intervals={n_intervals}", file=sys.stderr)
     
     try:
-        # Get the latest streaming data from the streaming manager
-        print(f"DASHBOARD_APP: Getting latest data from streaming manager", file=sys.stderr)
-        with streaming_manager._lock:
-            latest_data = streaming_manager.latest_data_store.copy()
+        # Get the latest streaming data
+        streaming_data = streaming_manager.get_latest_data()
         
-        # Create a dictionary for the streaming data store
-        streaming_data = {
-            "streaming_data": latest_data,
-            "last_update": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "update_count": n_intervals
-        }
-        
-        # Log the update
-        data_count = len(latest_data)
-        app_logger.debug(f"Streaming update: {data_count} contracts available")
-        print(f"DASHBOARD_APP: Streaming update: {data_count} contracts available", file=sys.stderr)
-        
-        # Log a sample of the data for debugging
-        if data_count > 0:
-            sample_keys = list(latest_data.keys())[:3]
-            for key in sample_keys:
-                data = latest_data[key]
-                app_logger.debug(f"Sample data for {key}: Last={data.get('lastPrice')}, Bid={data.get('bidPrice')}, Ask={data.get('askPrice')}")
-                print(f"DASHBOARD_APP: Sample data for {key}: Last={data.get('lastPrice')}, Bid={data.get('bidPrice')}, Ask={data.get('askPrice')}", file=sys.stderr)
-        
-        return streaming_data
+        # Return the streaming data
+        return {"streaming_data": streaming_data}
     
     except Exception as e:
-        error_msg = f"Error updating streaming data: {str(e)}"
-        app_logger.error(error_msg, exc_info=True)
-        print(f"DASHBOARD_APP: {error_msg}", file=sys.stderr)
+        app_logger.error(f"Error updating streaming options store: {e}", exc_info=True)
+        print(f"DASHBOARD_APP: Error updating streaming options store: {e}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
-        return {"streaming_data": {}, "error": error_msg}
+        return {"streaming_data": {}}
 
 # Error Display Callback
 @app.callback(
     Output("error-messages", "children"),
-    Input("error-store", "data"),
+    [Input("error-store", "data")],
     prevent_initial_call=True
 )
-def display_error(error_data):
-    """Displays error messages from the error store."""
+def update_error_messages(error_data):
+    """Updates the error messages display."""
     if not error_data:
         return ""
     
-    source = error_data.get("source", "Unknown")
-    message = error_data.get("message", "An unknown error occurred")
-    timestamp = error_data.get("timestamp", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    try:
+        error_msg = error_data.get("error", "Unknown error")
+        return f"Error: {error_msg}"
     
-    return f"Error in {source} at {timestamp}: {message}"
+    except Exception as e:
+        app_logger.error(f"Error updating error messages: {e}", exc_info=True)
+        return f"Error: {str(e)}"
 
 # Register recommendation callbacks
 register_recommendation_callbacks(app)
 
-# Register download callbacks
-register_download_callback(app, "minute-data-download")
-register_download_callback(app, "tech-indicators-download")
-register_download_callback(app, "options-chain-download")
-register_download_callback(app, "recommendations-download")
-
-# Register download click callbacks
-register_download_click_callback(app, "minute-data-download")
-register_download_click_callback(app, "tech-indicators-download")
-register_download_click_callback(app, "options-chain-download")
-register_download_click_callback(app, "recommendations-download")
-
 # Register export callbacks
 register_export_callbacks(app)
 
-# Clean up streaming on app shutdown
-@app.server.teardown_appcontext
-def shutdown_streaming(exception=None):
-    """Stops streaming when the app shuts down."""
-    print(f"DASHBOARD_APP: shutdown_streaming called at {datetime.datetime.now()}", file=sys.stderr)
-    try:
-        # Check if streaming_manager exists and has stop_streaming method
-        if streaming_manager is not None and hasattr(streaming_manager, 'stop_streaming'):
-            # Check if streaming is actually running before stopping
-            if hasattr(streaming_manager, 'is_running') and streaming_manager.is_running:
-                streaming_manager.stop_streaming()
-                app_logger.info("Streaming stopped on app shutdown")
-                print(f"DASHBOARD_APP: Streaming stopped on app shutdown", file=sys.stderr)
-            else:
-                app_logger.info("Streaming was not running, no need to stop")
-                print(f"DASHBOARD_APP: Streaming was not running, no need to stop", file=sys.stderr)
-        else:
-            app_logger.warning("streaming_manager not available or missing stop_streaming method")
-            print(f"DASHBOARD_APP: streaming_manager not available or missing stop_streaming method", file=sys.stderr)
-            
-        # Check if debug_monitor exists and has stop_monitoring method
-        if debug_monitor is not None and hasattr(debug_monitor, 'stop_monitoring'):
-            # Check if monitoring is actually running before stopping
-            if hasattr(debug_monitor, 'is_monitoring') and debug_monitor.is_monitoring:
-                debug_monitor.stop_monitoring()
-                app_logger.info("Debug monitor stopped on app shutdown")
-                print(f"DASHBOARD_APP: Debug monitor stopped on app shutdown", file=sys.stderr)
-            else:
-                app_logger.info("Debug monitor was not running, no need to stop")
-                print(f"DASHBOARD_APP: Debug monitor was not running, no need to stop", file=sys.stderr)
-        else:
-            app_logger.warning("debug_monitor not available or missing stop_monitoring method")
-            print(f"DASHBOARD_APP: debug_monitor not available or missing stop_monitoring method", file=sys.stderr)
-            
-    except Exception as e:
-        app_logger.error(f"Error during shutdown_streaming: {e}", exc_info=True)
-        print(f"DASHBOARD_APP: Error during shutdown_streaming: {e}", file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
-        # Don't re-raise the exception to avoid breaking the teardown process
+# Register download callbacks
+register_download_callback(app)
+register_download_click_callback(app)
 
+# Run the app
 if __name__ == "__main__":
-    # Use app.run instead of app.run_server for Dash 3.x compatibility
-    print(f"DASHBOARD_APP: Starting app server at {datetime.datetime.now()}", file=sys.stderr)
-    app.run(debug=True, host='0.0.0.0', port=8050)
+    app.run_server(debug=True, host="0.0.0.0")
