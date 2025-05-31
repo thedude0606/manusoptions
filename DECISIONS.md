@@ -56,3 +56,22 @@ Enhanced the existing symbol context manager to ensure consistent symbol informa
 - Implemented automatic symbol addition to data structures when missing
 - Enhanced logging for better traceability
 - Integrated with indicator system to maintain symbol context in calculations
+
+## Dashboard Integration
+
+### Decision
+Integrated the modular indicator system and confidence scoring components with the dashboard application.
+
+### Rationale
+- **Seamless User Experience**: Users can access new indicators and confidence metrics through familiar interface
+- **Real-time Updates**: Integration with streaming system provides up-to-date information
+- **Enhanced Visualization**: Added confidence metrics display for better decision making
+- **Maintainability**: Separation of concerns between data processing and presentation
+- **Extensibility**: New indicators can be added without modifying dashboard code
+
+### Technical Details
+- Updated data fetchers to use the modular indicator registry
+- Enhanced recommendation tab to display confidence metrics
+- Added detailed explanations for recommendations based on indicator signals
+- Ensured symbol context preservation throughout the data pipeline
+- Maintained compatibility with existing streaming data system
