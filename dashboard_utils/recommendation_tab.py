@@ -13,6 +13,7 @@ import numpy as np
 import logging
 from datetime import datetime
 import json
+from dashboard_utils.data_quality_display import create_data_quality_display
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -67,6 +68,9 @@ def create_recommendation_tab():
                 ], className="market-direction-panel"),
                 html.Div(id="market-signals", className="market-signals")
             ], className="panel market-panel"),
+            
+            # Data Quality Panel (New)
+            create_data_quality_display(),
             
             # Call Recommendations Panel
             html.Div([
@@ -221,7 +225,7 @@ def create_recommendation_tab():
                 ])
             ], className="panel details-panel"),
             
-            # Debug Information Panel (New)
+            # Debug Information Panel
             html.Div([
                 html.H3("Recommendation Debug Information", className="panel-header"),
                 html.Div(id="recommendation-debug-info", 
@@ -349,13 +353,12 @@ def register_recommendation_callbacks(app):
                 debug_info.append("WARNING: No timeframe_data found in tech_indicators_data")
                 logger.warning("No timeframe_data found in tech_indicators_data")
             
-            if tech_indicators_df.empty:
-                error_msg = f"No technical indicator data available for {timeframe} timeframe. Try a different timeframe or refresh data."
-                debug_info.append(f"ERROR: {error_msg}")
-                logger.warning(error_msg)
-                
-                # Return error to status only, with no update to error-store
-                return None, error_msg, "\n".join(debug_info), dash.no_update
+            # Create technical indicators dictionary with all available timeframes
+            tech_indicators_dict = {}
+            if tech_indicators_data and "timeframe_data" in tech_indicators_data:
+                for tf, data in tech_indicators_data.get("timeframe_data", {}).items():
+                    tech_indicators_dict[tf] = pd.DataFrame(data)
+                    debug_info.append(f"Added {tf} to tech_indicators_dict, shape: {tech_indicators_dict[tf].shape}")
             
             # Get options chain data
             options_df = pd.DataFrame()
@@ -363,198 +366,209 @@ def register_recommendation_callbacks(app):
                 options_df = pd.DataFrame(options_chain_data["options"])
                 debug_info.append(f"Loaded options chain data, shape: {options_df.shape}")
                 debug_info.append(f"Options chain columns: {options_df.columns.tolist()}")
-                if 'putCall' in options_df.columns:
-                    debug_info.append(f"Options chain putCall values: {options_df['putCall'].unique().tolist()}")
-                else:
-                    debug_info.append("WARNING: putCall column not found in options chain data")
                 logger.info(f"Loaded options chain data, shape: {options_df.shape}")
                 logger.info(f"Options chain columns: {options_df.columns.tolist()}")
-                logger.info(f"Options chain putCall values: {options_df['putCall'].unique().tolist() if 'putCall' in options_df.columns else 'putCall column not found'}")
             else:
-                debug_info.append("WARNING: No options key found in options_chain_data")
-                logger.warning("No options key found in options_chain_data")
-            
-            if options_df.empty:
-                error_msg = "No options chain data available. Please refresh data."
-                debug_info.append(f"ERROR: {error_msg}")
-                logger.warning(error_msg)
-                
-                # Return error to status only, with no update to error-store
-                return None, error_msg, "\n".join(debug_info), dash.no_update
+                debug_info.append("WARNING: No options data found in options_chain_data")
+                logger.warning("No options data found in options_chain_data")
             
             # Generate recommendations
-            debug_info.append("Creating recommendation engine instance")
-            logger.info("Creating recommendation engine instance")
             engine = RecommendationEngine()
+            debug_info.append("Calling recommendation engine generate_recommendations method")
+            recommendations = engine.generate_recommendations(tech_indicators_dict, options_df, underlying_price, symbol)
             
-            debug_info.append(f"Calling get_recommendations with timeframe: {timeframe}")
-            logger.info(f"Calling get_recommendations with timeframe: {timeframe}")
-            recommendations = engine.get_recommendations(
-                tech_indicators_df,
-                options_df,
-                underlying_price,
-                timeframe
-            )
+            # Extract data quality information
+            data_quality = recommendations.get("data_quality", {})
+            tech_quality = data_quality.get("technical_indicators", {}).get("score", 0)
+            options_quality = data_quality.get("options_chain", {}).get("score", 0)
+            overall_quality = data_quality.get("overall_score", 0)
             
-            # Log the structure of recommendations
-            debug_info.append(f"Recommendation keys: {list(recommendations.keys())}")
-            debug_info.append(f"Number of call recommendations: {len(recommendations.get('calls', []))}")
-            debug_info.append(f"Number of put recommendations: {len(recommendations.get('puts', []))}")
-            debug_info.append(f"Market direction: {recommendations.get('market_direction', {}).get('direction', 'unknown')}")
+            debug_info.append(f"Data quality scores - Tech: {tech_quality}, Options: {options_quality}, Overall: {overall_quality}")
             
-            # Add sample of recommendations for debugging
-            if recommendations.get('calls'):
-                debug_info.append(f"Sample call recommendation: {json.dumps(recommendations['calls'][0], indent=2)}")
-            if recommendations.get('puts'):
-                debug_info.append(f"Sample put recommendation: {json.dumps(recommendations['puts'][0], indent=2)}")
+            # Check if we have valid recommendations
+            recommendation_list = recommendations.get("recommendations", [])
+            debug_info.append(f"Generated {len(recommendation_list)} recommendations")
             
-            # Add timestamp to recommendations
-            recommendations["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # Determine status message based on data quality and recommendations
+            if len(recommendation_list) == 0:
+                if overall_quality < 40:
+                    status_msg = f"No recommendations available - Poor data quality ({overall_quality:.0f}/100)"
+                else:
+                    status_msg = "No recommendations available for current market conditions"
+            else:
+                if overall_quality < 40:
+                    status_msg = f"Low confidence recommendations - Poor data quality ({overall_quality:.0f}/100)"
+                elif overall_quality < 60:
+                    status_msg = f"Recommendations available - Fair data quality ({overall_quality:.0f}/100)"
+                else:
+                    status_msg = f"Recommendations available - Good data quality ({overall_quality:.0f}/100)"
             
-            # Return recommendations and status
-            status_msg = f"Generated {len(recommendations.get('calls', []))} call and {len(recommendations.get('puts', []))} put recommendations"
-            debug_info.append(f"SUCCESS: {status_msg}")
-            logger.info(status_msg)
+            debug_info.append(f"Status message: {status_msg}")
             
+            # Return the recommendations data, status message, and debug info
             return recommendations, status_msg, "\n".join(debug_info), dash.no_update
             
         except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
             error_msg = f"Error generating recommendations: {str(e)}"
-            debug_info.append(f"EXCEPTION: {error_msg}")
-            debug_info.append(f"Traceback: {dash.no_update}")
-            logger.error(error_msg, exc_info=True)
+            debug_info.append(f"ERROR: {error_msg}")
+            debug_info.append(error_details)
+            logger.error(f"Error in update_recommendations: {str(e)}")
+            logger.error(error_details)
             
             # Return error to both status and error-store
-            return None, error_msg, "\n".join(debug_info), {
-                "source": "Recommendations",
-                "message": error_msg,
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
+            return None, error_msg, "\n".join(debug_info), {"error": error_msg, "details": error_details}
     
-    # Second callback: Update recommendation tables
+    # Second callback: Update market direction display
     @app.callback(
         [
-            Output("call-recommendations-table", "data"),
-            Output("put-recommendations-table", "data"),
             Output("market-direction-indicator", "children"),
+            Output("market-direction-indicator", "className"),
             Output("market-direction-text", "children"),
             Output("bullish-score", "children"),
             Output("bearish-score", "children"),
-            Output("market-signals", "children"),
-            Output("recommendations-last-updated", "children")
+            Output("market-signals", "children")
         ],
-        Input("recommendations-store", "data"),
+        [Input("recommendations-store", "data")],
         prevent_initial_call=True
     )
-    def update_recommendation_tables(recommendations_data):
-        """Update recommendation tables with the generated recommendations."""
-        logger.info("update_recommendation_tables callback triggered")
-        
-        if not recommendations_data:
-            logger.warning("No recommendations data available")
-            return [], [], "", "", "", "", "", ""
+    def update_market_direction(recommendations_data):
+        """Update market direction display based on recommendations data."""
+        if not recommendations_data or "market_direction" not in recommendations_data:
+            # Default values when no data is available
+            return (
+                "?", "direction-indicator neutral", "No Data",
+                "N/A", "N/A", "No market signals available"
+            )
         
         try:
-            # Get call and put recommendations
-            calls = recommendations_data.get("calls", [])
-            puts = recommendations_data.get("puts", [])
-            
-            # Get market direction
-            market_direction = recommendations_data.get("market_direction", {})
+            # Extract market direction data
+            market_direction = recommendations_data["market_direction"]
             direction = market_direction.get("direction", "neutral")
-            bullish_score = market_direction.get("bullish_score", 0)
-            bearish_score = market_direction.get("bearish_score", 0)
+            bullish_score = market_direction.get("bullish_score", 50)
+            bearish_score = market_direction.get("bearish_score", 50)
             signals = market_direction.get("signals", [])
             
-            # Create market direction indicator
+            # Determine direction indicator and class
             if direction == "bullish":
                 indicator = "▲"
-                indicator_text = "Bullish"
+                indicator_class = "direction-indicator bullish"
+                direction_text = "Bullish"
             elif direction == "bearish":
                 indicator = "▼"
-                indicator_text = "Bearish"
+                indicator_class = "direction-indicator bearish"
+                direction_text = "Bearish"
             else:
                 indicator = "◆"
-                indicator_text = "Neutral"
+                indicator_class = "direction-indicator neutral"
+                direction_text = "Neutral"
             
-            # Create market signals list
-            signals_html = html.Ul([html.Li(signal) for signal in signals]) if signals else ""
+            # Format signals as a list
+            signals_html = html.Ul([html.Li(signal) for signal in signals]) if signals else "No signals available"
             
-            # Get timestamp
-            timestamp = recommendations_data.get("timestamp", "")
-            last_updated = f"Last updated: {timestamp}" if timestamp else ""
-            
-            return calls, puts, indicator, indicator_text, f"{bullish_score:.0f}", f"{bearish_score:.0f}", signals_html, last_updated
+            return (
+                indicator, indicator_class, direction_text,
+                f"{bullish_score:.0f}", f"{bearish_score:.0f}", signals_html
+            )
         
         except Exception as e:
-            logger.error(f"Error updating recommendation tables: {e}", exc_info=True)
-            return [], [], "", "", "", "", "", ""
+            logger.error(f"Error updating market direction: {e}")
+            return (
+                "!", "direction-indicator error", f"Error: {str(e)}",
+                "Error", "Error", f"Error: {str(e)}"
+            )
     
-    # Third callback: Update contract details
+    # Third callback: Update call recommendations table
     @app.callback(
-        [
-            Output("detail-symbol", "children"),
-            Output("detail-type", "children"),
-            Output("detail-strike", "children"),
-            Output("detail-expiration", "children"),
-            Output("detail-delta", "children"),
-            Output("detail-gamma", "children"),
-            Output("detail-theta", "children"),
-            Output("detail-vega", "children"),
-            Output("detail-iv", "children")
-        ],
-        [
-            Input("call-recommendations-table", "active_cell"),
-            Input("put-recommendations-table", "active_cell")
-        ],
-        [
-            State("call-recommendations-table", "data"),
-            State("put-recommendations-table", "data")
-        ],
+        Output("call-recommendations-table", "data"),
+        [Input("recommendations-store", "data")],
         prevent_initial_call=True
     )
-    def update_contract_details(call_active_cell, put_active_cell, call_data, put_data):
-        """Update contract details based on the selected recommendation."""
-        logger.info("update_contract_details callback triggered")
-        
-        ctx = dash.callback_context
-        trigger = ctx.triggered[0]['prop_id'] if ctx.triggered else ""
+    def update_call_recommendations(recommendations_data):
+        """Update call recommendations table based on recommendations data."""
+        if not recommendations_data or "recommendations" not in recommendations_data:
+            return []
         
         try:
-            if "call-recommendations-table" in trigger and call_active_cell:
-                row = call_active_cell["row"]
-                if call_data and row < len(call_data):
-                    contract = call_data[row]
-                    return (
-                        contract.get("symbol", ""),
-                        "Call",
-                        f"${contract.get('strikePrice', 0):.2f}",
-                        contract.get("expirationDate", ""),
-                        f"{contract.get('delta', 0):.3f}",
-                        f"{contract.get('gamma', 0):.3f}",
-                        f"{contract.get('theta', 0):.3f}",
-                        f"{contract.get('vega', 0):.3f}",
-                        f"{contract.get('volatility', 0):.2f}%"
-                    )
+            # Extract recommendations
+            recommendations = recommendations_data["recommendations"]
             
-            elif "put-recommendations-table" in trigger and put_active_cell:
-                row = put_active_cell["row"]
-                if put_data and row < len(put_data):
-                    contract = put_data[row]
-                    return (
-                        contract.get("symbol", ""),
-                        "Put",
-                        f"${contract.get('strikePrice', 0):.2f}",
-                        contract.get("expirationDate", ""),
-                        f"{contract.get('delta', 0):.3f}",
-                        f"{contract.get('gamma', 0):.3f}",
-                        f"{contract.get('theta', 0):.3f}",
-                        f"{contract.get('vega', 0):.3f}",
-                        f"{contract.get('volatility', 0):.2f}%"
-                    )
+            # Filter for call recommendations
+            call_recommendations = [r for r in recommendations if r.get("type") == "CALL"]
             
-            return "", "", "", "", "", "", "", "", ""
+            # Format for data table
+            table_data = []
+            for rec in call_recommendations:
+                table_data.append({
+                    "symbol": rec.get("symbol", ""),
+                    "strikePrice": rec.get("strike", 0),
+                    "expirationDate": rec.get("expiration", ""),
+                    "daysToExpiration": rec.get("days_to_expiration", 0),
+                    "currentPrice": rec.get("current_price", 0),
+                    "targetSellPrice": rec.get("current_price", 0) * (1 + rec.get("expected_profit", 0) / 100),
+                    "targetTimeframeHours": rec.get("target_exit_hours", 24),
+                    "expectedProfitPct": rec.get("expected_profit", 0),
+                    "confidenceScore": rec.get("confidence", 0)
+                })
+            
+            return table_data
         
         except Exception as e:
-            logger.error(f"Error updating contract details: {e}", exc_info=True)
-            return "", "", "", "", "", "", "", "", ""
+            logger.error(f"Error updating call recommendations: {e}")
+            return []
+    
+    # Fourth callback: Update put recommendations table
+    @app.callback(
+        Output("put-recommendations-table", "data"),
+        [Input("recommendations-store", "data")],
+        prevent_initial_call=True
+    )
+    def update_put_recommendations(recommendations_data):
+        """Update put recommendations table based on recommendations data."""
+        if not recommendations_data or "recommendations" not in recommendations_data:
+            return []
+        
+        try:
+            # Extract recommendations
+            recommendations = recommendations_data["recommendations"]
+            
+            # Filter for put recommendations
+            put_recommendations = [r for r in recommendations if r.get("type") == "PUT"]
+            
+            # Format for data table
+            table_data = []
+            for rec in put_recommendations:
+                table_data.append({
+                    "symbol": rec.get("symbol", ""),
+                    "strikePrice": rec.get("strike", 0),
+                    "expirationDate": rec.get("expiration", ""),
+                    "daysToExpiration": rec.get("days_to_expiration", 0),
+                    "currentPrice": rec.get("current_price", 0),
+                    "targetSellPrice": rec.get("current_price", 0) * (1 + rec.get("expected_profit", 0) / 100),
+                    "targetTimeframeHours": rec.get("target_exit_hours", 24),
+                    "expectedProfitPct": rec.get("expected_profit", 0),
+                    "confidenceScore": rec.get("confidence", 0)
+                })
+            
+            return table_data
+        
+        except Exception as e:
+            logger.error(f"Error updating put recommendations: {e}")
+            return []
+    
+    # Fifth callback: Update last updated timestamp
+    @app.callback(
+        Output("recommendations-last-updated", "children"),
+        [Input("recommendations-store", "data")],
+        prevent_initial_call=True
+    )
+    def update_last_updated(recommendations_data):
+        """Update last updated timestamp based on recommendations data."""
+        if recommendations_data:
+            return f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        return "Not yet updated"
+    
+    # Register data quality callbacks
+    from dashboard_utils.data_quality_display import register_data_quality_callbacks
+    register_data_quality_callbacks(app)
