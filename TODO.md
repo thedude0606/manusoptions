@@ -33,11 +33,14 @@
 - [ ] Validate automatic reconnection logic across different conditions
 - [ ] Test timeframe bias indicator across different market conditions
 - [ ] Add UI components to display timeframe bias information
-- [ ] Fix Safari export button compatibility issue
+- [x] Fix Safari export button compatibility issue
 - [ ] Add additional error handling for data fetching
 - [ ] Improve UI responsiveness on mobile devices
 - [ ] Enhance streaming data integration with recommendation engine
 - [ ] Add automated testing for streaming data updates
+- [ ] Add additional export formats (CSV, JSON) for data tables
+- [ ] Enhance Excel export with additional formatting options
+- [ ] Add progress indicators for large data exports
 
 ## Documentation
 - [x] Update PROGRESS.md with current status
@@ -45,10 +48,12 @@
 - [x] Update DECISIONS.md with technical rationale
 - [x] Document streaming manager improvements and rationale
 - [x] Document recommendation engine issues and fixes
+- [x] Document Excel export functionality improvements
 - [ ] Create user guide for recommendation engine features
 - [ ] Document timeframe bias indicator usage and interpretation
 - [ ] Document streaming debug monitor usage and interpretation
 - [ ] Create troubleshooting guide for streaming data issues
+- [ ] Create export functionality user guide
 
 ## Dependencies
 - UI improvements depend on core functionality fixes

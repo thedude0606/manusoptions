@@ -85,3 +85,15 @@
 - Added type checking for selected_symbol parameter to handle both dictionary and string formats
 - Implemented defensive programming approach to handle variable data types in callback parameters
 - Implemented exception-safe shutdown mechanism with proper state checking to prevent application crashes during teardown
+
+
+## Excel Export Functionality (June 7, 2025)
+- Replaced custom download implementation with Dash's native dcc.Download component for better cross-browser compatibility
+- Eliminated the need for client-side callbacks by using Dash's built-in download mechanism
+- Improved Safari compatibility by using a more standardized approach to file downloads
+- Simplified the download process by removing the multi-step approach (generate download link, then click it)
+- Enhanced the export button callbacks to work directly with the native download component
+- Maintained the same Excel file generation logic while improving the delivery mechanism
+- Preserved all metadata and formatting in Excel exports while fixing the download functionality
+- Implemented a more robust base64 encoding approach for binary file content
+

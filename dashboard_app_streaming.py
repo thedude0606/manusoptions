@@ -21,8 +21,8 @@ from dashboard_utils.streaming_manager import StreamingManager
 from dashboard_utils.streaming_field_mapper import StreamingFieldMapper
 from dashboard_utils.streaming_debug import create_debug_monitor  # Import the new debug monitor
 from dashboard_utils.contract_utils import normalize_contract_key
-from dashboard_utils.download_component import create_download_component, register_download_callback, register_download_click_callback
-from dashboard_utils.export_buttons import create_export_button, register_export_callbacks
+from dashboard_utils.download_component_updated import create_download_component, register_download_callback
+from dashboard_utils.export_buttons_updated import create_export_button, register_export_callbacks
 from dashboard_utils.excel_export import (
     export_minute_data_to_excel,
     export_technical_indicators_to_excel,
@@ -922,12 +922,6 @@ register_download_callback(app, "minute-data-download")
 register_download_callback(app, "tech-indicators-download")
 register_download_callback(app, "options-chain-download")
 register_download_callback(app, "recommendations-download")
-
-# Register download click callbacks
-register_download_click_callback(app, "minute-data-download")
-register_download_click_callback(app, "tech-indicators-download")
-register_download_click_callback(app, "options-chain-download")
-register_download_click_callback(app, "recommendations-download")
 
 # Register export callbacks
 register_export_callbacks(app)
