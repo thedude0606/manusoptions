@@ -73,7 +73,14 @@ def register_export_callbacks(app):
             return None
         
         try:
-            symbol = selected_symbol.get("symbol", "unknown") if selected_symbol else "unknown"
+            # Fix: Handle both string and dictionary types for selected_symbol
+            if isinstance(selected_symbol, dict):
+                symbol = selected_symbol.get("symbol", "unknown")
+            elif isinstance(selected_symbol, str):
+                symbol = selected_symbol
+            else:
+                symbol = "unknown"
+                
             timestamp = minute_data.get("last_update", "").replace(":", "-").replace(" ", "_")
             filename = f"{symbol}_minute_data_{timestamp}.xlsx"
             
@@ -104,7 +111,14 @@ def register_export_callbacks(app):
             return None
         
         try:
-            symbol = selected_symbol.get("symbol", "unknown") if selected_symbol else "unknown"
+            # Fix: Handle both string and dictionary types for selected_symbol
+            if isinstance(selected_symbol, dict):
+                symbol = selected_symbol.get("symbol", "unknown")
+            elif isinstance(selected_symbol, str):
+                symbol = selected_symbol
+            else:
+                symbol = "unknown"
+                
             timestamp = tech_indicators_data.get("last_update", "").replace(":", "-").replace(" ", "_")
             filename = f"{symbol}_technical_indicators_{timestamp}.xlsx"
             
@@ -135,7 +149,14 @@ def register_export_callbacks(app):
             return None
         
         try:
-            symbol = selected_symbol.get("symbol", "unknown") if selected_symbol else "unknown"
+            # Fix: Handle both string and dictionary types for selected_symbol
+            if isinstance(selected_symbol, dict):
+                symbol = selected_symbol.get("symbol", "unknown")
+            elif isinstance(selected_symbol, str):
+                symbol = selected_symbol
+            else:
+                symbol = "unknown"
+                
             timestamp = options_data.get("last_update", "").replace(":", "-").replace(" ", "_")
             filename = f"{symbol}_options_chain_{timestamp}.xlsx"
             
@@ -166,7 +187,14 @@ def register_export_callbacks(app):
             return None
         
         try:
-            symbol = selected_symbol.get("symbol", "unknown") if selected_symbol else "unknown"
+            # Fix: Handle both string and dictionary types for selected_symbol
+            if isinstance(selected_symbol, dict):
+                symbol = selected_symbol.get("symbol", "unknown")
+            elif isinstance(selected_symbol, str):
+                symbol = selected_symbol
+            else:
+                symbol = "unknown"
+                
             timestamp = recommendations_data.get("last_update", "").replace(":", "-").replace(" ", "_") if recommendations_data.get("last_update") else ""
             filename = f"{symbol}_recommendations_{timestamp}.xlsx"
             
@@ -182,3 +210,4 @@ def register_export_callbacks(app):
         except Exception as e:
             logger.error(f"Error in recommendations export callback: {str(e)}", exc_info=True)
             return None
+
